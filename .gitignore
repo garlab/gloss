@@ -1,0 +1,16 @@
+# Generated build output and operating-system metadata.
+/target/
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Machine-local Cargo settings and credentials.
+/.cargo/config
+/.cargo/config.toml
+/.cargo/credentials
+/.cargo/credentials.toml
+
+# Local environment settings; examples must use placeholders only.
+.env
+.env.*
+!.env.example

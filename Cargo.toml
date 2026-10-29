@@ -1,0 +1,30 @@
+[package]
+name = "mdviewer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A terminal Markdown viewer with native inline and display equations."
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+katex-native = { path = "../katex-native", features = ["raster"] }
+pulldown-cmark = { version = "0.13", default-features = false }
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
