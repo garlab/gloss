@@ -9,7 +9,7 @@ with text fallbacks; interactive paging and resize handling are planned.
 
 ## Build and run
 
-A current stable Rust toolchain and a separate `katex-native` checkout are
+A Rust 1.90 or newer toolchain and a separate `katex-native` checkout are
 required. The math dependency is not yet publicly available, so this repository
 alone is not sufficient to build. Keep the checkouts beside one another:
 
@@ -27,6 +27,7 @@ cargo install --path . --locked
 mdviewer tests/fixtures/math.md
 mdviewer --show-math-source tests/fixtures/inline.md
 mdviewer tests/fixtures/style.md
+mdviewer tests/fixtures/code.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
@@ -37,6 +38,16 @@ argument or pass `-` to read Markdown from stdin.
 Terminal output uses a dark color palette, distinct heading levels, tinted inline
 code, shaded code blocks, and colored links and list markers. Lists and quotes
 keep their indentation when lines wrap. Use `--light` for a light background.
+
+Fenced code uses syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX,
+JSON, Bash/shell, Go, TOML, and YAML. Common aliases such as `rs`, `py`, `js`,
+`ts`, `sh`, and `yml` are accepted without case sensitivity. Multiline comments
+and strings retain their context before the code is wrapped.
+
+Use `--no-highlight` to keep the rest of the theme while disabling syntax colors.
+Unknown languages and indented code retain the normal code panel. Highlighting
+has bounded work: oversized or expensive blocks fall back to uncolored code
+without losing content. No grammar downloads or helper processes are needed.
 
 The reading column is at most 80 cells wide, with two-column horizontal margins.
 Text and equations share that column in both graphics and TeX modes. The width
@@ -63,6 +74,7 @@ is not implemented.
 | `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
 | `--margin <columns>` | Set the horizontal margin, default `2`. |
 | `--light` | Use a light color palette for text and equations. |
+| `--no-highlight` | Disable code syntax colors while retaining the theme and layout. |
 | `--font-size <pixels>` | Override the equation font size, from 4 to 256 pixels. |
 
 Equation size follows the terminal cell height by default, and oversized equations
@@ -107,7 +119,8 @@ Math support follows the KaTeX subset implemented by `katex-native`.
 Backslash-parenthesis and backslash-bracket math delimiters are not recognized.
 
 Complex combinations of nested blocks still need layout improvements. Tables are
-not column-aligned, and code blocks are shaded but not syntax-highlighted.
+not column-aligned. Embedded languages inside code strings or HTML are not
+highlighted separately; unsupported fences remain uncolored.
 Markdown images are shown as text references and are not fetched. HTML is not
 executed.
 
@@ -127,9 +140,16 @@ windows, Unicode, reading width, themes, and image/text placement. Visual checks
 in real terminals are still needed to assess font alignment, scrolling, and
 selection behavior.
 
-See [architecture](docs/architecture.md) for module boundaries and contracts, and
-[the roadmap](docs/roadmap.md) for remaining implementation work. Crate publication
-is disabled while `katex-native` uses a local path dependency.
+See [architecture](docs/architecture.md) for module boundaries and contracts,
+[feature design](docs/feature-design.md) for planned rendering features and
+resource limits, and [the roadmap](docs/roadmap.md) for implementation order.
+The [performance baseline](docs/performance-baseline.md) records comparisons with
+Glow and commands for repeating them without keeping large inputs in the repo.
+The [syntax highlighting measurements](docs/syntax-highlighting.md) record its
+implementation limits, dependency costs, and comparison with that baseline.
+The [rendering optimizations](docs/performance-optimizations.md) record subsequent
+reductions in time, memory, output volume, and executable size.
+Crate publication is disabled while `katex-native` uses a local path dependency.
 
 ## License
 

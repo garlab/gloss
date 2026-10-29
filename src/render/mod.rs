@@ -1,6 +1,7 @@
 //! Output backends consume the same layout. Presentation never changes the
 //! original document or the independent text export.
 
+mod code;
 mod inline;
 pub mod kitty;
 pub mod text;
@@ -21,6 +22,8 @@ use viewport::Viewport;
 
 pub struct Options {
     pub styled: bool,
+    /// Color known fenced languages; ignored for unstyled/plain output.
+    pub highlight: bool,
     pub kitty: Option<Geometry>,
     /// Terminal geometry for formatted text, including sessions without graphics.
     pub terminal: Option<Geometry>,
@@ -36,6 +39,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             styled: false,
+            highlight: true,
             kitty: None,
             terminal: None,
             width: 80,
@@ -71,18 +75,56 @@ pub fn write(
     options: &Options,
 ) -> io::Result<Vec<String>> {
     let mut engine = None;
+    let mut highlighter = None;
     let mut warnings = Vec::new();
     let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
     let geometry = options.geometry();
     let viewport = options.viewport();
     if formatted && !layout.blocks.is_empty() {
+        if options.styled {
+            out.write_all(b"\x1b[0m")?;
+        }
         writeln!(out)?;
     }
-    for block in &layout.blocks {
+    for (index, block) in layout.blocks.iter().enumerate() {
         match block {
             Block::Text(runs) => {
                 if formatted {
-                    inline::write(out, runs, &mut engine, options, &mut warnings)?;
+                    let code_quote = |block: Option<&Block>| match block {
+                        Some(Block::Code { runs, .. }) => runs
+                            .iter()
+                            .find(|run| run.style.role == Role::CodeBlock)
+                            .map_or(0, |run| run.style.quote_depth),
+                        _ => 0,
+                    };
+                    let edges = (
+                        code_quote(
+                            index
+                                .checked_sub(1)
+                                .and_then(|previous| layout.blocks.get(previous)),
+                        ),
+                        code_quote(layout.blocks.get(index + 1)),
+                    );
+                    inline::write(out, runs, &mut engine, options, &mut warnings, edges)?;
+                } else {
+                    text::write_runs(out, runs, false)?;
+                }
+            }
+            Block::Code { language, runs, .. } => {
+                if formatted {
+                    let highlighted = if options.styled && options.highlight {
+                        code::highlight(runs, language.as_deref(), &mut highlighter)
+                    } else {
+                        None
+                    };
+                    inline::write(
+                        out,
+                        highlighted.as_deref().unwrap_or(runs),
+                        &mut engine,
+                        options,
+                        &mut warnings,
+                        (0, 0),
+                    )?;
                 } else {
                     text::write_runs(out, runs, false)?;
                 }
@@ -122,7 +164,7 @@ pub fn write(
                     }
                 }
                 if !rendered || options.show_math_source {
-                    let mut value = text::sanitize(original);
+                    let mut value = text::sanitize(original).into_owned();
                     if !value.ends_with('\n') {
                         value.push('\n');
                     }

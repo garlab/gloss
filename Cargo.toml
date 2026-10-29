@@ -2,7 +2,7 @@
 name = "mdviewer"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.90"
 description = "A terminal Markdown viewer with native inline and display equations."
 license = "MIT"
 publish = false
@@ -12,6 +12,16 @@ base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 katex-native = { path = "../katex-native", features = ["raster"] }
 pulldown-cmark = { version = "0.13", default-features = false }
+tree-sitter = "0.27"
+tree-sitter-bash = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-json = "0.24"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-toml-ng = "0.7"
+tree-sitter-typescript = "0.23"
+tree-sitter-yaml = "0.7"
 unicode-segmentation = "1.13"
 unicode-width = "0.2"
 
@@ -28,3 +38,4 @@ todo = "warn"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+strip = "symbols"

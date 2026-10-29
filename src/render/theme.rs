@@ -2,6 +2,7 @@
 
 use katex_native::Color;
 
+use crate::highlight::Highlight;
 use crate::layout::{Role, Style};
 
 #[derive(Clone, Copy)]
@@ -19,7 +20,10 @@ impl Theme {
             Role::Heading(1) => (231, Some(if self.light { 61 } else { 63 })),
             Role::Heading(2) => (accent, None),
             Role::Heading(_) => (if self.light { 61 } else { 147 }, None),
-            Role::CodeBlock => (body, Some(panel)),
+            Role::CodeBlock => (
+                style.syntax.map_or(body, |token| self.token(token)),
+                Some(panel),
+            ),
             Role::ListMarker => (if self.light { 29 } else { 114 }, None),
             Role::QuoteMarker | Role::Rule => (if self.light { 245 } else { 240 }, None),
             Role::LinkTarget | Role::MathSource => (muted, None),
@@ -33,6 +37,25 @@ impl Theme {
             colors = (if self.light { 130 } else { 210 }, Some(panel));
         }
         colors
+    }
+
+    fn token(self, token: Highlight) -> u8 {
+        use Highlight::*;
+        let (dark, light) = match token {
+            Keyword => (176, 90),
+            Function => (81, 25),
+            Type => (222, 94),
+            String => (114, 28),
+            Escape => (215, 130),
+            Number | Constant => (215, 130),
+            Comment => (245, 243),
+            Property | Attribute => (117, 24),
+            Tag => (210, 124),
+            Label => (180, 94),
+            Operator => (153, 25),
+            Punctuation => (250, 240),
+        };
+        if self.light { light } else { dark }
     }
 
     pub fn ink(self, style: Style) -> Color {

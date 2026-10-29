@@ -74,6 +74,35 @@ def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None):
 def plain(output):
     return CSI.sub(b"", GRAPHICS.sub(b"", output)).replace(b"\r", b"").decode()
 
+def attributes_at(output, needle=None):
+    """Interpret SGR state at visible text, independent of escape encoding."""
+    end = len(output) if needle is None else output.index(needle)
+    state = dict(foreground=None, background=None, bold=False, italic=False,
+                 underline=False, strike=False)
+    flags = {1: ("bold", True), 22: ("bold", False),
+             3: ("italic", True), 23: ("italic", False),
+             4: ("underline", True), 24: ("underline", False),
+             9: ("strike", True), 29: ("strike", False)}
+    for match in CSI.finditer(output, 0, end):
+        if match.group(2) != b"m":
+            continue
+        codes = iter(int(code or b"0") for code in match.group(1).split(b";"))
+        for code in codes:
+            if code == 0:
+                state.update(foreground=None, background=None, bold=False,
+                             italic=False, underline=False, strike=False)
+            elif code in flags:
+                key, value = flags[code]
+                state[key] = value
+            elif code in (38, 48):
+                assert next(codes) == 5
+                state["foreground" if code == 38 else "background"] = next(codes)
+            elif code in (39, 49):
+                state["foreground" if code == 39 else "background"] = None
+            else:
+                raise AssertionError(f"unexpected SGR code: {code}")
+    return state
+
 
 def screen(output, columns):
     """Interpret the emitted ASCII test text and cursor/graphics subset.
@@ -263,6 +292,79 @@ class TerminalSmoke(unittest.TestCase):
         self.assertFalse(error)
         lines = [line.rstrip() for line in plain(output).splitlines() if line.strip()]
         self.assertEqual(lines, ["  │ first", "  │", "  │     indented", "  │ last"])
+
+    def test_syntax_colors_preserve_multiline_code_and_wrapping(self):
+        source = "```rust\n/* first\ncontinued */\nfn café() { let value = \"中文 and 👩‍💻\"; }\n```\n"
+        args = ("--width", "24", "--math", "tex")
+        colored, error = terminal(source, args=args)
+        disabled, other_error = terminal(source, args=(*args, "--no-highlight"))
+        light, light_error = terminal(source, args=(*args, "--light"))
+        self.assertFalse(error or other_error or light_error)
+        self.assertEqual(plain(colored), plain(disabled))
+        self.assertEqual(plain(colored), plain(light))
+        self.assertNotEqual(colored, disabled)
+        self.assertEqual(attributes_at(colored, b"continued */")["foreground"], 245)
+        self.assertEqual(attributes_at(colored, b"continued */")["background"], 236)
+        self.assertEqual(attributes_at(colored, b"fn")["foreground"], 176)
+        self.assertEqual(attributes_at(light, b"fn")["foreground"], 90)
+        self.assertEqual(attributes_at(light, b"fn")["background"], 254)
+        self.assertIn("👩‍💻", plain(colored))
+
+    def test_styles_are_cleared_between_spans_and_after_the_document(self):
+        source = "**bold** plain1 *italic* plain2 ~~gone~~ plain3 [linked](https://example.com) plain4 `code` plain5\n"
+        output, error = terminal(source, args=("--math", "tex"))
+        self.assertFalse(error)
+        for word in [b"plain1", b"plain2", b"plain3", b"plain4", b"plain5"]:
+            self.assertEqual(attributes_at(output, word), dict(
+                foreground=252, background=None, bold=False, italic=False,
+                underline=False, strike=False))
+        self.assertTrue(attributes_at(output, b"bold")["bold"])
+        self.assertTrue(attributes_at(output, b"italic")["italic"])
+        self.assertTrue(attributes_at(output, b"gone")["strike"])
+        self.assertTrue(attributes_at(output, b"linked")["underline"])
+        self.assertEqual(attributes_at(output, b"code")["background"], 236)
+        self.assertEqual(attributes_at(output), dict(
+            foreground=None, background=None, bold=False, italic=False,
+            underline=False, strike=False))
+
+    def test_code_fallbacks_and_no_color_keep_the_complete_content(self):
+        for language, body in [
+            ("unknown", "fn main() { let value = 42; }\n"),
+            ("rust", "// " + "x" * (128 * 1024) + "\n"),
+            ("", "raw $math$ and code\n"),
+        ]:
+            source = f"```{language}\n{body}```\n"
+            colored, error = terminal(source, args=("--math", "tex"))
+            disabled, other_error = terminal(source, args=("--math", "tex", "--no-highlight"))
+            self.assertFalse(error or other_error)
+            self.assertEqual(colored, disabled)
+        source = "```rust\nfn main() { let value = 42; }\n```\n"
+        output, error = terminal(source, variables={"NO_COLOR": "1"})
+        self.assertFalse(error)
+        self.assertNotIn(b"\x1b", output)
+        self.assertIn("fn main()", plain(output))
+
+    def test_highlighted_code_cannot_inject_terminal_controls(self):
+        source = "```python\nprint(\"\\x1b]52;c;payload\\x07\")\n```\n".replace("\\x1b", "\x1b").replace("\\x07", "\x07")
+        output, error = terminal(source, args=("--math", "tex"))
+        self.assertFalse(error)
+        self.assertNotIn(b"\x1b]", output)
+        self.assertNotIn(b"\x07", output)
+        self.assertIn("payload", plain(output))
+
+    def test_code_inside_lists_and_quotes_keeps_its_prefix(self):
+        source = "- ```rust\n  fn main() {}\n  ```\n\n> ```python\n> def hello():\n>     pass\n> ```\n"
+        output, error = terminal(source, args=("--math", "tex"))
+        self.assertFalse(error)
+        lines = [line.rstrip() for line in plain(output).splitlines() if line.strip()]
+        self.assertEqual(lines, ["  • │ fn main() {}", "  │ │ def hello():", "  │ │     pass"])
+
+    def test_quote_rails_continue_across_code_block_boundaries(self):
+        source = "> Before\n>\n> ```rust\n> fn main() {}\n> ```\n>\n> After\n"
+        output, error = terminal(source, args=("--math", "tex"))
+        self.assertFalse(error)
+        lines = [line.rstrip() for line in plain(output).strip("\n").splitlines()]
+        self.assertEqual(lines, ["  │ Before", "  │", "  │ │ fn main() {}", "  │", "  │ After"])
 
     def test_light_theme_changes_colors_without_changing_text_layout(self):
         source = "# Heading\n\nText with **emphasis**, `code`, and a [link](https://example.com).\n"

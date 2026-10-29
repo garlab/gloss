@@ -38,10 +38,10 @@ fn preserves_math_sources_and_excludes_code() {
     for item in document.events() {
         match &item.event {
             Event::DisplayMath(tex) => display.push((
-                tex.as_ref(),
+                tex.to_string(),
                 document.source_slice(item.source.clone()).unwrap(),
             )),
-            Event::InlineMath(tex) => inline.push(tex.as_ref()),
+            Event::InlineMath(tex) => inline.push(tex.to_string()),
             _ => {}
         }
     }
@@ -134,6 +134,81 @@ fn fallback_rendering_matches_plain_export() {
     .unwrap();
     assert!(warnings.is_empty());
     assert_eq!(String::from_utf8(output).unwrap(), export::text(&document));
+}
+
+#[test]
+fn code_blocks_retain_languages_content_and_source_spans() {
+    let source = "> ```Rs title=sample\n> /* comment\n> continued */\n> fn main() {}\n> ```\n\n    indented\n\n```math\nx^2\n```\n";
+    let document = Document::parse(source.into());
+    let flow = layout::layout(&document);
+    let codes: Vec<_> = flow
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            layout::Block::Code {
+                language,
+                runs,
+                source,
+            } => Some((language, runs, source)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(codes.len(), 2);
+    assert_eq!(codes[0].0.as_deref(), Some("Rs"));
+    assert!(codes[1].0.is_none());
+    let body: String = codes[0]
+        .1
+        .iter()
+        .filter(|run| run.style.role == layout::Role::CodeBlock)
+        .map(|run| run.text.as_str())
+        .collect();
+    assert_eq!(body, "/* comment\ncontinued */\nfn main() {}\n");
+    assert!(
+        document
+            .source_slice(codes[0].2.clone())
+            .unwrap()
+            .contains("```Rs")
+    );
+    assert_eq!(export::source(&document), source);
+    assert!(export::text(&document).contains("> /* comment\ncontinued */\nfn main() {}\n"));
+}
+
+#[test]
+fn repeated_event_iteration_preserves_normalized_math_and_source_ranges() {
+    let source = "A &amp; **B**.\r\n\r\n```math\r\nx^2\r\n```\r\n\r\nAfter $y$.\r\n";
+    let document = Document::parse(source.into());
+    let collect = || {
+        document
+            .events()
+            .map(|item| (format!("{:?}", item.event), item.source))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(collect(), collect());
+    assert!(
+        collect()
+            .iter()
+            .any(|(event, _)| event.starts_with("DisplayMath"))
+    );
+    assert_eq!(export::source(&document), source);
+    assert!(export::text(&document).ends_with("After $y$.\n\n"));
+}
+
+#[test]
+fn filtering_preserves_unicode_and_whitespace_but_removes_c0_and_c1_controls() {
+    let input = "café\0\u{1b}\u{7}\u{85}\u{9b}\n\t中文 👩‍💻";
+    assert_eq!(render::text::sanitize(input), "café\n\t中文 👩‍💻");
+}
+
+#[test]
+fn highlighting_options_do_not_change_plain_or_exact_source_exports() {
+    let source = "```rust\r\nfn café() { let value = \"$not_math$\"; }\r\n```\r\n";
+    let plain = cli(&["-"], source);
+    let disabled = cli(&["--no-highlight", "-"], source);
+    assert!(plain.status.success() && disabled.status.success());
+    assert_eq!(plain.stdout, disabled.stdout);
+    assert!(!plain.stdout.contains(&0x1b));
+    let exact = cli(&["--no-highlight", "--output", "source", "-"], source);
+    assert_eq!(exact.stdout, source.as_bytes());
 }
 
 #[test]

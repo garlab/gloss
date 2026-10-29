@@ -1,0 +1,1354 @@
+{
+  "metadata": {
+    "mdviewer_commit": "0d4c347",
+    "glow_version": "3.0.0",
+    "profile": "cargo build --release --locked --offline",
+    "hardware": "Apple M2 Pro, 16 GiB RAM",
+    "os": "macOS 26.4.1",
+    "rustc": "1.99.0 (b940084d7 2026-09-28)",
+    "terminal_columns": 100,
+    "terminal_rows": 40,
+    "cell_pixels": [
+      10,
+      20
+    ],
+    "content_width": 80,
+    "horizontal_margin": 2,
+    "timeout_seconds": 45,
+    "method": "Benchmark fresh CLI processes against external Markdown corpora.\n\nTerminal cases use a 100x40 pseudo-terminal (10x20-pixel cells), drained without\nscreen painting. Times include startup, parsing, layout, encoding, and PTY I/O,\nbut exclude a real emulator's image decoding, GPU work, and scrollback storage.\nOne warm-up precedes three measured runs; filesystem caches remain warm.\n",
+    "katex_native_commit": "982f130",
+    "katex_native_worktree_clean": true
+  },
+  "corpora": {
+    "commonmark.md": {
+      "source": "https://raw.githubusercontent.com/commonmark/commonmark-spec/0.31.2/spec.txt",
+      "bytes": 205025,
+      "lines": 9756,
+      "sha256": "257c41ad946f7a1414a499aca402a1aa8fdac3678532266611348c1cf54f4b80"
+    },
+    "mixed-256k.md": {
+      "sections": 158,
+      "bytes": 263034,
+      "lines": 7268,
+      "sha256": "632092d287e34b0d0ffedf1461a50e3f2b6e1bdc476557c0c6f8df9e214df0c9"
+    },
+    "mixed-1m.md": {
+      "sections": 629,
+      "bytes": 1050075,
+      "lines": 28934,
+      "sha256": "ef14578d50ec528ff418abb37f60bcb4fa5f8dd391e5c0414c9de2e881a8dfcb"
+    },
+    "mixed-5m.md": {
+      "sections": 3127,
+      "bytes": 5243379,
+      "lines": 143842,
+      "sha256": "9f7bc8f923b81bfbb16ed065bed47c89f77c9edd7d6f27307402bc000cf5a151"
+    },
+    "mixed-10m.md": {
+      "sections": 6248,
+      "bytes": 10486659,
+      "lines": 287408,
+      "sha256": "2782ef9a5e281471f61efb8b1e1807904859abcbc7af0352a4d86c6cfa37be5e"
+    },
+    "math-100.md": {
+      "equations": 100,
+      "inline": 75,
+      "display": 25,
+      "bytes": 9259,
+      "lines": 252,
+      "sha256": "6762cfeb058f769342005b44c1a57fcef8bd1352c227e926ca382c42224422b5"
+    },
+    "math-1000.md": {
+      "equations": 1000,
+      "inline": 750,
+      "display": 250,
+      "bytes": 95126,
+      "lines": 2502,
+      "sha256": "87a484760ec30eb979623be65e694d3f52e877f058028777fbfbfb1c20c77851"
+    },
+    "math-5000.md": {
+      "equations": 5000,
+      "inline": 3750,
+      "display": 1250,
+      "bytes": 487876,
+      "lines": 12502,
+      "sha256": "6b27f7dcdd9c2cd9cbe23937cfda529c3862edd9557d759c60e236af68736ae2"
+    },
+    "math-repeated-1000.md": {
+      "equations": 1000,
+      "inline": 750,
+      "display": 250,
+      "bytes": 91339,
+      "lines": 2502,
+      "sha256": "0d777a126250b3860c4a9c8cd1848004f09a49ab0c4c1c2d97131085bd8c821e"
+    },
+    "long-lines-1m.md": {
+      "description": "A 500 KB paragraph followed by a 512 KiB unbroken word.",
+      "bytes": 1024305,
+      "lines": 5,
+      "sha256": "21710e7c588a2490a379c19e6b41e8b9dc9700b871a3131c46c735e5ce80926d"
+    }
+  },
+  "cases": [
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "commonmark.md",
+      "warmup": {
+        "wall_seconds": 0.42824762500822544,
+        "first_output_seconds": 0.38435491593554616,
+        "cpu_seconds": 0.045236,
+        "peak_rss_mib": 9.65625,
+        "output_bytes": 848106,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.03586733294650912,
+          "first_output_seconds": 0.007133665960282087,
+          "cpu_seconds": 0.029797999999999998,
+          "peak_rss_mib": 9.609375,
+          "output_bytes": 848106,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.03165449993684888,
+          "first_output_seconds": 0.005920290946960449,
+          "cpu_seconds": 0.026076,
+          "peak_rss_mib": 9.5625,
+          "output_bytes": 848106,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.03098241612315178,
+          "first_output_seconds": 0.005128208082169294,
+          "cpu_seconds": 0.02555,
+          "peak_rss_mib": 9.65625,
+          "output_bytes": 848106,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.03165449993684888,
+        "first_output_seconds": 0.005920290946960449,
+        "cpu_seconds": 0.026076,
+        "peak_rss_mib": 9.609375,
+        "output_bytes": 848106,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "commonmark.md",
+      "warmup": {
+        "wall_seconds": 3.1546578342095017,
+        "first_output_seconds": 3.087475167121738,
+        "cpu_seconds": 3.109511,
+        "peak_rss_mib": 66.265625,
+        "output_bytes": 6809034,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 3.0807221247814596,
+          "first_output_seconds": 3.0218288325704634,
+          "cpu_seconds": 3.078879,
+          "peak_rss_mib": 66.15625,
+          "output_bytes": 6809034,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 3.088613500352949,
+          "first_output_seconds": 3.0318778343498707,
+          "cpu_seconds": 3.0900600000000003,
+          "peak_rss_mib": 66.515625,
+          "output_bytes": 6809034,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 3.085139290895313,
+          "first_output_seconds": 3.0275897909887135,
+          "cpu_seconds": 3.088292,
+          "peak_rss_mib": 67.390625,
+          "output_bytes": 6809034,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 3.085139290895313,
+        "first_output_seconds": 3.0275897909887135,
+        "cpu_seconds": 3.088292,
+        "peak_rss_mib": 66.515625,
+        "output_bytes": 6809034,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "mixed-256k.md",
+      "warmup": {
+        "wall_seconds": 0.03415550012141466,
+        "first_output_seconds": 0.007114042062312365,
+        "cpu_seconds": 0.029668999999999997,
+        "peak_rss_mib": 11.921875,
+        "output_bytes": 637085,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.03362454101443291,
+          "first_output_seconds": 0.0063242497853934765,
+          "cpu_seconds": 0.02929,
+          "peak_rss_mib": 11.9375,
+          "output_bytes": 637085,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.033841750118881464,
+          "first_output_seconds": 0.0060729580000042915,
+          "cpu_seconds": 0.029493,
+          "peak_rss_mib": 12.0,
+          "output_bytes": 637085,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.03338691592216492,
+          "first_output_seconds": 0.006196165923029184,
+          "cpu_seconds": 0.029205,
+          "peak_rss_mib": 11.953125,
+          "output_bytes": 637085,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.03362454101443291,
+        "first_output_seconds": 0.006196165923029184,
+        "cpu_seconds": 0.02929,
+        "peak_rss_mib": 11.953125,
+        "output_bytes": 637085,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "mixed-256k.md",
+      "warmup": {
+        "wall_seconds": 0.5069059580564499,
+        "first_output_seconds": 0.4522930830717087,
+        "cpu_seconds": 0.521415,
+        "peak_rss_mib": 74.21875,
+        "output_bytes": 6650088,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.5129166669212282,
+          "first_output_seconds": 0.45083749992772937,
+          "cpu_seconds": 0.524393,
+          "peak_rss_mib": 76.328125,
+          "output_bytes": 6650088,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5057440842501819,
+          "first_output_seconds": 0.45376387517899275,
+          "cpu_seconds": 0.52251,
+          "peak_rss_mib": 72.203125,
+          "output_bytes": 6650088,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5238137082196772,
+          "first_output_seconds": 0.4534445833414793,
+          "cpu_seconds": 0.5293939999999999,
+          "peak_rss_mib": 74.515625,
+          "output_bytes": 6650088,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.5129166669212282,
+        "first_output_seconds": 0.4534445833414793,
+        "cpu_seconds": 0.524393,
+        "peak_rss_mib": 74.515625,
+        "output_bytes": 6650088,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "mixed-1m.md",
+      "warmup": {
+        "wall_seconds": 0.12042079214006662,
+        "first_output_seconds": 0.015963084064424038,
+        "cpu_seconds": 0.10980899999999999,
+        "peak_rss_mib": 36.890625,
+        "output_bytes": 2538512,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.12373154191300273,
+          "first_output_seconds": 0.01582829188555479,
+          "cpu_seconds": 0.10894099999999998,
+          "peak_rss_mib": 36.78125,
+          "output_bytes": 2538512,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.121030000038445,
+          "first_output_seconds": 0.014737582765519619,
+          "cpu_seconds": 0.10686199999999998,
+          "peak_rss_mib": 36.71875,
+          "output_bytes": 2538512,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.12225708272308111,
+          "first_output_seconds": 0.01490737497806549,
+          "cpu_seconds": 0.108103,
+          "peak_rss_mib": 36.796875,
+          "output_bytes": 2538512,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.12225708272308111,
+        "first_output_seconds": 0.01490737497806549,
+        "cpu_seconds": 0.108103,
+        "peak_rss_mib": 36.78125,
+        "output_bytes": 2538512,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "mixed-1m.md",
+      "warmup": {
+        "wall_seconds": 2.025551540777087,
+        "first_output_seconds": 1.7753846659325063,
+        "cpu_seconds": 2.036293,
+        "peak_rss_mib": 213.71875,
+        "output_bytes": 26487347,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 2.0000636666081846,
+          "first_output_seconds": 1.7699251249432564,
+          "cpu_seconds": 2.021114,
+          "peak_rss_mib": 214.40625,
+          "output_bytes": 26487347,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 2.0073469998314977,
+          "first_output_seconds": 1.777893124613911,
+          "cpu_seconds": 2.031256,
+          "peak_rss_mib": 224.453125,
+          "output_bytes": 26487347,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 1.996162874624133,
+          "first_output_seconds": 1.766708499751985,
+          "cpu_seconds": 2.01814,
+          "peak_rss_mib": 224.21875,
+          "output_bytes": 26487347,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 2.0000636666081846,
+        "first_output_seconds": 1.7699251249432564,
+        "cpu_seconds": 2.021114,
+        "peak_rss_mib": 224.21875,
+        "output_bytes": 26487347,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "mixed-5m.md",
+      "warmup": {
+        "wall_seconds": 0.5860913749784231,
+        "first_output_seconds": 0.059652541764080524,
+        "cpu_seconds": 0.521631,
+        "peak_rss_mib": 168.421875,
+        "output_bytes": 12637830,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.5881659998558462,
+          "first_output_seconds": 0.059274917002767324,
+          "cpu_seconds": 0.523712,
+          "peak_rss_mib": 168.953125,
+          "output_bytes": 12637830,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5826819171197712,
+          "first_output_seconds": 0.05748279206454754,
+          "cpu_seconds": 0.519428,
+          "peak_rss_mib": 168.359375,
+          "output_bytes": 12637830,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5878416672348976,
+          "first_output_seconds": 0.05871075019240379,
+          "cpu_seconds": 0.5237649999999999,
+          "peak_rss_mib": 168.546875,
+          "output_bytes": 12637830,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.5878416672348976,
+        "first_output_seconds": 0.05871075019240379,
+        "cpu_seconds": 0.523712,
+        "peak_rss_mib": 168.546875,
+        "output_bytes": 12637830,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "mixed-5m.md",
+      "warmup": {
+        "wall_seconds": 10.712315834127367,
+        "first_output_seconds": 9.565963459201157,
+        "cpu_seconds": 10.859818,
+        "peak_rss_mib": 892.90625,
+        "output_bytes": 131522845,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 10.62594366678968,
+          "first_output_seconds": 9.512382208835334,
+          "cpu_seconds": 10.763505,
+          "peak_rss_mib": 820.859375,
+          "output_bytes": 131522845,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 10.688591874670237,
+          "first_output_seconds": 9.519662916660309,
+          "cpu_seconds": 10.769036999999999,
+          "peak_rss_mib": 822.171875,
+          "output_bytes": 131522845,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 10.605897542089224,
+          "first_output_seconds": 9.46682170825079,
+          "cpu_seconds": 10.737674,
+          "peak_rss_mib": 794.4375,
+          "output_bytes": 131522845,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 10.62594366678968,
+        "first_output_seconds": 9.512382208835334,
+        "cpu_seconds": 10.763505,
+        "peak_rss_mib": 820.859375,
+        "output_bytes": 131522845,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "mixed-10m.md",
+      "warmup": {
+        "wall_seconds": 1.1765523748472333,
+        "first_output_seconds": 0.12056887522339821,
+        "cpu_seconds": 1.043182,
+        "peak_rss_mib": 331.90625,
+        "output_bytes": 25259154,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 1.1604876252822578,
+          "first_output_seconds": 0.11009533423930407,
+          "cpu_seconds": 1.036975,
+          "peak_rss_mib": 331.875,
+          "output_bytes": 25259154,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 1.1664952500723302,
+          "first_output_seconds": 0.11128675006330013,
+          "cpu_seconds": 1.052085,
+          "peak_rss_mib": 332.03125,
+          "output_bytes": 25259154,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 1.1583616668358445,
+          "first_output_seconds": 0.11119912471622229,
+          "cpu_seconds": 1.032336,
+          "peak_rss_mib": 331.84375,
+          "output_bytes": 25259154,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 1.1604876252822578,
+        "first_output_seconds": 0.11119912471622229,
+        "cpu_seconds": 1.036975,
+        "peak_rss_mib": 331.875,
+        "output_bytes": 25259154,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "mixed-10m.md",
+      "warmup": {
+        "wall_seconds": 23.55831391690299,
+        "first_output_seconds": 21.19232437480241,
+        "cpu_seconds": 24.041271,
+        "peak_rss_mib": 1616.140625,
+        "output_bytes": 262716109,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 23.286405959166586,
+          "first_output_seconds": 21.010045500006527,
+          "cpu_seconds": 23.775879,
+          "peak_rss_mib": 1555.84375,
+          "output_bytes": 262716109,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 23.36987162521109,
+          "first_output_seconds": 21.053464707918465,
+          "cpu_seconds": 23.832421,
+          "peak_rss_mib": 1528.625,
+          "output_bytes": 262716109,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 23.733619625214487,
+          "first_output_seconds": 21.154815250076354,
+          "cpu_seconds": 24.020924,
+          "peak_rss_mib": 1676.953125,
+          "output_bytes": 262716109,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 23.36987162521109,
+        "first_output_seconds": 21.053464707918465,
+        "cpu_seconds": 23.832421,
+        "peak_rss_mib": 1555.84375,
+        "output_bytes": 262716109,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "long-lines-1m.md",
+      "warmup": {
+        "wall_seconds": 0.08392612496390939,
+        "first_output_seconds": 0.03564137499779463,
+        "cpu_seconds": 0.07094099999999999,
+        "peak_rss_mib": 42.953125,
+        "output_bytes": 1453473,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.07641120906919241,
+          "first_output_seconds": 0.02915041707456112,
+          "cpu_seconds": 0.068269,
+          "peak_rss_mib": 42.96875,
+          "output_bytes": 1453473,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.07693791668862104,
+          "first_output_seconds": 0.02906054211780429,
+          "cpu_seconds": 0.068687,
+          "peak_rss_mib": 42.953125,
+          "output_bytes": 1453473,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.07747162505984306,
+          "first_output_seconds": 0.029508333187550306,
+          "cpu_seconds": 0.06885,
+          "peak_rss_mib": 42.953125,
+          "output_bytes": 1453473,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.07693791668862104,
+        "first_output_seconds": 0.02915041707456112,
+        "cpu_seconds": 0.068687,
+        "peak_rss_mib": 42.953125,
+        "output_bytes": 1453473,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "glow/terminal",
+      "corpus": "long-lines-1m.md",
+      "warmup": {
+        "wall_seconds": 0.22530908277258277,
+        "first_output_seconds": 0.2112123747356236,
+        "cpu_seconds": 0.227788,
+        "peak_rss_mib": 41.953125,
+        "output_bytes": 1346326,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.22124925022944808,
+          "first_output_seconds": 0.20837620832026005,
+          "cpu_seconds": 0.223767,
+          "peak_rss_mib": 39.890625,
+          "output_bytes": 1346326,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.2194839590229094,
+          "first_output_seconds": 0.20932795898988843,
+          "cpu_seconds": 0.224408,
+          "peak_rss_mib": 42.46875,
+          "output_bytes": 1346326,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.22164224972948432,
+          "first_output_seconds": 0.20850745774805546,
+          "cpu_seconds": 0.22477399999999997,
+          "peak_rss_mib": 40.734375,
+          "output_bytes": 1346326,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.22124925022944808,
+        "first_output_seconds": 0.20850745774805546,
+        "cpu_seconds": 0.224408,
+        "peak_rss_mib": 40.734375,
+        "output_bytes": 1346326,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-math",
+      "corpus": "math-100.md",
+      "warmup": {
+        "wall_seconds": 0.07327366666868329,
+        "first_output_seconds": 0.01292366674169898,
+        "cpu_seconds": 0.049826999999999996,
+        "peak_rss_mib": 7.8125,
+        "output_bytes": 3385051,
+        "images": 100,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.06522262515500188,
+          "first_output_seconds": 0.003712375182658434,
+          "cpu_seconds": 0.046345,
+          "peak_rss_mib": 7.78125,
+          "output_bytes": 3385051,
+          "images": 100,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.06543112499639392,
+          "first_output_seconds": 0.0035914997570216656,
+          "cpu_seconds": 0.047331,
+          "peak_rss_mib": 7.875,
+          "output_bytes": 3385051,
+          "images": 100,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.06460649985820055,
+          "first_output_seconds": 0.0036795837804675102,
+          "cpu_seconds": 0.046666,
+          "peak_rss_mib": 7.796875,
+          "output_bytes": 3385051,
+          "images": 100,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.06522262515500188,
+        "first_output_seconds": 0.0036795837804675102,
+        "cpu_seconds": 0.046666,
+        "peak_rss_mib": 7.796875,
+        "output_bytes": 3385051,
+        "images": 100
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-math",
+      "corpus": "math-1000.md",
+      "warmup": {
+        "wall_seconds": 0.6360367080196738,
+        "first_output_seconds": 0.004322625230997801,
+        "cpu_seconds": 0.45864299999999997,
+        "peak_rss_mib": 9.75,
+        "output_bytes": 35956478,
+        "images": 1000,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.6474403329193592,
+          "first_output_seconds": 0.004713207948952913,
+          "cpu_seconds": 0.467732,
+          "peak_rss_mib": 9.75,
+          "output_bytes": 35956478,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.6489236671477556,
+          "first_output_seconds": 0.004614292178303003,
+          "cpu_seconds": 0.466181,
+          "peak_rss_mib": 9.6875,
+          "output_bytes": 35956478,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.6269654170610011,
+          "first_output_seconds": 0.004652875009924173,
+          "cpu_seconds": 0.463558,
+          "peak_rss_mib": 9.828125,
+          "output_bytes": 35956478,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.6474403329193592,
+        "first_output_seconds": 0.004652875009924173,
+        "cpu_seconds": 0.466181,
+        "peak_rss_mib": 9.75,
+        "output_bytes": 35956478,
+        "images": 1000
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-math",
+      "corpus": "math-5000.md",
+      "warmup": {
+        "wall_seconds": 3.396559333894402,
+        "first_output_seconds": 0.007594499737024307,
+        "cpu_seconds": 2.424947,
+        "peak_rss_mib": 18.953125,
+        "output_bytes": 192535478,
+        "images": 5000,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 3.4056936660781503,
+          "first_output_seconds": 0.007077249698340893,
+          "cpu_seconds": 2.431916,
+          "peak_rss_mib": 18.921875,
+          "output_bytes": 192535478,
+          "images": 5000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 3.4198662089183927,
+          "first_output_seconds": 0.007439959328621626,
+          "cpu_seconds": 2.445631,
+          "peak_rss_mib": 19.109375,
+          "output_bytes": 192535478,
+          "images": 5000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 3.3482793332077563,
+          "first_output_seconds": 0.007250708062201738,
+          "cpu_seconds": 2.420767,
+          "peak_rss_mib": 18.984375,
+          "output_bytes": 192535478,
+          "images": 5000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 3.4056936660781503,
+        "first_output_seconds": 0.007250708062201738,
+        "cpu_seconds": 2.431916,
+        "peak_rss_mib": 18.984375,
+        "output_bytes": 192535478,
+        "images": 5000
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-math",
+      "corpus": "math-repeated-1000.md",
+      "warmup": {
+        "wall_seconds": 0.5343083748593926,
+        "first_output_seconds": 0.004899165593087673,
+        "cpu_seconds": 0.394443,
+        "peak_rss_mib": 9.515625,
+        "output_bytes": 31901337,
+        "images": 1000,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.552519875112921,
+          "first_output_seconds": 0.004639207851141691,
+          "cpu_seconds": 0.39830299999999996,
+          "peak_rss_mib": 9.40625,
+          "output_bytes": 31901337,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5493132080882788,
+          "first_output_seconds": 0.004798125009983778,
+          "cpu_seconds": 0.394041,
+          "peak_rss_mib": 9.046875,
+          "output_bytes": 31901337,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.5528553328476846,
+          "first_output_seconds": 0.004543500021100044,
+          "cpu_seconds": 0.399059,
+          "peak_rss_mib": 9.421875,
+          "output_bytes": 31901337,
+          "images": 1000,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.552519875112921,
+        "first_output_seconds": 0.004639207851141691,
+        "cpu_seconds": 0.39830299999999996,
+        "peak_rss_mib": 9.40625,
+        "output_bytes": 31901337,
+        "images": 1000
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/plain-pipe",
+      "corpus": "mixed-1m.md",
+      "warmup": {
+        "wall_seconds": 0.018823334015905857,
+        "first_output_seconds": 0.01730429194867611,
+        "cpu_seconds": 0.016173,
+        "peak_rss_mib": 26.625,
+        "output_bytes": 994094,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.01781066693365574,
+          "first_output_seconds": 0.016281374730169773,
+          "cpu_seconds": 0.015652,
+          "peak_rss_mib": 26.609375,
+          "output_bytes": 994094,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.017508333083242178,
+          "first_output_seconds": 0.015974792186170816,
+          "cpu_seconds": 0.015456,
+          "peak_rss_mib": 26.59375,
+          "output_bytes": 994094,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.01758058276027441,
+          "first_output_seconds": 0.016055624932050705,
+          "cpu_seconds": 0.015556999999999998,
+          "peak_rss_mib": 26.578125,
+          "output_bytes": 994094,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.01758058276027441,
+        "first_output_seconds": 0.016055624932050705,
+        "cpu_seconds": 0.015556999999999998,
+        "peak_rss_mib": 26.59375,
+        "output_bytes": 994094,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/plain-pipe",
+      "corpus": "mixed-10m.md",
+      "warmup": {
+        "wall_seconds": 0.1422602920792997,
+        "first_output_seconds": 0.12877358309924603,
+        "cpu_seconds": 0.13486599999999999,
+        "peak_rss_mib": 230.78125,
+        "output_bytes": 9930587,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.1421842910349369,
+          "first_output_seconds": 0.12798166600987315,
+          "cpu_seconds": 0.133743,
+          "peak_rss_mib": 230.78125,
+          "output_bytes": 9930587,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.14115329133346677,
+          "first_output_seconds": 0.1271972912363708,
+          "cpu_seconds": 0.13383799999999998,
+          "peak_rss_mib": 230.796875,
+          "output_bytes": 9930587,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.14550545904785395,
+          "first_output_seconds": 0.13176516676321626,
+          "cpu_seconds": 0.13733499999999998,
+          "peak_rss_mib": 231.203125,
+          "output_bytes": 9930587,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.1421842910349369,
+        "first_output_seconds": 0.12798166600987315,
+        "cpu_seconds": 0.13383799999999998,
+        "peak_rss_mib": 230.796875,
+        "output_bytes": 9930587,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/plain-pipe",
+      "corpus": "math-5000.md",
+      "warmup": {
+        "wall_seconds": 0.010336792096495628,
+        "first_output_seconds": 0.009433917235583067,
+        "cpu_seconds": 0.008114,
+        "peak_rss_mib": 13.546875,
+        "output_bytes": 487874,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.009163583163172007,
+          "first_output_seconds": 0.008334333077073097,
+          "cpu_seconds": 0.007607,
+          "peak_rss_mib": 13.546875,
+          "output_bytes": 487874,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.008958249818533659,
+          "first_output_seconds": 0.008131374605000019,
+          "cpu_seconds": 0.007473,
+          "peak_rss_mib": 13.53125,
+          "output_bytes": 487874,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.008932416792958975,
+          "first_output_seconds": 0.008096583653241396,
+          "cpu_seconds": 0.007474,
+          "peak_rss_mib": 13.53125,
+          "output_bytes": 487874,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.008958249818533659,
+        "first_output_seconds": 0.008131374605000019,
+        "cpu_seconds": 0.007474,
+        "peak_rss_mib": 13.53125,
+        "output_bytes": 487874,
+        "images": 0
+      },
+      "valid": true
+    },
+    {
+      "renderer": "mdviewer/terminal-tex",
+      "corpus": "math-5000.md",
+      "warmup": {
+        "wall_seconds": 0.05557166691869497,
+        "first_output_seconds": 0.006335458718240261,
+        "cpu_seconds": 0.049271999999999996,
+        "peak_rss_mib": 13.84375,
+        "output_bytes": 1019961,
+        "images": 0,
+        "stderr_bytes": 0,
+        "diagnostics": "",
+        "exit_code": 0,
+        "timed_out": false
+      },
+      "runs": [
+        {
+          "wall_seconds": 0.05596104171127081,
+          "first_output_seconds": 0.006503792013972998,
+          "cpu_seconds": 0.049208999999999996,
+          "peak_rss_mib": 13.8125,
+          "output_bytes": 1019962,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.055663041304796934,
+          "first_output_seconds": 0.0063240001909434795,
+          "cpu_seconds": 0.049072,
+          "peak_rss_mib": 13.8125,
+          "output_bytes": 1019962,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        },
+        {
+          "wall_seconds": 0.05505733285099268,
+          "first_output_seconds": 0.006411541718989611,
+          "cpu_seconds": 0.04867199999999999,
+          "peak_rss_mib": 13.828125,
+          "output_bytes": 1019962,
+          "images": 0,
+          "stderr_bytes": 0,
+          "diagnostics": "",
+          "exit_code": 0,
+          "timed_out": false
+        }
+      ],
+      "median": {
+        "wall_seconds": 0.055663041304796934,
+        "first_output_seconds": 0.006411541718989611,
+        "cpu_seconds": 0.049072,
+        "peak_rss_mib": 13.8125,
+        "output_bytes": 1019962,
+        "images": 0
+      },
+      "valid": true
+    }
+  ]
+}

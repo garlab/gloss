@@ -33,38 +33,46 @@ impl LogicalLine {
     }
 }
 
-fn logical_lines(runs: &[Run]) -> Vec<LogicalLine> {
-    let mut result = Vec::new();
+fn logical_lines(runs: &[Run]) -> impl Iterator<Item = LogicalLine> + '_ {
+    let mut runs = runs.iter();
+    let mut active: Option<(&Run, std::str::SplitInclusive<'_, char>)> = None;
     let mut current = Vec::new();
-    for run in runs {
-        if run.math.is_some() {
-            current.push(run.clone());
-            continue;
-        }
-        for piece in run.text.split_inclusive('\n') {
-            let value = piece.strip_suffix('\n').unwrap_or(piece);
-            if !value.is_empty() {
-                current.push(Run {
-                    text: value.to_owned(),
-                    ..run.clone()
-                });
+    std::iter::from_fn(move || {
+        loop {
+            if let Some((run, pieces)) = &mut active {
+                if let Some(piece) = pieces.next() {
+                    let value = piece.strip_suffix('\n').unwrap_or(piece);
+                    if !value.is_empty() {
+                        current.push(Run {
+                            text: value.to_owned(),
+                            style: run.style,
+                            math: None,
+                            source: run.source.clone(),
+                        });
+                    }
+                    if piece.ends_with('\n') {
+                        return Some(LogicalLine {
+                            runs: std::mem::take(&mut current),
+                            style: run.style,
+                        });
+                    }
+                    continue;
+                }
+                active = None;
             }
-            if piece.ends_with('\n') {
-                result.push(LogicalLine {
-                    runs: std::mem::take(&mut current),
-                    style: run.style,
-                });
+            match runs.next() {
+                Some(run) if run.math.is_some() => current.push(run.clone()),
+                Some(run) => active = Some((run, run.text.split_inclusive('\n'))),
+                None if !current.is_empty() => {
+                    return Some(LogicalLine {
+                        style: current[0].style,
+                        runs: std::mem::take(&mut current),
+                    });
+                }
+                None => return None,
             }
         }
-    }
-    if !current.is_empty() {
-        let style = current[0].style;
-        result.push(LogicalLine {
-            runs: current,
-            style,
-        });
-    }
-    result
+    })
 }
 
 struct Frame {
@@ -95,7 +103,11 @@ impl Frame {
     fn new(line: &mut LogicalLine, options: &Options) -> Self {
         let viewport = options.viewport();
         let marker_role = |role| matches!(role, Role::ListMarker | Role::QuoteMarker);
-        let style = line.context();
+        // Token colors apply to code content, never the frame or padding.
+        let style = Style {
+            syntax: None,
+            ..line.context()
+        };
         let marker = line
             .runs
             .iter()
@@ -170,6 +182,7 @@ pub(super) fn write(
     engine: &mut Option<MathEngine>,
     options: &Options,
     warnings: &mut Vec<String>,
+    edge_quotes: (usize, usize),
 ) -> io::Result<()> {
     let geometry = options.geometry();
     let cell_width = u32::from(geometry.cell_width.max(1));
@@ -177,16 +190,16 @@ pub(super) fn write(
     // Different formulas may extend above and below the baseline. Each is
     // limited to half the viewport so the combined line still fits.
     let max_height = u32::from(geometry.rows.saturating_sub(4).max(1)) * cell_height / 2;
-    let mut logical = logical_lines(runs);
-    for index in 1..logical.len().saturating_sub(1) {
-        if logical[index].runs.is_empty() && logical[index].style.role == Role::Body {
-            logical[index].style.quote_depth = logical[index - 1]
-                .context()
-                .quote_depth
-                .min(logical[index + 1].context().quote_depth);
+    let mut lines = logical_lines(runs).peekable();
+    let mut previous_quote = edge_quotes.0;
+    while let Some(mut logical) = lines.next() {
+        if logical.runs.is_empty() && logical.style.role == Role::Body {
+            let after = lines
+                .peek()
+                .map_or(edge_quotes.1, |next| next.context().quote_depth);
+            logical.style.quote_depth = previous_quote.min(after);
         }
-    }
-    for mut logical in logical {
+        previous_quote = logical.context().quote_depth;
         if logical.runs.is_empty()
             && logical.style.role != Role::CodeBlock
             && logical.style.quote_depth == 0
@@ -207,7 +220,7 @@ pub(super) fn write(
             continue;
         }
         let mut parts = Vec::new();
-        for run in &logical.runs {
+        for run in logical.runs {
             if let Some(tex) = &run.math
                 && options.kitty.is_some()
             {
@@ -223,7 +236,7 @@ pub(super) fn write(
                         parts.push(Part::Math {
                             columns: image.width.div_ceil(cell_width) as usize,
                             image: Arc::new(image),
-                            source: run.text.clone(),
+                            source: run.text,
                         });
                         continue;
                     }
@@ -233,7 +246,7 @@ pub(super) fn write(
                     )),
                 }
             }
-            let value = text::sanitize(&run.text);
+            let value = text::sanitize_owned(run.text);
             let value = if run.style.code && run.style.role != Role::CodeBlock && run.math.is_none()
             {
                 format!(" {value} ")
@@ -273,6 +286,7 @@ pub(super) fn write_text(
         &mut None,
         options,
         &mut Vec::new(),
+        (0, 0),
     )
 }
 
@@ -324,12 +338,14 @@ fn write_line(
             write!(out, "\x1b[{}B", metrics.text_row)?;
         }
     }
-    write!(out, "{}", " ".repeat(viewport.left))?;
-    span(out, prefix, frame.prefix_style, options)?;
+    text::write_spaces(out, viewport.left)?;
+    let mut painter = text::Painter::new(options.styled, options.theme());
+    painter.span(out, prefix, frame.prefix_style)?;
     for part in &line.parts {
         match part {
-            Part::Text { text: value, style } => span(out, value, *style, options)?,
+            Part::Text { text: value, style } => painter.span(out, value, *style)?,
             Part::Math { image, columns, .. } => {
+                painter.finish(out)?;
                 let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
                 let y = (metrics.baseline - image.baseline).ceil().max(0.) as u32;
                 let image = kitty::pad(image, width, height, 0, y)?;
@@ -346,8 +362,9 @@ fn write_line(
     }
     if let Some(style) = frame.fill {
         let remaining = fill_width.saturating_sub(prefix_columns + line.columns);
-        span(out, &" ".repeat(remaining), style, options)?;
+        painter.spaces(out, remaining, style)?;
     }
+    painter.finish(out)?;
     if line.has_math() {
         write!(out, "\x1b[{}B\r", metrics.rows - metrics.text_row)?;
         if options.show_math_source {

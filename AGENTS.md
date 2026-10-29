@@ -18,4 +18,9 @@ Treat all project content as public.
 - Review changed content for accidental personal or internal information before
   delivering changes.
 - Keep user-facing behavior in README.md, module boundaries and output contracts
-  in docs/architecture.md, and remaining implementation work in docs/roadmap.md.
+  in docs/architecture.md, planned feature decisions in docs/feature-design.md,
+  and remaining implementation work in docs/roadmap.md.
+- Preserve docs/performance-baseline.md and its raw samples as a fixed reference.
+  Measure feature costs and unchanged paths before accepting expensive rendering
+  changes. Keep large benchmark inputs, generated output, and new local results
+  outside the repository; bench/ contains only small tooling and reviewed data.

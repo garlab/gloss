@@ -5,9 +5,9 @@ pub mod lines;
 
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 
-use crate::document::Document;
+use crate::{document::Document, highlight::Highlight};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Role {
@@ -29,6 +29,7 @@ pub struct Style {
     pub strike: bool,
     pub code: bool,
     pub link: bool,
+    pub syntax: Option<Highlight>,
     pub role: Role,
     pub indent: usize,
     pub quote_depth: usize,
@@ -48,6 +49,11 @@ pub struct Run {
 #[derive(Debug)]
 pub enum Block {
     Text(Vec<Run>),
+    Code {
+        language: Option<String>,
+        runs: Vec<Run>,
+        source: Range<usize>,
+    },
     DisplayMath {
         tex: String,
         source: Range<usize>,
@@ -61,13 +67,24 @@ pub struct Layout {
 }
 
 pub fn layout(document: &Document) -> Layout {
+    build_layout(document, true)
+}
+
+/// Plain export does not need independently owned code-block metadata or
+/// per-block vectors. Keep its allocation behavior independent of decoration.
+pub(crate) fn plain_layout(document: &Document) -> Layout {
+    build_layout(document, false)
+}
+
+fn build_layout(document: &Document, semantic_code: bool) -> Layout {
     let mut flow = Flow::default();
     let mut style = Style::default();
     let mut styles = Vec::new();
     let mut links = Vec::new();
     let mut lists = Vec::new();
     let mut item_indents = Vec::new();
-    for item in document.events() {
+    let mut events = document.events();
+    while let Some(item) = events.next() {
         match &item.event {
             Event::Start(tag) => match tag {
                 Tag::Paragraph => {
@@ -76,6 +93,59 @@ pub fn layout(document: &Document) -> Layout {
                     }
                 }
                 Tag::HtmlBlock | Tag::Table(_) => flow.breaks(2),
+                Tag::CodeBlock(kind) if semantic_code => {
+                    if !flow.prefix_pending {
+                        flow.breaks(2);
+                    }
+                    // Keep pending list/quote markers attached to the code's
+                    // first line when separating it from the surrounding text.
+                    let prefix_start = if flow.prefix_pending {
+                        flow.runs
+                            .iter()
+                            .rposition(|run| {
+                                !matches!(run.style.role, Role::ListMarker | Role::QuoteMarker)
+                            })
+                            .map_or(0, |index| index + 1)
+                    } else {
+                        flow.runs.len()
+                    };
+                    let prefix = flow.runs.split_off(prefix_start);
+                    flow.flush();
+                    flow.runs = prefix;
+                    let code_style = Style {
+                        bold: false,
+                        code: true,
+                        role: Role::CodeBlock,
+                        ..style
+                    };
+                    let mut end = item.source.end;
+                    let mut has_text = false;
+                    for part in events.by_ref() {
+                        end = part.source.end;
+                        match &part.event {
+                            Event::Text(text) => {
+                                has_text |= !text.is_empty();
+                                flow.push(text, code_style, Some(part.source.clone()));
+                            }
+                            Event::End(TagEnd::CodeBlock) => break,
+                            _ => {}
+                        }
+                    }
+                    if has_text {
+                        let language = match kind {
+                            CodeBlockKind::Fenced(info) => {
+                                info.split_whitespace().next().map(str::to_owned)
+                            }
+                            CodeBlockKind::Indented => None,
+                        };
+                        flow.blocks.push(Block::Code {
+                            language,
+                            runs: std::mem::take(&mut flow.runs),
+                            source: item.source.start..end,
+                        });
+                    }
+                    flow.breaks(2);
+                }
                 Tag::Heading { .. } | Tag::CodeBlock(_) => {
                     if !flow.prefix_pending {
                         flow.breaks(2);

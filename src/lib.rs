@@ -4,6 +4,7 @@
 
 pub mod document;
 pub mod export;
+pub mod highlight;
 pub mod layout;
 pub mod math;
 pub mod render;

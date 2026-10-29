@@ -3,6 +3,32 @@
 This tracks remaining implementation work. Current behavior and limitations are
 documented in the [README](../README.md); [architecture](architecture.md) records
 the boundaries and output contracts that should remain intact.
+[Feature design](feature-design.md) records the agreed rendering sequence and
+resource requirements; [performance baseline](performance-baseline.md) provides
+the fixed comparison data and reproduction tools.
+
+## Rich Markdown, in order
+
+1. Syntax highlighting is implemented for the initial language set, with retained
+   fence languages, lazy queries, bounded work, and complete plain-code fallback.
+   Evaluate additional grammars against binary size, startup, and query cost.
+2. Add table cell structure, width/alignment calculation, and wrapping with a
+   readable fallback in narrow windows.
+3. Add bounded local PNG/JPEG/SVG images through shared image placement and
+   transport. Keep alt text and references when graphics are unavailable.
+4. Add optional Mermaid rendering through that image path. Select a backend
+   after measuring startup, process memory, cache behavior, and compatibility.
+
+Alongside these steps, add alerts, bounded front matter handling, expanded
+details/summary sections, and validated clickable links. Preserve source-based
+exports and benchmark absent, disabled, and enabled feature paths. Large inputs
+and local measurement outputs stay outside the repository.
+
+Track binary/dependency growth, helper processes, and encoded output as well as
+latency and RSS. [Rendering optimizations](performance-optimizations.md) remove
+retained event copies and reduce text-rendering allocations. Continue reducing
+parser/layout memory and evaluate math image reuse/compression; current
+measurements are not resource ceilings.
 
 ## Reproducible builds and distribution
 
@@ -32,17 +58,21 @@ configuration before distribution is enabled.
 
 ## Markdown and equation layout
 
-- Refine mixed nesting of lists, quotes, code, and display math. Add table column
-  sizing and code-block syntax highlighting.
+- Refine mixed nesting of lists, quotes, code, and display math. Improve tables
+  and code layout through the ordered work above.
 - Add backslash-parenthesis and backslash-bracket math delimiters with coverage
   for escaping, code spans, and code fences.
 - Refine equation tag placement and the treatment of oversized formulas.
   Preserve individual source fallbacks and bounded raster allocation.
+- Consider library-side raster limits and a reusable body/tag raster result in
+  `katex-native` when shared semantics justify extraction. Keep general images,
+  highlighting, terminal fitting, and placement policy in their own layers.
 
 ## Interactive viewing and copying
 
 - Introduce an optional pager with navigation, resize-driven reflow, and explicit
-  image lifecycle management. Keep direct output and pipe behavior available.
+  image lifecycle management. Add search and heading navigation; evaluate file
+  watching separately. Keep direct output and pipe behavior available.
 - Add an in-view source toggle and copying of Markdown or TeX from the document
   model. Refine source mappings where decoded entities prevent exact selection.
 - Evaluate improvements to native mouse selection in Ghostty without making

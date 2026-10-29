@@ -85,19 +85,24 @@ impl Line {
         }
     }
 
-    fn push(&mut self, part: Part) {
-        self.columns += part.columns();
-        if let Part::Text { text, style } = &part
-            && let Some(Part::Text {
-                text: previous,
-                style: previous_style,
-            }) = self.parts.last_mut()
-            && previous_style == style
+    fn push_text(&mut self, text: &str, style: Style, columns: usize) {
+        if text.is_empty() {
+            return;
+        }
+        self.columns += columns;
+        if let Some(Part::Text {
+            text: previous,
+            style: previous_style,
+        }) = self.parts.last_mut()
+            && *previous_style == style
         {
             previous.push_str(text);
             return;
         }
-        self.parts.push(part);
+        self.parts.push(Part::Text {
+            text: text.to_owned(),
+            style,
+        });
     }
 
     fn trim_end(&mut self) {
@@ -120,11 +125,25 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
         width: width.max(1),
         ..Default::default()
     };
-    for part in parts {
+    for part in &parts {
         match part {
-            Part::Math { .. } => builder.word.push(part),
+            Part::Math { columns, .. } => {
+                builder.word.push(Fragment::Math(part));
+                builder.word_columns += columns;
+            }
             Part::Text { text, style } => {
-                for grapheme in text.graphemes(true) {
+                let mut start = 0;
+                let mut columns = 0;
+                for (offset, grapheme) in text.grapheme_indices(true) {
+                    let whitespace =
+                        grapheme.chars().all(char::is_whitespace) && grapheme != "\u{a0}";
+                    if !whitespace {
+                        columns += UnicodeWidthStr::width(grapheme);
+                        continue;
+                    }
+                    builder.fragment(&text[start..offset], *style, columns);
+                    start = offset + grapheme.len();
+                    columns = 0;
                     match grapheme {
                         "\n" | "\r\n" => {
                             builder.word();
@@ -134,19 +153,16 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
                             builder.word();
                             let spaces = 4 - builder.current.columns % 4;
                             for _ in 0..spaces {
-                                builder.space(" ", style);
+                                builder.space(" ", *style, 1);
                             }
                         }
-                        value if value.chars().all(char::is_whitespace) && value != "\u{a0}" => {
+                        value => {
                             builder.word();
-                            builder.space(value, style);
+                            builder.space(value, *style, UnicodeWidthStr::width(value));
                         }
-                        value => builder.word.push(Part::Text {
-                            text: value.to_owned(),
-                            style,
-                        }),
                     }
                 }
+                builder.fragment(&text[start..], *style, columns);
             }
         }
     }
@@ -157,35 +173,92 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
     builder.lines
 }
 
+enum Fragment<'a> {
+    Text {
+        text: &'a str,
+        style: Style,
+        columns: usize,
+    },
+    Math(&'a Part),
+}
+
 #[derive(Default)]
-struct Wrapper {
+struct Wrapper<'a> {
     width: usize,
-    word: Vec<Part>,
+    word: Vec<Fragment<'a>>,
+    word_columns: usize,
     current: Line,
     lines: Vec<Line>,
 }
 
-impl Wrapper {
-    fn word(&mut self) {
-        let word_width: usize = self.word.iter().map(Part::columns).sum();
-        if word_width <= self.width && self.current.columns + word_width > self.width {
-            self.line();
-        }
-        for part in std::mem::take(&mut self.word) {
-            if self.current.columns > 0 && self.current.columns + part.columns() > self.width {
-                self.line();
-            }
-            self.current.push(part);
+impl<'a> Wrapper<'a> {
+    fn fragment(&mut self, text: &'a str, style: Style, columns: usize) {
+        if !text.is_empty() {
+            self.word.push(Fragment::Text {
+                text,
+                style,
+                columns,
+            });
+            self.word_columns += columns;
         }
     }
 
-    fn space(&mut self, text: &str, style: Style) {
-        let part = Part::Text {
-            text: text.to_owned(),
-            style,
-        };
-        if self.current.columns + part.columns() <= self.width {
-            self.current.push(part);
+    fn word(&mut self) {
+        let word_width = std::mem::take(&mut self.word_columns);
+        if word_width <= self.width && self.current.columns + word_width > self.width {
+            self.line();
+        }
+        // Reuse the word buffer; text fragments borrow their input and allocate
+        // only when appended to an output line.
+        let mut word = std::mem::take(&mut self.word);
+        for fragment in word.drain(..) {
+            match fragment {
+                Fragment::Text {
+                    text,
+                    style,
+                    columns,
+                } => {
+                    if self.current.columns + columns <= self.width {
+                        self.current.push_text(text, style, columns);
+                    } else {
+                        self.split_text(text, style);
+                    }
+                }
+                Fragment::Math(part) => {
+                    if self.current.columns > 0
+                        && self.current.columns + part.columns() > self.width
+                    {
+                        self.line();
+                    }
+                    self.current.columns += part.columns();
+                    self.current.parts.push(part.clone());
+                }
+            }
+        }
+        self.word = word;
+    }
+
+    fn split_text(&mut self, text: &str, style: Style) {
+        let mut start = 0;
+        let mut columns = 0;
+        for (offset, grapheme) in text.grapheme_indices(true) {
+            let size = UnicodeWidthStr::width(grapheme);
+            if self.current.columns + columns > 0
+                && self.current.columns + columns + size > self.width
+            {
+                self.current.push_text(&text[start..offset], style, columns);
+                self.line();
+                start = offset;
+                columns = 0;
+            }
+            columns += size;
+        }
+        self.current.push_text(&text[start..], style, columns);
+    }
+
+    fn space(&mut self, text: &str, style: Style, columns: usize) {
+        if self.current.columns + columns <= self.width {
+            self.current.push_text(text, style, columns);
         }
     }
 
@@ -271,6 +344,39 @@ mod tests {
         assert_eq!(
             lines.iter().map(displayed).collect::<Vec<_>>(),
             ["Title", "", "    let x = 1;"]
+        );
+    }
+
+    #[test]
+    fn splits_oversized_words_across_style_boundaries_without_losing_text() {
+        let lines = wrap(
+            vec![
+                text("X ab"),
+                Part::Text {
+                    text: "cdefghij".into(),
+                    style: Style {
+                        bold: true,
+                        ..Default::default()
+                    },
+                },
+                text("kl"),
+            ],
+            4,
+        );
+        assert_eq!(
+            lines.iter().map(displayed).collect::<Vec<_>>(),
+            ["X ab", "cdef", "ghij", "kl"]
+        );
+        assert!(
+            lines[1]
+                .parts
+                .iter()
+                .all(|part| matches!(part, Part::Text { style, .. } if style.bold))
+        );
+        let wide = wrap(vec![text("界e\u{301}界")], 1);
+        assert_eq!(
+            wide.iter().map(displayed).collect::<Vec<_>>(),
+            ["界", "e\u{301}", "界"]
         );
     }
 

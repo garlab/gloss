@@ -28,6 +28,9 @@ struct Args {
     /// Use a light theme for text and equations.
     #[arg(long)]
     light: bool,
+    /// Keep code blocks uncolored while retaining the rest of the theme.
+    #[arg(long)]
+    no_highlight: bool,
     /// Maximum content width, excluding margins; 0 uses the terminal width.
     #[arg(short = 'w', long, default_value_t = 80)]
     width: u16,
@@ -107,6 +110,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             let options = render::Options {
                 styled: terminal.styled,
+                highlight: !args.no_highlight,
                 kitty: kitty.then_some(terminal.geometry),
                 terminal: Some(terminal.geometry),
                 width: args.width,
