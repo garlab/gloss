@@ -41,11 +41,13 @@ event vector alongside the layout. Layout still owns its decoded text runs.
 | `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, and track numbering. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, bound file/decode work, and cache fitted rasters by content. |
+| `src/mermaid.rs` | Validate a native diagram subset, supervise one lazy worker, bound its protocol/work, and cache fitted pixels. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
 | `src/render/mod.rs` | Coordinate rendering and per-formula fallbacks. |
 | `src/render/text.rs` | Emit ANSI attribute changes, reset line styles, and filter input control characters. |
 | `src/render/code.rs` | Highlight one code block before line wrapping, preserving source spans and uncolored fallbacks. |
+| `src/render/diagram.rs` | Offer Mermaid fences to the worker before code rendering; retain source fallback and optional selectable code. |
 | `src/render/table.rs` | Estimate bounded column widths and render one row at a time, with numbered-cell fallback. |
 | `src/render/inline.rs` | Format logical lines, preserve list/quote prefixes, and arrange text and images within reserved rows. |
 | `src/render/theme.rs` | Map semantic styles to dark/light terminal palettes and equation ink. |
@@ -79,6 +81,18 @@ and transport. Table separators and quote rails cover every reserved image row.
 Images within table cells remain references. [Local images](images.md) defines
 the supported formats and limits.
 
+Mermaid stays in the existing code-block model, including its source range and
+indentation. The terminal renderer recognizes the fence language before generic
+highlighting. A cache miss can start one child of the same executable, using a
+bounded private request/reply protocol. The child parses/layouts native diagrams
+and rasterizes through the image loader with bundled fonts. Only that generated
+SVG path admits bounded, nonrecursive arrow markers; local SVG restrictions
+remain unchanged. The parent validates returned dimensions and byte counts,
+fits the usual reading column, and shares the local-image output budget.
+Timeouts/crashes disable further worker requests, while cached images and all
+remaining document text remain available. [Mermaid support](mermaid.md) defines
+coverage, cache identity, limits, worker cleanup, and measurements.
+
 Text rendering consumes logical lines with one-line lookahead for quote context.
 Wrapping borrows word fragments and allocates text for the resulting physical
 lines, rather than allocating every grapheme. The writer shares ANSI state
@@ -87,8 +101,8 @@ line boundary. The original source, full layout, parser working storage, and a
 single very long logical line can still require memory proportional to input;
 this is not a constant-memory document reader.
 
-The [feature design](feature-design.md) describes optional renderers and
-math-library extraction boundaries. Mermaid rendering remains future work.
+The [feature design](feature-design.md) describes additional rendering features
+and math-library extraction boundaries.
 
 ## Contracts to preserve
 
@@ -102,7 +116,8 @@ math-library extraction boundaries. Mermaid rendering remains future work.
   sequences through styled or plain rendering. Exact source output deliberately
   bypasses filtering.
 - **Failures stay local.** Invalid formulas retain their source while later text
-  and equations continue rendering. Failed local images keep their captions.
+  and equations continue rendering. Failed local images keep their captions;
+  failed diagrams keep complete code.
   Image dimensions and raster allocation are
   bounded. Inline rendering does not advance display equation numbering.
 - **Layout respects terminal cells.** Wrapping preserves graphemes and keeps

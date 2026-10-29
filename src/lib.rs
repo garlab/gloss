@@ -8,6 +8,7 @@ pub mod highlight;
 pub mod images;
 pub mod layout;
 pub mod math;
+pub mod mermaid;
 pub mod raster;
 pub mod render;
 pub mod terminal;

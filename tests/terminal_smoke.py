@@ -351,6 +351,69 @@ class TerminalSmoke(unittest.TestCase):
         self.assertFalse(error)
         self.assertNotIn(b"\x1b[2J", output)
 
+    def test_mermaid_native_subset_and_selectable_source(self):
+        fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"
+        output, error = terminal(file=fixture)
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 6)
+        self.assertIn('pie title Contents', plain(output))
+        self.assertNotIn('A[Read Markdown]', plain(output))
+        output, error = terminal(file=fixture, args=("--show-mermaid-source",))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 6)
+        for text in ('A[Read Markdown]', 'Reader->>Viewer:', 'class Document', '[*] --> Reading', 'DOCUMENT ||--o{ BLOCK'):
+            self.assertIn(text, plain(output))
+
+    def test_mermaid_modes_quotes_and_list_markers(self):
+        source = "- ```mermaid\n  flowchart LR\n  A[Start]-->B[Done]\n  ```\n\nAfter $x$.\n"
+        output, error = terminal(source, args=("--images", "off", "--math", "tex", "--show-mermaid-source"))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+        self.assertEqual(plain(output).count("•"), 1)
+        self.assertIn("$x$", plain(output))
+        output, error = terminal(source, args=("--mermaid", "off"))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)  # Only the equation.
+        self.assertIn("A[Start]", plain(output))
+        for variables in ({"TERM_PROGRAM": "", "TERM": "xterm-256color"}, {"TMUX": "test"}, {"TERM": "dumb"}):
+            output, error = terminal(source, variables=variables)
+            self.assertFalse(error)
+            self.assertFalse(GRAPHICS.search(output))
+            self.assertIn("A[Start]", plain(output))
+        output, error = terminal(source, args=("--mermaid", "kitty", "--math", "tex"), variables={"TERM_PROGRAM": "", "TERM": "xterm-256color"})
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+        quoted = "> ```mermaid\n> flowchart LR; A-->B\n> ```\n\nAfter.\n"
+        for light in ((), ("--light",)):
+            output, error = terminal(quoted, columns=26, rows=10, args=light, variables={"NO_COLOR": "1"})
+            self.assertFalse(error)
+            images, cells = screen(output, 26, return_cells=True)
+            self.assertEqual(len(images), 1)
+            left, top, width, height = images[0]
+            rails = {x for (x, y), char in cells.items() if char == "│" and top <= y < top + height}
+            self.assertEqual(len(rails), 1)
+            for x in rails:
+                self.assertLess(x, left)
+                for y in range(top, top + height): self.assertEqual(cells.get((x, y)), "│")
+            self.assertIn("After.", plain(output))
+
+    def test_mermaid_failures_and_budget_keep_complete_code(self):
+        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "pie\n\"Slice\": 1", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
+        source = "\n\n".join("```mermaid\n" + block + "\n```" for block in blocks)
+        source += "\n\n```mermaid\nflowchart LR; A[Valid]-->B\n```\nAfter.\n"
+        output, error = terminal(source)
+        self.assertFalse(error)
+        self.assertEqual(output.count(b"\x1b_Ga=T,"), 1)
+        for text in ('A[Broken', '中文', 'Slice', 'init:', 'https://example.com', 'After.'):
+            self.assertIn(text, plain(output))
+        source = "".join(f"```mermaid\nflowchart LR; A[Diagram {i}]-->B\n```\n\n" for i in range(34))
+        source += "```mermaid\nflowchart LR; A[Diagram 31]-->B\n```\n"
+        output, error = terminal(source)
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 33)  # 32 misses, then a cache hit.
+        self.assertIn('Diagram 32', plain(output))
+        self.assertIn('Diagram 33', plain(output))
+
     def test_unknown_terminal_keeps_tex(self):
         output, error = terminal(variables={"TERM": "xterm-256color", "TERM_PROGRAM": ""})
         self.assertFalse(error)

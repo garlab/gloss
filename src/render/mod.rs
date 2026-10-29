@@ -2,6 +2,7 @@
 //! original document or the independent text export.
 
 mod code;
+mod diagram;
 mod inline;
 pub mod kitty;
 mod table;
@@ -38,6 +39,10 @@ pub struct Options {
     /// Enable local images, resolving relative references against this directory.
     /// None bypasses all image file access and decoding.
     pub image_base: Option<PathBuf>,
+    /// Render supported Mermaid fences with the bundled native worker.
+    pub mermaid: bool,
+    /// Keep a selectable code panel below rendered diagrams.
+    pub show_mermaid_source: bool,
 }
 
 impl Default for Options {
@@ -53,6 +58,8 @@ impl Default for Options {
             light_background: false,
             show_math_source: false,
             image_base: None,
+            mermaid: false,
+            show_mermaid_source: false,
         }
     }
 }
@@ -83,6 +90,7 @@ pub fn write(
     let mut engine = None;
     let mut highlighter = None;
     let mut images = None;
+    let mut mermaid = None;
     let mut warnings = Vec::new();
     let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
     let geometry = options.geometry();
@@ -121,6 +129,14 @@ pub fn write(
             }
             Block::Code { language, runs, .. } => {
                 if formatted {
+                    if options.mermaid
+                        && language
+                            .as_deref()
+                            .is_some_and(|label| label.eq_ignore_ascii_case("mermaid"))
+                        && diagram::write(out, runs, &mut mermaid, &mut images, options)?
+                    {
+                        continue;
+                    }
                     let highlighted = if options.styled && options.highlight {
                         code::highlight(runs, language.as_deref(), &mut highlighter)
                     } else {

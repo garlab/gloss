@@ -219,6 +219,29 @@ for name, (content, images) in image_cases.items():
     metadata[name] = {"images": images, "assets": asset_hashes,
                       "description": "Local image decoding, caching, fitting, or budget control."}
 
+flow = "flowchart LR\n A[Read] --> B[Render] --> C[Show]\n"
+sequence = "sequenceDiagram\n Reader->>Viewer: Open file\n Viewer-->>Reader: Show document\n"
+def fence(source):
+    return "```mermaid\n" + source + "\n```\n\n"
+mermaid_cases = {
+    "mermaid-basic.md": ((PROJECT / "tests/fixtures/mermaid.md").read_text(), 6),
+    "mermaid-flow.md": (fence(flow), 1),
+    "mermaid-sequence.md": (fence(sequence), 1),
+    "mermaid-repeated-100.md": (fence(flow) * 100, 100),
+    "mermaid-unique-40.md": ("".join(fence(f"flowchart LR; A[Diagram {i}]-->B") for i in range(40)), 32),
+    "mermaid-complex.md": (fence("flowchart TD\n" + "".join(
+        f" N{i}[Stage {i}]-->N{i+1}\n N{i}-->N{i+2}\n" for i in range(30))), 1),
+    "mermaid-fallbacks.md": (fence("flowchart LR\n" + "A" * (64 * 1024))
+        + fence("pie\n\"A\":1") + fence("flowchart LR; A[中文]-->B")
+        + fence("flowchart LR; A[Broken") + fence("%%{init: {}}%%\nflowchart LR; A-->B")
+        + fence("erDiagram\n A {\n string name\n }")
+        + fence("flowchart LR\n" + "".join(f"N{i}[Node {i}]\n" for i in range(129)))
+        + fence(flow), 1),
+}
+for name, (content, diagrams) in mermaid_cases.items():
+    (CORPORA / name).write_text(content, encoding="utf-8")
+    metadata[name] = {"diagrams": diagrams, "description": "Mermaid native subset, cache, worker, or fallback control."}
+
 for name, info in metadata.items():
     data = (CORPORA / name).read_bytes()
     info.update(bytes=len(data), lines=data.count(b"\n"), sha256=hashlib.sha256(data).hexdigest())

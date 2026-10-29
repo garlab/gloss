@@ -1,0 +1,209 @@
+# Mermaid rendering
+
+Mermaid fences use a native Rust backend through the shared image placement path.
+No browser, Node.js, separate renderer installation, network request, or persistent
+cache is needed. Rendering is optional: `--mermaid auto` follows the existing
+Ghostty/Kitty hints, `--mermaid off` keeps code, and `--mermaid kitty` enables a
+compatible terminal subject to the usual graphics restrictions. Math and local
+image settings remain independent.
+
+`--show-mermaid-source` prints selectable code below successful diagrams.
+Unsupported cases, errors, and resource limits keep the complete code panel.
+Pipes and `--output text` keep their existing source-based representation;
+`--output source` remains exact Markdown. None of these export paths starts a
+diagram worker. A nonempty `NO_COLOR` disables text styling but retains selected
+graphics; `--light` changes the diagram palette.
+
+## Initial coverage
+
+The implementation pins
+[`mermaid-rs-renderer` 0.3.1](https://docs.rs/mermaid-rs-renderer/0.3.1/mermaid_rs_renderer/)
+with its CLI and PNG features disabled. It accepts ASCII source for:
+
+- Flowcharts (`flowchart` and `graph`), including ordinary subgraphs and labels.
+- Sequence diagrams.
+- Class diagrams, including members and relationships.
+- State diagrams.
+- ER relationships without attribute tables.
+
+This is a native subset, not full Mermaid.js compatibility. Diagram layout and
+syntax handling can differ from the official renderer. Other diagram types,
+non-ASCII source, configuration directives/front matter, clickable nodes,
+external resources, unavailable glyphs, and excessive diagrams retain source.
+
+The coverage restriction also bounds font behavior. The backend's fast text
+metrics avoid system-font discovery for the selected ASCII paths. Non-ASCII
+metrics and ER attribute tables take other paths: the latter can omit attribute
+types when metrics for the requested bundled font are unavailable. Those cases
+remain code rather than an incomplete picture. Rasterization uses the existing
+bundled sans-serif faces. Approximate layout metrics can still affect wrapping;
+broader font support needs an explicit backend API and compatibility tests.
+
+The [upstream project](https://github.com/1jehuang/mermaid-rs-renderer) supports
+more diagram types, but they are not all enabled here. Expanding the subset
+requires checking labels, relationships, font access, and resource costs, not
+just accepting a parser header. The official
+[Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) remains a possible optional
+adapter for wider compatibility.
+
+## Worker, cache, and limits
+
+The parent starts one child of the same executable on the first eligible cache
+miss and reuses it within the invocation. The child receives only diagram source,
+fitting bounds, and theme over private pipes. A versioned protocol bounds request
+lengths and validates response dimensions and RGBA byte counts before allocation.
+One I/O thread keeps blocked writes and partial replies within the timeout.
+
+The worker parses and lays out the diagram, then rasterizes through the existing
+image loader. Only this generated SVG route permits simple arrow markers, with
+limits on marker count/size and no recursive paint/marker references. Local SVG
+files retain their previous restrictions. Images use the same margins, quote
+rails, row reservation, padding, and Kitty transport as other graphics.
+
+| Limit | Behavior |
+| --- | --- |
+| 16 KiB source; 256 lines/semicolons; 64 ampersands; lexical nesting depth 32 | Reject before starting a worker or native parser. |
+| 128 nodes, 256 edges, 16 subgraphs, 512 total subgraph memberships | Check parsed structure before layout. |
+| 32 sequence participants, 16 frames/boxes, 64 notes, 128 activations | Bound additional sequence structure. |
+| 64 state notes; 1 KiB per node label | Reject excessive annotations. |
+| 32 requests and 5 seconds cumulative request time per invocation | Later uncached diagrams retain code; cache hits remain available. |
+| 2 seconds per reply after worker startup | Kill and reap a stalled worker, then retain source. |
+| 8 MiB cache, at most 32 entries | Account for source and fitted RGBA bytes; evict least recently used entries. |
+| Existing SVG limits: 256 KiB, 4,096 XML nodes, bounded depth/geometry/text | Validate generated SVG before rasterization. |
+| 16 simple arrow markers; at most 8 XML descendants and 2 KiB per marker | Reject recursive marker/paint references. |
+| 1,000,000 fitted pixels; viewport and reading-column bounds | Validate returned pixels before storing or displaying them. |
+| 64 MiB of cell-padded RGBA placements | Shared with local Markdown images, including cache hits. |
+
+There is no OS-enforced RSS ceiling. Input/structure/raster limits bound added
+work; native parser/layout internals still allocate temporary storage. Unix
+workers also set an eight-second CPU limit as a backstop if the parent disappears
+during computation. The total request budget includes startup; the reply timeout cannot bound OS
+process creation itself.
+
+Cache identity includes exact source, fitting bounds, and light/dark mode.
+Renderer version and bundled fonts are fixed within the invocation. Successful
+pixels and ordinary render failures are cached; invalid requests rejected by the
+parent do not start a worker. A crash, broken protocol, or timeout disables new
+requests for the remainder of the invocation while preserving earlier cache
+entries and all later text. Cache hits still incur padding and transport costs.
+
+Normal completion, broken output pipes, and request failure drop the worker,
+kill/reap it, close the channels, and join the I/O thread. The native worker starts
+no descendants and creates no temporary files. After an abruptly terminated
+parent, closed pipes end the worker once its current computation returns; the
+Unix CPU limit is a backstop for that computation. There is no background service.
+
+## Validation
+
+Rust tests cover the native subset, fitting, known incompatibilities, source and
+structure limits, protocol validation, truncated replies, worker timeout/reaping,
+and unchanged exports. Pseudo-terminal checks cover graphics detection, modes
+independent of math/images, selectable source, list bullets, quote rails, narrow
+windows, light/no-color modes, cache reuse after the request budget, and failures
+followed by valid diagrams.
+
+All 46 Rust tests and 36 pseudo-terminal tests pass, as do formatting and Clippy.
+Rendered flowchart, sequence, class, state, and grouping fixtures were inspected;
+the ER attribute issue found during inspection is now an explicit fallback.
+These raster/screen-model checks do not establish compatibility with a particular
+real terminal version. Use `tests/fixtures/mermaid.md` for Ghostty/Kitty checks.
+
+External comparisons also preserve all 37 plain/source exports and unchanged
+text, styles, cursor operations, and graphics across 26 control cases.
+
+## Backend comparison
+
+The comparison uses Apple M2 Pro, 16 GiB RAM, macOS 26.4.1, warm filesystem caches,
+one warm-up and three fresh measured processes per input. The native SVG probe
+uses `mermaid-rs-renderer` 0.3.1, approximate text metrics, and a release build.
+The official CLI is 12.0.0 with Puppeteer 25.16.0 and an existing Chrome Headless
+Shell 143.0.7499.42. Default SVG font embedding remains enabled in the official
+CLI. These are local SVG-generation comparisons, not identical pixels or the
+complete terminal rendering pipeline.
+
+| SVG input | Native time | Native process RSS | Official CLI time | Official sampled tree RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Six-node decision flowchart | 23.36 ms | 6.25 MiB | 660.75 ms | 559.09 MiB |
+| Two-participant sequence | 3.07 ms | 3.64 MiB | 456.05 ms | 479.98 MiB |
+
+The official runs sample concurrent Node/browser descendants through numeric
+`ps` fields. Sampling adds overhead and can miss short allocation peaks. The
+native probe has no descendants, so its process peak is read from `wait4` without
+polling. The official library's reusable-browser API was not benchmarked; these
+numbers describe fresh CLI invocations. They must not be extrapolated to every
+possible browser adapter or diagram type.
+
+The temporary official installation contains about 356.38 MiB of package files;
+the existing headless browser adds 184.26 MiB. These are logical on-disk sizes,
+excluding package-manager caches and not download sizes. The native dependency
+adds about 2.44 MiB to mdviewer's executable and needs no separate installation.
+This cost, plus the tested compatibility subset, motivates the initial choice.
+
+## Viewer measurements
+
+The control is `e0239c4`, with local images and the table-border fix. The fixed
+[initial baseline](performance-baseline.md) and raw samples remain unchanged.
+Both builds use Rust 1.99.0, release optimization, thin LTO, one codegen unit, and
+stripped symbols. Measurements use the existing drained 100 by 40 PTY, 10 by
+20-pixel cells, and an 80-column reading width. No emulator paints the output.
+
+All 61 cases per build completed with expected image counts and no diagnostics:
+488 processes including warm-ups. The previous 30 input hashes are unchanged;
+seven Mermaid documents add 14 terminal/pipe cases. Local results and large
+generated inputs remain external.
+
+| Unchanged path | Before time | Mermaid build time | Before RSS | Mermaid build RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Mixed, 10 MiB | 1,154.94 ms | 1,095.95 ms | 177.44 MiB | 177.58 MiB |
+| Prose only, 10 MiB | 584.19 ms | 567.05 ms | 167.42 MiB | 167.95 MiB |
+| Plain pipe, mixed 10 MiB | 90.74 ms | 95.22 ms | 138.59 MiB | 138.97 MiB |
+| Single table, 10 MiB | 699.90 ms | 641.03 ms | 237.19 MiB | 236.41 MiB |
+| Graphics, 5,000 equations | 3,509.37 ms | 3,624.24 ms | 15.98 MiB | 16.16 MiB |
+
+One initial timing review trigger, source-TeX rendering of 5,000 equations, did
+not reproduce in seven-sample controls: 31.62 versus 31.43 ms, 10.62 versus
+10.83 MiB, and first output 6.64 versus 6.68 ms. After that repeat, no unchanged
+path crossed the feature design's timing, first-output, or RSS review triggers.
+The 10 MiB mixed case remains well below the initial roughly 332 MiB baseline.
+
+| Mermaid input | Enabled time | First output | Reported process RSS | Output | Diagrams |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Six-diagram fixture plus fallbacks | 64.80 ms | 31.71 ms | 10.19 MiB | 2.96 MiB | 6 |
+| Three-node flowchart | 8.95 ms | 7.46 ms | 7.92 MiB | 0.17 MiB | 1 |
+| Two-participant sequence | 11.67 ms | 7.82 ms | 7.41 MiB | 0.64 MiB | 1 |
+| 100 identical flowcharts | 98.06 ms | 8.73 ms | 7.81 MiB | 17.16 MiB | 100 |
+| 40 distinct flowcharts | 42.29 ms | 7.94 ms | 8.48 MiB | 3.75 MiB | 32 |
+| 32-node, 60-edge graph | 442.49 ms | 438.43 ms | 10.22 MiB | 0.31 MiB | 1 |
+| Oversized/invalid/unsupported, then valid | 13.64 ms | 5.45 ms | 7.92 MiB | 0.27 MiB | 1 |
+
+Reported process RSS comes from `wait4` and is not the concurrent worker-tree
+total. Separate sampling observed one viewer plus one worker: 16.77 MiB for the
+six-diagram fixture, 11.89 MiB for cached repeats, 14.14 MiB for distinct diagrams,
+and 10.42 MiB for the complex graph. These sampled values can miss transient
+peaks; short single-diagram runs are especially easy to undersample. Timing in
+the table excludes this sampling overhead.
+
+The complex graph spends most of its time in native layout; a two-second deadline
+keeps worse cases from monopolizing the viewer. The 40-distinct input renders 32
+diagrams and retains all remaining source. Cached repeats avoid layout work but
+still transmit pixels; image reuse/compression remains useful future work.
+
+Nine disabled-feature cases add 36 processes. The small/medium diagram inputs
+take 3.27–4.32 ms with about 3.06–3.27 MiB RSS; the large fallback document takes
+7.53 ms and 3.72 MiB. The two large prose/mixed controls retain their normal
+profiles. All seven Mermaid pipe cases take roughly 3.3–3.7 ms and emit no images.
+The worker never starts on disabled, plain/source, or unsupported-terminal paths.
+
+The release executable grows from 13,140,384 to 15,696,816 bytes
+(12.53 to 14.97 MiB, about 19.5%). Its SHA-256 is
+`6cb6ac6d17072b8fa7ff9a70f0cb94ba653fcb227d4f0e64c9a24b3c8e8380b7`.
+Seven lockfile packages are added: `mermaid-rs-renderer`, `anyhow`, `json5`,
+`once_cell`, `ucd-trie`, `memmap2`, and `fontconfig-parser`. Existing dependency
+features expand, but no new font assets or private checkout are required.
+
+Generate inputs using the [benchmark instructions](performance-baseline.md).
+Select `--corpus 'mermaid-*' --renderer mdviewer/terminal-mermaid`; compare
+`--mermaid-mode auto` and `--mermaid-mode off`. Use `--mermaid-mode legacy` for
+older binaries without the flag. Run `--process-tree` separately for approximate
+concurrent RSS; it requires permission to inspect process relationships.
+PTY measurements exclude emulator decoding, GPU work, and scrollback memory.

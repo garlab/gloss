@@ -597,3 +597,17 @@ fn inline_layout_does_not_advance_display_equation_numbers() {
     );
     assert_eq!(actual.rgba, expected.rgba);
 }
+
+#[test]
+fn mermaid_modes_preserve_plain_and_exact_exports() {
+    let source = "Before.\r\n\r\n```mermaid\r\nflowchart LR; A-->B\r\n```\r\nAfter.";
+    let expected = export::text(&Document::parse(source.into()));
+    for mode in ["auto", "off", "kitty"] {
+        let plain = cli(&["--mermaid", mode, "--show-mermaid-source", "-"], source);
+        assert!(plain.status.success() && plain.stderr.is_empty());
+        assert_eq!(plain.stdout, expected.as_bytes());
+        let exact = cli(&["--mermaid", mode, "--output", "source", "-"], source);
+        assert!(exact.status.success() && exact.stderr.is_empty());
+        assert_eq!(exact.stdout, source.as_bytes());
+    }
+}

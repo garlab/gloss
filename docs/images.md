@@ -64,8 +64,9 @@ them. Renderer code and fonts are fixed within the invocation; images keep their
 original colors. Cache hits avoid decoding but still pad and transmit each
 placement. Kitty image reuse and payload compression remain optimization work.
 
-The output budget applies to local Markdown images; existing math output has its
-own fitting/row limits. Base64 expands the pixel payload by roughly one third,
+The output budget is now shared by local Markdown images and
+[native Mermaid diagrams](mermaid.md); existing math output has its own
+fitting/row limits. Base64 expands the pixel payload by roughly one third,
 and captions/protocol commands add bytes. The budget does not bound emulator
 scrollback or GPU memory.
 

@@ -28,7 +28,7 @@ import time
 
 RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
              "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow",
-             "mdviewer/terminal-images"]
+             "mdviewer/terminal-images", "mdviewer/terminal-mermaid"]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--work-dir", type=Path, required=True)
 parser.add_argument("--binary", type=Path, required=True)
@@ -43,6 +43,10 @@ parser.add_argument("--binary-revision", help="Source revision actually used to 
 parser.add_argument("--no-highlight", action="store_true", help="Measure mdviewer with syntax highlighting disabled")
 parser.add_argument("--image-mode", choices=["auto", "off", "legacy"], default="auto",
                     help="Use legacy for binaries predating --images; off measures the disabled path")
+parser.add_argument("--mermaid-mode", choices=["auto", "off", "legacy"], default="auto",
+                    help="Use legacy for binaries predating --mermaid")
+parser.add_argument("--process-tree", action="store_true",
+                    help="Sample descendant RSS with ps; measure timing separately without this overhead")
 args = parser.parse_args()
 PROJECT = Path(__file__).resolve().parent.parent
 ROOT = args.work_dir.expanduser().resolve()
@@ -69,11 +73,28 @@ def command(renderer, name):
         "mdviewer/terminal-narrow": ["--math", "tex"],
         "mdviewer/terminal-math": ["--math", "kitty"],
         "mdviewer/terminal-images": ["--math", "tex"],
+        "mdviewer/terminal-mermaid": ["--math", "tex"],
         "mdviewer/plain-pipe": ["--output", "text"],
     }[renderer]
     image_flags = [] if args.image_mode == "legacy" else ["--images",
         "kitty" if args.image_mode == "auto" and renderer == "mdviewer/terminal-images" else args.image_mode]
-    return [str(BINARY), *flags, *image_flags, *(["--no-highlight"] if args.no_highlight else []), file]
+    mermaid_flags = [] if args.mermaid_mode == "legacy" else ["--mermaid",
+        "kitty" if args.mermaid_mode == "auto" and renderer == "mdviewer/terminal-mermaid" else args.mermaid_mode]
+    return [str(BINARY), *flags, *image_flags, *mermaid_flags, *(["--no-highlight"] if args.no_highlight else []), file]
+
+
+def process_tree(pid):
+    # Only numeric process relationships and RSS, never command lines or env.
+    data = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,rss="], text=True)
+    rows = [tuple(map(int, line.split())) for line in data.splitlines() if line.strip()]
+    members = {pid}
+    for _ in range(16):
+        found = {child for child, parent, group, _ in rows if parent in members or group == pid}
+        if found <= members:
+            break
+        members |= found
+    live = [rss for child, _, _, rss in rows if child in members]
+    return sum(live) / 1024, len(live)
 
 
 def kill_group(process):
@@ -111,8 +132,14 @@ def run(renderer, name):
         diagnostics = bytearray()
         timed_out = False
         usage = None
+        tree_peak = processes_peak = 0
+        next_tree_sample = 0
         while selector.get_map() or process.returncode is None:
             elapsed = time.perf_counter() - start
+            if args.process_tree and elapsed >= next_tree_sample and process.returncode is None:
+                rss, count = process_tree(process.pid)
+                tree_peak, processes_peak = max(tree_peak, rss), max(processes_peak, count)
+                next_tree_sample = time.perf_counter() - start + 0.02
             if elapsed > args.timeout and not timed_out:
                 kill_group(process)
                 timed_out = True
@@ -156,6 +183,8 @@ def run(renderer, name):
             "first_output_seconds": first_output,
             "cpu_seconds": usage.ru_utime + usage.ru_stime,
             "peak_rss_mib": usage.ru_maxrss / rss_unit,
+            "sampled_tree_peak_rss_mib": max(tree_peak, usage.ru_maxrss / rss_unit) if args.process_tree else None,
+            "sampled_peak_processes": processes_peak if args.process_tree else None,
             "output_bytes": size,
             "images": images,
             "stderr_bytes": errors,
@@ -217,6 +246,9 @@ for name in CORPORA:
     if name.startswith("images-"):
         cases.append(("mdviewer/terminal-images", name))
         cases.append(("mdviewer/plain-pipe", name))
+    if name.startswith("mermaid-"):
+        cases.append(("mdviewer/terminal-mermaid", name))
+        cases.append(("mdviewer/plain-pipe", name))
 cases = [(renderer, name) for renderer, name in cases
          if (not args.renderer or renderer in args.renderer)
          and (not args.corpus or any(fnmatch.fnmatchcase(name, pattern) for pattern in args.corpus))]
@@ -241,6 +273,8 @@ results = {
         "binary_bytes": BINARY.stat().st_size,
         "syntax_highlighting": "disabled" if args.no_highlight else "default",
         "image_rendering": args.image_mode,
+        "mermaid_rendering": args.mermaid_mode,
+        "process_tree_sampling": args.process_tree,
         "glow_version": read_command(["glow", "--version"]),
         "profile": args.profile,
         "hardware": args.hardware,
@@ -262,6 +296,8 @@ for renderer, name in cases:
     expected_images = CORPORA[name].get("equations", 0) if renderer == "mdviewer/terminal-math" else 0
     if args.image_mode == "auto" and renderer.startswith("mdviewer/terminal"):
         expected_images += CORPORA[name].get("images", 0)
+    if args.mermaid_mode == "auto" and renderer.startswith("mdviewer/terminal"):
+        expected_images += CORPORA[name].get("diagrams", 0)
 
     def valid_sample(sample):
         return (not sample["timed_out"] and sample["exit_code"] == 0
@@ -278,7 +314,8 @@ for renderer, name in cases:
                 break
     metrics = {
         key: statistics.median(sample[key] for sample in measured)
-        for key in ["wall_seconds", "first_output_seconds", "cpu_seconds", "peak_rss_mib", "output_bytes", "images"]
+        for key in ["wall_seconds", "first_output_seconds", "cpu_seconds", "peak_rss_mib", "output_bytes", "images",
+                    "sampled_tree_peak_rss_mib", "sampled_peak_processes"]
         if measured and all(sample[key] is not None for sample in measured)
     }
     results["cases"].append({"renderer": renderer, "corpus": name, "warmups": warmups,

@@ -19,8 +19,12 @@ the fixed comparison data and reproduction tools.
    transport, with selectable captions, bounded decoding/cache/output, and text
    fallback. See [local images](images.md) for the SVG subset and measurements.
    Broader SVG/font support and images inside tables remain follow-up work.
-4. Add optional Mermaid rendering through that image path. Select a backend
-   after measuring startup, process memory, cache behavior, and compatibility.
+4. An initial native Mermaid subset is implemented with a lazy reusable worker,
+   bounded requests/cache/output, and complete code fallback. See
+   [Mermaid support](mermaid.md) for coverage and measured backend costs.
+   Broaden Unicode/font support, ER attributes, and diagram types only after
+   compatibility and resource checks. Consider an optional official-renderer
+   adapter when full Mermaid.js compatibility justifies its runtime cost.
 
 Alongside these steps, add alerts, bounded front matter handling, expanded
 details/summary sections, and validated clickable links. Preserve source-based

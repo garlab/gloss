@@ -8,6 +8,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+mermaid-rs-renderer = { version = "=0.3.1", default-features = false }
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 katex-native = { path = "../katex-native", features = ["raster"] }

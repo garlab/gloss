@@ -30,6 +30,7 @@ mdviewer tests/fixtures/style.md
 mdviewer tests/fixtures/code.md
 mdviewer tests/fixtures/tables.md
 mdviewer tests/fixtures/images.md
+mdviewer tests/fixtures/mermaid.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
@@ -71,6 +72,15 @@ with unavailable glyphs fall back to the reference. No network requests, system
 font scans, or helper processes are used. See [local images](docs/images.md) for
 the supported subset and resource limits.
 
+Mermaid fences render natively for an initial ASCII subset: flowcharts, sequence,
+class and state diagrams, and ER relationships without attribute tables.
+`--show-mermaid-source` keeps selectable code beneath the diagram;
+`--mermaid off` keeps the code alone. Unsupported syntax, non-ASCII source,
+missing glyphs, errors, and limits retain the complete code panel. The native
+backend uses one lazy worker from the same executable, with no additional
+installation. It does not provide full Mermaid.js compatibility. See
+[Mermaid support](docs/mermaid.md) for the limits and measurements.
+
 The reading column is at most 80 cells wide, with two-column horizontal margins.
 Text and equations share that column in both graphics and TeX modes. The width
 fits the terminal, and margins shrink automatically in narrow windows.
@@ -84,6 +94,7 @@ The default `--math auto` enables graphics in sessions identified as Ghostty or
 Kitty by `TERM` or `TERM_PROGRAM`. This uses environment hints, assumes graphics
 are enabled, and does not probe the terminal or read keyboard input.
 `--images auto` uses the same detection independently of the math setting.
+`--mermaid auto` independently applies it to Mermaid fences.
 
 Other terminals use selectable TeX. Recognized tmux, screen, and Zellij sessions,
 `TERM=dumb`, and very small windows also use TeX. Multiplexer graphics passthrough
@@ -97,6 +108,9 @@ is not implemented.
 | `--images off` | Keep image references as text and skip image file access. |
 | `--images kitty` | Enable local images in another compatible terminal, subject to the same graphics restrictions. |
 | `--base-dir <directory>` | Override the directory used to resolve local image paths. |
+| `--mermaid off` | Keep Mermaid fences as code and skip the diagram worker. |
+| `--mermaid kitty` | Enable supported diagrams in another compatible terminal, subject to the same graphics restrictions. |
+| `--show-mermaid-source` | Print selectable code beneath rendered Mermaid diagrams. |
 | `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
 | `--margin <columns>` | Set the horizontal margin, default `2`. |
 | `--light` | Use a light color palette for text and equations. |
@@ -115,6 +129,7 @@ Normal terminal selection copies prose. Selecting an equation image alone does
 not recover its TeX; use `--show-math-source` or `--math tex` when copying math.
 Image captions and source paths are selectable too; selecting pixels does not
 copy an image file or recover text drawn inside it.
+Use `--show-mermaid-source` to copy diagram code through terminal selection.
 
 ```sh
 cat notes.md | mdviewer -
@@ -123,8 +138,8 @@ mdviewer notes.md > notes.txt
 mdviewer --output source notes.md | pbcopy  # macOS
 ```
 
-Pipes receive readable text with source TeX and image references, even with
-`--math kitty` or `--images kitty`: no ANSI
+Pipes receive readable text with source TeX, image references, and Mermaid code,
+even with forced graphics: no ANSI
 styles, graphics, added margins, or screen-width wrapping. `--output text`
 selects that representation on a terminal too. Diagnostics go to stderr.
 
@@ -140,6 +155,7 @@ change the clipboard itself.
 - `$...$` inline math, `$$...$$` display math, and fenced `math` blocks.
 - Equation tags and automatic numbering, with tags placed after the formula.
 - Bounded local PNG/JPEG/SVG images with selectable captions and text fallbacks.
+- Native rendering of supported Mermaid fences, with optional selectable source.
 - Unicode-aware terminal wrapping, preserving graphemes and keeping
   equations whole.
 - Individual formula failures fall back to source TeX without interrupting the
@@ -181,6 +197,8 @@ reductions in time, memory, output volume, and executable size.
 The [table implementation](docs/tables.md) records its limits and measured cost.
 The [local image implementation](docs/images.md) records decoder, cache, output,
 and SVG limits, together with its measurements.
+The [Mermaid implementation](docs/mermaid.md) records native coverage, worker
+limits, and comparisons with the official renderer.
 Crate publication is disabled while `katex-native` uses a local path dependency.
 
 ## License

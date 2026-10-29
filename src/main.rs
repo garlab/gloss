@@ -25,6 +25,14 @@ struct Args {
     /// Local PNG/JPEG/SVG images: auto detects Kitty graphics; off retains text.
     #[arg(long, value_enum, default_value_t = Images::Auto)]
     images: Images,
+    /// Mermaid diagrams: auto uses known Kitty graphics sessions; off keeps code.
+    #[arg(long, value_enum, default_value_t = Images::Auto)]
+    mermaid: Images,
+    /// Print selectable Mermaid source beneath rendered diagrams.
+    #[arg(long)]
+    show_mermaid_source: bool,
+    #[arg(long, hide = true)]
+    mermaid_worker: bool,
     /// Base directory for image paths; defaults to the document directory or cwd for stdin.
     #[arg(long)]
     base_dir: Option<PathBuf>,
@@ -88,6 +96,10 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+    if args.mermaid_worker {
+        mdviewer::mermaid::serve(&mut io::stdin().lock(), &mut io::stdout().lock())?;
+        return Ok(());
+    }
     if args.file.is_none() && io::stdin().is_terminal() {
         Args::command().print_help()?;
         println!();
@@ -134,6 +146,13 @@ fn run() -> Result<(), Box<dyn Error>> {
                 ),
                 light_background: args.light,
                 show_math_source: args.show_math_source,
+                mermaid: terminal.graphics_allowed
+                    && match args.mermaid {
+                        Images::Auto => terminal.kitty_hint,
+                        Images::Off => false,
+                        Images::Kitty => true,
+                    },
+                show_mermaid_source: args.show_mermaid_source,
                 image_base: (terminal.graphics_allowed
                     && match args.images {
                         Images::Auto => terminal.kitty_hint,

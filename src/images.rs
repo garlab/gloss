@@ -185,8 +185,26 @@ impl Loader {
     }
 
     fn svg(&mut self, bytes: &[u8], bounds: (u32, u32)) -> Result<Raster, Error> {
+        self.svg_inner(bytes, bounds, false)
+    }
+
+    /// Only the bounded native diagram worker can admit simple arrow markers.
+    pub(crate) fn diagram_svg(
+        &mut self,
+        bytes: &[u8],
+        bounds: (u32, u32),
+    ) -> Result<Raster, Error> {
+        self.svg_inner(bytes, bounds, true)
+    }
+
+    fn svg_inner(
+        &mut self,
+        bytes: &[u8],
+        bounds: (u32, u32),
+        markers: bool,
+    ) -> Result<Raster, Error> {
         let source = std::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
-        let has_text = svg_preflight(source)?;
+        let has_text = svg_preflight_inner(source, markers)?;
         let missing_font = Arc::new(AtomicBool::new(false));
         let mut options = usvg::Options {
             image_href_resolver: usvg::ImageHrefResolver {
@@ -368,7 +386,12 @@ fn bitmap(bytes: &[u8], format: ImageFormat, bounds: (u32, u32)) -> Result<Raste
 
 /// Restrict SVG to bounded geometry/text/paint servers. Reuse, filters, masks,
 /// nested images, and foreign content fall back rather than bypass these limits.
+#[cfg(test)]
 fn svg_preflight(source: &str) -> Result<bool, Error> {
+    svg_preflight_inner(source, false)
+}
+
+fn svg_preflight_inner(source: &str, markers: bool) -> Result<bool, Error> {
     if source.len() > SVG_BYTES {
         return Err(Error::Limit);
     }
@@ -383,7 +406,7 @@ fn svg_preflight(source: &str) -> Result<bool, Error> {
     if document.root_element().tag_name().name() != "svg" {
         return Err(Error::Invalid);
     }
-    let (mut geometry, mut text_bytes, mut has_text) = (0, 0, false);
+    let (mut geometry, mut text_bytes, mut has_text, mut marker_count) = (0, 0, false, 0);
     for node in document.descendants() {
         if node.ancestors().take(34).count() > 33 {
             return Err(Error::Limit);
@@ -398,7 +421,20 @@ fn svg_preflight(source: &str) -> Result<bool, Error> {
             continue;
         }
         let name = node.tag_name().name();
-        if !matches!(
+        if name == "marker" && markers {
+            marker_count += 1;
+            // Arrow markers cannot recursively reference markers or paint servers.
+            if marker_count > 16 || node.descendants().count() > 8 || node.range().len() > 2048 {
+                return Err(Error::Limit);
+            }
+            for child in node.descendants() {
+                for attr in child.attributes() {
+                    if attr.value().to_ascii_lowercase().contains("url(") {
+                        return Err(Error::Unsupported);
+                    }
+                }
+            }
+        } else if !matches!(
             name,
             "svg"
                 | "g"
@@ -633,7 +669,7 @@ mod tests {
         assert!(loader.cache.len() < 10);
         assert_eq!(
             loader.cache_bytes,
-            loader.cache.iter().map(Cached::bytes).sum()
+            loader.cache.iter().map(Cached::bytes).sum::<usize>()
         );
         loader.decodes = 64;
         dir.write("miss.png", &png(2, 2, [100, 0, 0, 255]));

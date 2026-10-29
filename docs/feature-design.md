@@ -112,15 +112,22 @@ fallbacks must not decode images.
 
 ## Mermaid
 
+The initial implementation uses pinned `mermaid-rs-renderer` with its CLI/PNG
+features disabled, running in one lazy worker from the mdviewer executable.
+[Mermaid support](mermaid.md) records the selected subset, compatibility limits,
+bounded worker/cache behavior, and native/official renderer measurements.
+Broader dialect support remains future work.
+
 Recognize Mermaid fences before generic code rendering. Rendered output uses the
 shared image path; unsupported terminals, missing renderers, errors, and limits
 fall back to the complete fenced source.
 
-The renderer choice remains open. The official
+The official
 [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) produces SVG/PNG using a
-Node.js and Puppeteer/browser stack. An optional adapter is a practical route,
-but its startup, process memory, installation size, and compatibility must be
-measured against any native alternative before adopting it.
+Node.js and Puppeteer/browser stack. An optional adapter remains a compatibility
+option; the native implementation avoids that installation and process cost for
+the supported subset. Recheck startup, process memory, installation size, and
+compatibility before adding another backend.
 
 If using a helper, start it only for a cache miss requiring a diagram. Bound
 execution time and output size, process diagrams with one worker initially,
@@ -130,8 +137,10 @@ must clean up descendants and temporary files.
 
 Cache by diagram source, renderer version, configuration, and theme. Measure
 cold startup, repeated diagrams, and cache hits separately. Report the complete
-helper process tree's memory alongside mdviewer's own RSS; the current benchmark
-runner measures only the direct renderer and is insufficient for this case.
+helper process tree's memory alongside process-reported RSS. The benchmark
+runner's optional `--process-tree` sampler records concurrent descendant RSS;
+run timing separately because process sampling adds overhead and can miss brief
+allocation peaks.
 
 ## Other Markdown extensions
 
