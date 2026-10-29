@@ -2,6 +2,7 @@
 //! of image rendering; exports add no width wraps.
 
 pub mod lines;
+pub mod table;
 
 use std::ops::Range;
 
@@ -20,6 +21,8 @@ pub enum Role {
     LinkTarget,
     Rule,
     MathSource,
+    TableHeader,
+    TableBorder,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -49,6 +52,7 @@ pub struct Run {
 #[derive(Debug)]
 pub enum Block {
     Text(Vec<Run>),
+    Table(table::Table),
     Code {
         language: Option<String>,
         runs: Vec<Run>,
@@ -70,19 +74,20 @@ pub fn layout(document: &Document) -> Layout {
     build_layout(document, true)
 }
 
-/// Plain export does not need independently owned code-block metadata or
+/// Plain export does not need independently owned code/table metadata or
 /// per-block vectors. Keep its allocation behavior independent of decoration.
 pub(crate) fn plain_layout(document: &Document) -> Layout {
     build_layout(document, false)
 }
 
-fn build_layout(document: &Document, semantic_code: bool) -> Layout {
+fn build_layout(document: &Document, semantic_blocks: bool) -> Layout {
     let mut flow = Flow::default();
     let mut style = Style::default();
     let mut styles = Vec::new();
     let mut links = Vec::new();
     let mut lists = Vec::new();
     let mut item_indents = Vec::new();
+    let mut table: Option<table::Builder> = None;
     let mut events = document.events();
     while let Some(item) = events.next() {
         match &item.event {
@@ -92,8 +97,38 @@ fn build_layout(document: &Document, semantic_code: bool) -> Layout {
                         flow.breaks(2);
                     }
                 }
+                Tag::Table(alignments) if semantic_blocks => {
+                    if !flow.prefix_pending {
+                        flow.breaks(2);
+                    }
+                    let prefix_start = if flow.prefix_pending {
+                        flow.runs
+                            .iter()
+                            .rposition(|run| {
+                                !matches!(run.style.role, Role::ListMarker | Role::QuoteMarker)
+                            })
+                            .map_or(0, |index| index + 1)
+                    } else {
+                        flow.runs.len()
+                    };
+                    let prefix = flow.runs.split_off(prefix_start);
+                    flow.flush();
+                    flow.trailing_newlines = 0;
+                    flow.prefix_pending = false;
+                    table = Some(table::Builder {
+                        table: table::Table {
+                            alignments: alignments.clone(),
+                            rows: Vec::new(),
+                            prefix,
+                            style,
+                            source: item.source.clone(),
+                        },
+                        row: table::Row::default(),
+                        cell_source: item.source.clone(),
+                    });
+                }
                 Tag::HtmlBlock | Tag::Table(_) => flow.breaks(2),
-                Tag::CodeBlock(kind) if semantic_code => {
+                Tag::CodeBlock(kind) if semantic_blocks => {
                     if !flow.prefix_pending {
                         flow.breaks(2);
                     }
@@ -213,6 +248,13 @@ fn build_layout(document: &Document, semantic_code: bool) -> Layout {
                         },
                     );
                 }
+                Tag::TableHead | Tag::TableRow if table.is_some() => {
+                    table.as_mut().unwrap().row.header = matches!(tag, Tag::TableHead);
+                }
+                Tag::TableCell if table.is_some() => {
+                    table.as_mut().unwrap().cell_source = item.source.clone();
+                    flow.trailing_newlines = 0;
+                }
                 Tag::TableHead | Tag::TableRow => flow.breaks(1),
                 Tag::FootnoteDefinition(label) => {
                     flow.breaks(2);
@@ -221,6 +263,13 @@ fn build_layout(document: &Document, semantic_code: bool) -> Layout {
                 _ => {}
             },
             Event::End(tag) => match tag {
+                TagEnd::Table if table.is_some() => {
+                    let mut finished = table.take().unwrap().table;
+                    finished.source.end = item.source.end;
+                    flow.blocks.push(Block::Table(finished));
+                    flow.trailing_newlines = 1;
+                    flow.breaks(2);
+                }
                 TagEnd::Paragraph | TagEnd::HtmlBlock | TagEnd::Table => {
                     flow.breaks(2);
                 }
@@ -260,6 +309,16 @@ fn build_layout(document: &Document, semantic_code: bool) -> Layout {
                     style.indent = item_indents.pop().unwrap_or_default();
                     flow.breaks(1);
                 }
+                TagEnd::TableHead | TagEnd::TableRow if table.is_some() => {
+                    table.as_mut().unwrap().row();
+                }
+                TagEnd::TableCell if table.is_some() => {
+                    table
+                        .as_mut()
+                        .unwrap()
+                        .cell(std::mem::take(&mut flow.runs), item.source.end);
+                    flow.trailing_newlines = 0;
+                }
                 TagEnd::TableHead | TagEnd::TableRow => flow.breaks(1),
                 TagEnd::TableCell => flow.push(" | ", style, None),
                 _ => {}
@@ -276,6 +335,21 @@ fn build_layout(document: &Document, semantic_code: bool) -> Layout {
                     },
                     Some(item.source.clone()),
                 );
+            }
+            Event::InlineMath(tex) | Event::DisplayMath(tex) if table.is_some() => {
+                flow.push(
+                    document
+                        .source_slice(item.source.clone())
+                        .unwrap_or_default(),
+                    Style {
+                        code: true,
+                        ..style
+                    },
+                    Some(item.source.clone()),
+                );
+                if let Some(run) = flow.runs.last_mut() {
+                    run.math = Some(tex.to_string());
+                }
             }
             Event::InlineMath(tex) => {
                 flow.push(

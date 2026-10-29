@@ -162,7 +162,12 @@ def screen(output, columns):
         elif byte == 10:
             row += 1
         else:
-            assert 32 <= byte < 127, "the screen-model fixture must be ASCII"
+            if byte >= 128:
+                character = output[offset:offset + 3].decode()
+                assert character in "│─┼•", "screen fixtures use ASCII and single-cell borders"
+                offset += 2
+            else:
+                assert 32 <= byte < 127, "unexpected control character"
             assert column < columns, "text unexpectedly relied on terminal autowrap"
             if byte != 32:
                 text_cells.append((column, row))
@@ -195,6 +200,69 @@ class TerminalSmoke(unittest.TestCase):
         output, error = terminal(source, columns=40, rows=10)
         self.assertFalse(error)
         self.assertEqual(len(screen(output, 40)), 2)
+
+    def test_tables_align_headers_and_preserve_colors_without_color(self):
+        source = "| Name | Center | Score |\n| :--- | :---: | ---: |\n| A | B | 42 |\n"
+        dark, error = terminal(source, args=("--math", "tex"))
+        light, _ = terminal(source, args=("--math", "tex", "--light"))
+        uncolored, _ = terminal(source, args=("--math", "tex"), variables={"NO_COLOR": "1"})
+        self.assertFalse(error)
+        self.assertEqual(plain(dark), plain(light))
+        self.assertEqual(plain(dark), plain(uncolored))
+        self.assertNotIn(b"\x1b", uncolored)
+        self.assertEqual(attributes_at(dark, b"Name")["foreground"], 81)
+        self.assertEqual(attributes_at(light, b"Name")["foreground"], 25)
+        self.assertTrue(attributes_at(dark, b"Name")["bold"])
+        self.assertFalse(attributes_at(dark, b"42")["bold"])
+        self.assertIn("A    │   B    │    42", plain(dark))
+        screen(dark, 80)
+
+    def test_table_equations_share_rows_without_covering_other_cells(self):
+        source = "Above.\n\n| Left | Right |\n| :---: | ---: |\n| $\\frac{a}{b}$ | $\\sqrt{x}$ |\n| Text | Tail |\n\nBelow.\n"
+        for columns in (24, 80):
+            with self.subTest(columns=columns):
+                output, error = terminal(source, columns=columns)
+                self.assertFalse(error)
+                images = screen(output, columns)
+                self.assertEqual(len(images), 2)
+                self.assertLessEqual(images[0][0] + images[0][2], images[1][0])
+                self.assertIn("Below.", plain(output))
+        output, error = terminal(source, args=("--show-math-source",))
+        self.assertFalse(error)
+        self.assertIn(r"$\frac{a}{b}$", plain(output))
+        self.assertIn(r"$\sqrt{x}$", plain(output))
+        self.assertEqual(len(screen(output, 80)), 2)
+
+    def test_table_fallbacks_keep_source_and_do_not_block_later_graphics(self):
+        source = "| First | Second | Third |\n| --- | --- | --- |\n| $x$ | beta | gamma |\n"
+        narrow, error = terminal(source, columns=14)
+        self.assertFalse(error)
+        self.assertFalse(GRAPHICS.search(narrow))
+        self.assertIn("1: $x$", plain(narrow))
+        self.assertIn("3: gamma", plain(narrow))
+        screen(narrow, 14)
+        source = "| Many |\n| --- |\n| " + "$x$ " * 33 + " |\n| $y$ |\n"
+        output, error = terminal(source)
+        self.assertFalse(error)
+        self.assertEqual(plain(output).count("$x$"), 33)
+        self.assertEqual(len(screen(output, 80)), 1)
+        source = "| Bad | Good |\n| --- | --- |\n| $\\definitelynotacommand{x}$ | $x^2$ |\n"
+        output, error = terminal(source)
+        self.assertIn("showing TeX", error)
+        self.assertIn(r"\definitelynotacommand{x}", plain(output))
+        self.assertEqual(len(screen(output, 80)), 1)
+
+    def test_nested_tables_keep_quote_rails_and_list_markers(self):
+        source = "> Before\n>\n> | Name | Value |\n> | --- | ---: |\n> | Q | 1 |\n>\n> After\n\n- | Name | Value |\n  | --- | ---: |\n  | L | 2 |\n\nEnd.\n"
+        output, error = terminal(source, args=("--math", "tex"))
+        self.assertFalse(error)
+        value = plain(output)
+        self.assertIn("│ Q    │     1", value)
+        self.assertIn("• Name │ Value", value)
+        self.assertIn("    L    │     2", value)
+        self.assertEqual(value.count("•"), 1)
+        self.assertIn("│ After", value)
+        screen(output, 80)
 
     def test_unknown_terminal_keeps_tex(self):
         output, error = terminal(variables={"TERM": "xterm-256color", "TERM_PROGRAM": ""})

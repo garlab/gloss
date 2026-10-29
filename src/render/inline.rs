@@ -75,7 +75,7 @@ fn logical_lines(runs: &[Run]) -> impl Iterator<Item = LogicalLine> + '_ {
     })
 }
 
-struct Frame {
+pub(super) struct Frame {
     first: String,
     continuation: String,
     style: Style,
@@ -100,6 +100,42 @@ fn fit_prefix(value: &str, width: usize) -> String {
 }
 
 impl Frame {
+    pub(super) fn for_block(prefix: &[Run], style: Style, options: &Options) -> Self {
+        Self::new(
+            &mut LogicalLine {
+                runs: prefix.to_vec(),
+                style,
+            },
+            options,
+        )
+    }
+
+    pub(super) fn width(&self) -> usize {
+        self.width
+    }
+
+    pub(super) fn cell(&self, number: usize, first: bool) -> Self {
+        let label = fit_prefix(&format!("{number}: "), self.width.saturating_sub(2));
+        let columns = UnicodeWidthStr::width(label.as_str());
+        let prefix = if first {
+            &self.first
+        } else {
+            &self.continuation
+        };
+        Self {
+            first: format!("{prefix}{label}"),
+            continuation: format!("{}{}", self.continuation, " ".repeat(columns)),
+            style: self.style,
+            prefix_style: Style {
+                role: Role::TableBorder,
+                ..self.prefix_style
+            },
+            width: self.width.saturating_sub(columns).max(1),
+            right: 0,
+            fill: None,
+        }
+    }
+
     fn new(line: &mut LogicalLine, options: &Options) -> Self {
         let viewport = options.viewport();
         let marker_role = |role| matches!(role, Role::ListMarker | Role::QuoteMarker);
@@ -184,12 +220,6 @@ pub(super) fn write(
     warnings: &mut Vec<String>,
     edge_quotes: (usize, usize),
 ) -> io::Result<()> {
-    let geometry = options.geometry();
-    let cell_width = u32::from(geometry.cell_width.max(1));
-    let cell_height = u32::from(geometry.cell_height.max(1));
-    // Different formulas may extend above and below the baseline. Each is
-    // limited to half the viewport so the combined line still fits.
-    let max_height = u32::from(geometry.rows.saturating_sub(4).max(1)) * cell_height / 2;
     let mut lines = logical_lines(runs).peekable();
     let mut previous_quote = edge_quotes.0;
     while let Some(mut logical) = lines.next() {
@@ -219,45 +249,15 @@ pub(super) fn write(
             write_line(out, &line, &frame, true, options)?;
             continue;
         }
-        let mut parts = Vec::new();
-        for run in logical.runs {
-            if let Some(tex) = &run.math
-                && options.kitty.is_some()
-            {
-                let math = engine.get_or_insert_with(MathEngine::default);
-                match math.render_inline(
-                    tex,
-                    options.font_size,
-                    options.theme().ink(run.style),
-                    frame.width as u32 * cell_width,
-                    max_height.max(1),
-                ) {
-                    Ok(image) => {
-                        parts.push(Part::Math {
-                            columns: image.width.div_ceil(cell_width) as usize,
-                            image: Arc::new(image),
-                            source: run.text,
-                        });
-                        continue;
-                    }
-                    Err(error) => warnings.push(format!(
-                        "inline math at byte {}: {error}; showing TeX",
-                        run.source.as_ref().map_or(0, |source| source.start),
-                    )),
-                }
-            }
-            let value = text::sanitize_owned(run.text);
-            let value = if run.style.code && run.style.role != Role::CodeBlock && run.math.is_none()
-            {
-                format!(" {value} ")
-            } else {
-                value
-            };
-            parts.push(Part::Text {
-                text: value,
-                style: run.style,
-            });
-        }
+        let mut image_budget = usize::MAX;
+        let parts = prepare_parts(
+            logical.runs,
+            frame.width,
+            engine,
+            options,
+            warnings,
+            Some(&mut image_budget),
+        );
         let mut wrapped = lines::wrap(parts, frame.width);
         if wrapped.is_empty() {
             wrapped.push(Line::default());
@@ -265,6 +265,100 @@ pub(super) fn write(
         for (index, line) in wrapped.iter().enumerate() {
             write_line(out, line, &frame, index == 0, options)?;
         }
+    }
+    Ok(())
+}
+
+pub(super) fn prepare_parts(
+    runs: impl IntoIterator<Item = Run>,
+    width: usize,
+    engine: &mut Option<MathEngine>,
+    options: &Options,
+    warnings: &mut Vec<String>,
+    mut image_budget: Option<&mut usize>,
+) -> Vec<Part> {
+    let geometry = options.geometry();
+    let cell_width = u32::from(geometry.cell_width.max(1));
+    let cell_height = u32::from(geometry.cell_height.max(1));
+    // Limit each formula to half the viewport so combined baselines still fit.
+    let max_height = u32::from(geometry.rows.saturating_sub(4).max(1)) * cell_height / 2;
+    let mut parts = Vec::new();
+    for run in runs {
+        if let Some(tex) = &run.math
+            && options.kitty.is_some()
+            && let Some(remaining) = image_budget.as_deref_mut()
+            && *remaining / 4 >= width * cell_width as usize
+        {
+            let height = max_height.max(1).min(
+                (*remaining / 4 / (width * cell_width as usize)).min(u32::MAX as usize) as u32,
+            );
+            let math = engine.get_or_insert_with(MathEngine::default);
+            match math.render_inline(
+                tex,
+                options.font_size,
+                options.theme().ink(run.style),
+                width as u32 * cell_width,
+                height,
+            ) {
+                Ok(image) => {
+                    *remaining = remaining.saturating_sub(image.rgba.len());
+                    parts.push(Part::Math {
+                        columns: image.width.div_ceil(cell_width) as usize,
+                        image: Arc::new(image),
+                        source: run.text,
+                    });
+                    continue;
+                }
+                Err(error) => warnings.push(format!(
+                    "inline math at byte {}: {error}; showing TeX",
+                    run.source.as_ref().map_or(0, |source| source.start),
+                )),
+            }
+        }
+        let value = text::sanitize_owned(run.text);
+        let value = if run.style.code && run.style.role != Role::CodeBlock && run.math.is_none() {
+            format!(" {value} ")
+        } else {
+            value
+        };
+        parts.push(Part::Text {
+            text: value,
+            style: run.style,
+        });
+    }
+    parts
+}
+
+/// Stacked cells use the ordinary logical-line pipeline and source TeX. This
+/// avoids retaining a large row of wrapped cells or math rasters on fallback.
+pub(super) fn write_cell(
+    out: &mut impl Write,
+    runs: &[Run],
+    frame: &Frame,
+    options: &Options,
+    header: bool,
+) -> io::Result<()> {
+    let mut first = true;
+    for logical in logical_lines(runs) {
+        let runs = logical.runs.into_iter().map(|mut run| {
+            if header {
+                run.style.bold = true;
+                run.style.role = Role::TableHeader;
+            }
+            run
+        });
+        let parts = prepare_parts(runs, frame.width, &mut None, options, &mut Vec::new(), None);
+        let mut wrapped = lines::wrap(parts, frame.width);
+        if wrapped.is_empty() {
+            wrapped.push(Line::default());
+        }
+        for line in &wrapped {
+            write_line(out, line, frame, first, options)?;
+            first = false;
+        }
+    }
+    if first {
+        write_line(out, &Line::default(), frame, true, options)?;
     }
     Ok(())
 }
@@ -294,7 +388,7 @@ fn span(out: &mut impl Write, value: &str, style: Style, options: &Options) -> i
     text::write_span(out, value, style, options.styled, options.theme())
 }
 
-fn write_line(
+pub(super) fn write_line(
     out: &mut impl Write,
     line: &Line,
     frame: &Frame,
@@ -392,4 +486,35 @@ fn write_line(
         writeln!(out)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exhausted_image_budget_keeps_source_without_initializing_math() {
+        let mut engine = None;
+        let mut warnings = Vec::new();
+        let mut budget = 0;
+        let options = Options {
+            kitty: Some(Default::default()),
+            ..Default::default()
+        };
+        let parts = prepare_parts(
+            [Run {
+                text: "$x$".into(),
+                math: Some("x".into()),
+                style: Style::default(),
+                source: None,
+            }],
+            10,
+            &mut engine,
+            &options,
+            &mut warnings,
+            Some(&mut budget),
+        );
+        assert!(engine.is_none() && warnings.is_empty());
+        assert!(matches!(&parts[..], [Part::Text { text, .. }] if text == "$x$"));
+    }
 }

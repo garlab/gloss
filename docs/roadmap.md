@@ -12,8 +12,9 @@ the fixed comparison data and reproduction tools.
 1. Syntax highlighting is implemented for the initial language set, with retained
    fence languages, lazy queries, bounded work, and complete plain-code fallback.
    Evaluate additional grammars against binary size, startup, and query cost.
-2. Add table cell structure, width/alignment calculation, and wrapping with a
-   readable fallback in narrow windows.
+2. Table cells, alignment, wrapping, inline math, and numbered-cell fallbacks are
+   implemented with bounded measurement and temporary row storage. See
+   [table rendering](tables.md) for the limits and measurements.
 3. Add bounded local PNG/JPEG/SVG images through shared image placement and
    transport. Keep alt text and references when graphics are unavailable.
 4. Add optional Mermaid rendering through that image path. Select a backend

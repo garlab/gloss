@@ -4,6 +4,7 @@
 mod code;
 mod inline;
 pub mod kitty;
+mod table;
 pub mod text;
 mod theme;
 mod viewport;
@@ -90,20 +91,21 @@ pub fn write(
         match block {
             Block::Text(runs) => {
                 if formatted {
-                    let code_quote = |block: Option<&Block>| match block {
+                    let block_quote = |block: Option<&Block>| match block {
                         Some(Block::Code { runs, .. }) => runs
                             .iter()
                             .find(|run| run.style.role == Role::CodeBlock)
                             .map_or(0, |run| run.style.quote_depth),
+                        Some(Block::Table(table)) => table.style.quote_depth,
                         _ => 0,
                     };
                     let edges = (
-                        code_quote(
+                        block_quote(
                             index
                                 .checked_sub(1)
                                 .and_then(|previous| layout.blocks.get(previous)),
                         ),
-                        code_quote(layout.blocks.get(index + 1)),
+                        block_quote(layout.blocks.get(index + 1)),
                     );
                     inline::write(out, runs, &mut engine, options, &mut warnings, edges)?;
                 } else {
@@ -127,6 +129,13 @@ pub fn write(
                     )?;
                 } else {
                     text::write_runs(out, runs, false)?;
+                }
+            }
+            Block::Table(table) => {
+                if formatted {
+                    table::write(out, table, &mut engine, options, &mut warnings)?;
+                } else {
+                    table::write_plain(out, table)?;
                 }
             }
             Block::DisplayMath { tex, source, style } => {

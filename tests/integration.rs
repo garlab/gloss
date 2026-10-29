@@ -194,6 +194,162 @@ fn repeated_event_iteration_preserves_normalized_math_and_source_ranges() {
 }
 
 #[test]
+fn table_cells_retain_alignment_inline_styles_and_source_spans() {
+    use pulldown_cmark::Alignment;
+    let source = "| Left | Center | Right |\r\n| :--- | :---: | ---: |\r\n| **bold** &amp; a\\|b | `code` | $x^2$ |\r\n| short |\r\n";
+    let document = Document::parse(source.into());
+    let flow = layout::layout(&document);
+    let table = flow
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            layout::Block::Table(table) => Some(table),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(
+        table.alignments,
+        [Alignment::Left, Alignment::Center, Alignment::Right]
+    );
+    assert_eq!(table.rows.len(), 3);
+    assert!(table.rows[0].header && !table.rows[1].header);
+    assert_eq!(table.rows[2].cells.len(), 3);
+    assert!(table.rows[2].cells[1].runs.is_empty());
+    let first = &table.rows[1].cells[0];
+    assert_eq!(
+        first
+            .runs
+            .iter()
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
+        "bold & a|b"
+    );
+    assert!(first.runs[0].style.bold);
+    assert!(
+        document
+            .source_slice(first.source.clone())
+            .unwrap()
+            .contains("**bold**")
+    );
+    assert!(table.rows[1].cells[1].runs[0].style.code);
+    assert_eq!(table.rows[1].cells[2].runs[0].math.as_deref(), Some("x^2"));
+    assert!(
+        document
+            .source_slice(table.source.clone())
+            .unwrap()
+            .contains("| short |")
+    );
+    assert_eq!(export::source(&document), source);
+}
+
+fn terminal_table(source: &str, width: u16) -> String {
+    let document = Document::parse(source.into());
+    let options = render::Options {
+        terminal: Some(Geometry::default()),
+        width,
+        margin: 0,
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    assert!(
+        render::write(&mut output, &document, &layout::layout(&document), &options)
+            .unwrap()
+            .is_empty()
+    );
+    String::from_utf8(output).unwrap()
+}
+
+#[test]
+fn tables_align_and_wrap_without_splitting_unicode_graphemes() {
+    use unicode_width::UnicodeWidthStr;
+    let source = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |\n| wideleft | end | 42 |\n";
+    let output = terminal_table(source, 40);
+    assert!(output.contains("a        │   b    │     c"), "{output}");
+    assert!(output.contains("wideleft │  end   │    42"), "{output}");
+    let unicode = "| Name | Text |\n| --- | --- |\n| 中文 | e\u{301}👩‍💻界e\u{301}👩‍💻界 |\n";
+    let output = terminal_table(unicode, 12);
+    assert!(
+        output
+            .lines()
+            .all(|line| UnicodeWidthStr::width(line) <= 12),
+        "{output}"
+    );
+    assert_eq!(output.matches("👩‍💻").count(), 2);
+    assert_eq!(output.matches("e\u{301}").count(), 2);
+    assert_eq!(output.matches('界').count(), 2);
+}
+
+#[test]
+fn table_fallbacks_keep_every_cell_and_rows_after_measurement_limits() {
+    let source = "| Alpha | Beta | Gamma |\n| --- | --- | --- |\n| first | second | third |\n";
+    let output = terminal_table(source, 14);
+    assert!(
+        output.contains("1: first") && output.contains("2: second") && output.contains("3: third"),
+        "{output}"
+    );
+    assert!(!output.contains('┼'));
+    let source = format!(
+        "| H |\n| --- |\n{}| LATE_SENTINEL |\n",
+        "| early |\n".repeat(100)
+    );
+    let output = terminal_table(&source, 20);
+    let joined: String = output.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(joined.contains("LATE_SENTINEL"));
+    let long = "x".repeat(70 * 1024);
+    let output = terminal_table(&format!("| H |\n| --- |\n| {long} |\n| AFTER |\n"), 40);
+    assert_eq!(output.matches('x').count(), long.len());
+    assert!(output.contains("AFTER"));
+    let labels: Vec<_> = (0..17).map(|index| format!("cell_{index}_end")).collect();
+    let source = format!(
+        "| {} |\n| {} |\n| {} |\n",
+        labels.join(" | "),
+        ["---"; 17].join(" | "),
+        labels.join(" | ")
+    );
+    let output = terminal_table(&source, 80);
+    assert!(!output.contains('┼'));
+    for label in labels {
+        assert_eq!(output.matches(&label).count(), 2);
+    }
+}
+
+#[test]
+fn table_plain_export_preserves_existing_separators_and_ignores_viewport() {
+    for prefix in ["", "> ", "- "] {
+        let source = format!(
+            "{prefix}| Name | Value |\n{}| --- | ---: |\n{}| one | $x$ |\n",
+            if prefix == "- " { "  " } else { prefix },
+            if prefix == "- " { "  " } else { prefix }
+        );
+        let expected = format!(
+            "{}Name | Value | \none | $x$ | \n\n",
+            if prefix.is_empty() {
+                String::new()
+            } else {
+                format!("{prefix}\n\n")
+            }
+        );
+        let document = Document::parse(source.clone());
+        assert_eq!(export::text(&document), expected);
+        let mut output = Vec::new();
+        render::write(
+            &mut output,
+            &document,
+            &layout::layout(&document),
+            &Default::default(),
+        )
+        .unwrap();
+        assert_eq!(output, expected.as_bytes());
+        let plain = cli(
+            &["--width", "8", "--light", "--output", "text", "-"],
+            &source,
+        );
+        assert!(plain.status.success());
+        assert_eq!(plain.stdout, expected.as_bytes());
+    }
+}
+
+#[test]
 fn filtering_preserves_unicode_and_whitespace_but_removes_c0_and_c1_controls() {
     let input = "café\0\u{1b}\u{7}\u{85}\u{9b}\n\t中文 👩‍💻";
     assert_eq!(render::text::sanitize(input), "café\n\t中文 👩‍💻");

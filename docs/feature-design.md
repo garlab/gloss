@@ -67,6 +67,10 @@ parsing.
 
 ## Tables
 
+The initial implementation is in `src/layout/table.rs` and `src/render/table.rs`.
+[Table rendering](tables.md) records the width, row, and raster limits,
+numbered-cell fallback, export compatibility, and measurements.
+
 Retain rows, cells, and alignment markers instead of flattening them into text.
 Measure terminal-cell widths using the existing Unicode and inline-math rules.
 Choose columns within the reading width and wrap cell contents without splitting

@@ -28,6 +28,7 @@ mdviewer tests/fixtures/math.md
 mdviewer --show-math-source tests/fixtures/inline.md
 mdviewer tests/fixtures/style.md
 mdviewer tests/fixtures/code.md
+mdviewer tests/fixtures/tables.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
@@ -48,6 +49,13 @@ Use `--no-highlight` to keep the rest of the theme while disabling syntax colors
 Unknown languages and indented code retain the normal code panel. Highlighting
 has bounded work: oversized or expensive blocks fall back to uncolored code
 without losing content. No grammar downloads or helper processes are needed.
+
+Tables retain left, center, and right alignment and wrap cells within the reading
+column. Headers use accent colors; inline styles and equations remain supported.
+Narrow windows or excessive column counts use numbered cells, with blank lines
+between rows. Oversized rows use the same fallback, preserving all content and
+selectable source TeX. Width estimation and temporary row storage have explicit
+limits; see [table rendering](docs/tables.md).
 
 The reading column is at most 80 cells wide, with two-column horizontal margins.
 Text and equations share that column in both graphics and TeX modes. The width
@@ -107,7 +115,7 @@ change the clipboard itself.
 ## Markdown and math
 
 - Headings, emphasis, lists, quotes, code, links, task lists, strikethrough,
-  footnotes, and basic tables.
+  footnotes, and aligned, wrapped tables.
 - `$...$` inline math, `$$...$$` display math, and fenced `math` blocks.
 - Equation tags and automatic numbering, with tags placed after the formula.
 - Unicode-aware terminal wrapping, preserving graphemes and keeping
@@ -118,8 +126,8 @@ change the clipboard itself.
 Math support follows the KaTeX subset implemented by `katex-native`.
 Backslash-parenthesis and backslash-bracket math delimiters are not recognized.
 
-Complex combinations of nested blocks still need layout improvements. Tables are
-not column-aligned. Embedded languages inside code strings or HTML are not
+Complex combinations of nested blocks still need layout improvements.
+Embedded languages inside code strings or HTML are not
 highlighted separately; unsupported fences remain uncolored.
 Markdown images are shown as text references and are not fetched. HTML is not
 executed.
@@ -149,6 +157,7 @@ The [syntax highlighting measurements](docs/syntax-highlighting.md) record its
 implementation limits, dependency costs, and comparison with that baseline.
 The [rendering optimizations](docs/performance-optimizations.md) record subsequent
 reductions in time, memory, output volume, and executable size.
+The [table implementation](docs/tables.md) records its limits and measured cost.
 Crate publication is disabled while `katex-native` uses a local path dependency.
 
 ## License

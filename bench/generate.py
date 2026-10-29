@@ -141,6 +141,36 @@ code_cases = {
 for name, content in code_cases.items():
     (CORPORA / name).write_text(content, encoding="utf-8")
     metadata[name] = {"description": "Syntax highlighting feature/control input."}
+
+def table_corpus(name, target):
+    size, rows = 0, 0
+    with (CORPORA / name).open("w", encoding="utf-8", newline="\n") as output:
+        output.write("| Component | Value | Description |\n| :--- | ---: | :---: |\n")
+        while size < target:
+            row = f"| item-{rows} | {rows} | Text with **emphasis**, `code`, café, 中文, and 👩‍💻 to wrap. |\n"
+            output.write(row)
+            size += len(row.encode())
+            rows += 1
+    return {"rows": rows, "description": "A single large table; width sampling must remain bounded."}
+
+for name, size in [("tables-1m.md", 1024 * 1024), ("tables-10m.md", 10 * 1024 * 1024)]:
+    metadata[name] = table_corpus(name, size)
+table_cases = {
+    "tables-wide.md": "| " + " | ".join(f"Column {i}" for i in range(128)) + " |\n"
+        + "| " + " | ".join(["---"] * 128) + " |\n"
+        + ("| " + " | ".join(f"value-{i}" for i in range(128)) + " |\n") * 16,
+    "tables-over-limit.md": "| A | B | C | D | E |\n| --- | --- | --- | --- | --- |\n"
+        + "| " + " | ".join(["x" * (60 * 1024)] * 5) + " |\n"
+        + "| " + "y" * (70 * 1024) + " | a | b | c | d |\n| AFTER | 1 | 2 | 3 | 4 |\n",
+    "tables-math-100.md": "| Fraction | Root |\n| :---: | ---: |\n" + "".join(
+        rf"| $\frac{{a_{{{i}}}}}{{b}}$ | $\sqrt{{x_{{{i}}}}}$ |" + "\n" for i in range(50)
+    ),
+}
+for name, content in table_cases.items():
+    (CORPORA / name).write_text(content, encoding="utf-8")
+    metadata[name] = {"description": "Table layout feature/control input."}
+metadata["tables-math-100.md"]["equations"] = 100
+
 for name, info in metadata.items():
     data = (CORPORA / name).read_bytes()
     info.update(bytes=len(data), lines=data.count(b"\n"), sha256=hashlib.sha256(data).hexdigest())

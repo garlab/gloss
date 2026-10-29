@@ -1,7 +1,8 @@
 """Benchmark fresh CLI processes against external Markdown corpora on Unix.
 
-Terminal cases use a 100x40 pseudo-terminal (10x20-pixel cells), drained without
-screen painting. Times include startup, parsing, layout, encoding, and PTY I/O,
+Terminal cases use a 100x40 pseudo-terminal (14x40 for terminal-narrow), with
+10x20-pixel cells, drained without screen painting. Times include startup,
+parsing, layout, encoding, and PTY I/O,
 but exclude a real emulator's image decoding, GPU work, and scrollback storage.
 Defaults: one warm-up, three measured processes per case, warm filesystem caches.
 """
@@ -26,7 +27,7 @@ import termios
 import time
 
 RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
-             "mdviewer/terminal-math", "mdviewer/plain-pipe"]
+             "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow"]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--work-dir", type=Path, required=True)
 parser.add_argument("--binary", type=Path, required=True)
@@ -62,6 +63,7 @@ def command(renderer, name):
         return ["glow", "--config", str(ROOT / "glow.yml"), "-s", "dark", "-w", "84", file]
     flags = {
         "mdviewer/terminal-tex": ["--math", "tex"],
+        "mdviewer/terminal-narrow": ["--math", "tex"],
         "mdviewer/terminal-math": ["--math", "kitty"],
         "mdviewer/plain-pipe": ["--output", "text"],
     }[renderer]
@@ -82,7 +84,8 @@ def run(renderer, name):
     try:
         if tty:
             master, slave = pty.openpty()
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 100, 1000, 800))
+            columns = 14 if renderer == "mdviewer/terminal-narrow" else 100
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, columns, columns * 10, 800))
         start = time.perf_counter()
         process = subprocess.Popen(
             command(renderer, name), stdin=subprocess.DEVNULL,
@@ -195,6 +198,15 @@ for name in ["prose-1m.md", "prose-10m.md", "code-languages.md", "code-multiline
              "code-over-limit.md", "code-captures.md"]:
     if name in CORPORA:
         cases.append(("mdviewer/terminal-tex", name))
+for name in ["tables-1m.md", "tables-10m.md", "tables-wide.md", "tables-over-limit.md", "tables-math-100.md"]:
+    if name in CORPORA:
+        cases.append(("mdviewer/terminal-tex", name))
+        if name in ("tables-1m.md", "tables-10m.md"):
+            cases.append(("mdviewer/plain-pipe", name))
+        if name == "tables-1m.md":
+            cases.append(("mdviewer/terminal-narrow", name))
+        if name == "tables-math-100.md":
+            cases.append(("mdviewer/terminal-math", name))
 cases = [(renderer, name) for renderer, name in cases
          if (not args.renderer or renderer in args.renderer)
          and (not args.corpus or any(fnmatch.fnmatchcase(name, pattern) for pattern in args.corpus))]
@@ -222,6 +234,7 @@ results = {
                else f"{platform.system()} {platform.release()}"),
         "rustc": read_command(["rustc", "--version"]),
         "terminal_columns": 100, "terminal_rows": 40, "cell_pixels": [10, 20],
+        "narrow_terminal_columns": 14,
         "content_width": 80, "horizontal_margin": 2,
         "timeout_seconds": args.timeout,
         "warmups": args.warmups, "samples": args.samples,

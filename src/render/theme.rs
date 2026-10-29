@@ -25,7 +25,10 @@ impl Theme {
                 Some(panel),
             ),
             Role::ListMarker => (if self.light { 29 } else { 114 }, None),
-            Role::QuoteMarker | Role::Rule => (if self.light { 245 } else { 240 }, None),
+            Role::QuoteMarker | Role::Rule | Role::TableBorder => {
+                (if self.light { 245 } else { 240 }, None)
+            }
+            Role::TableHeader => (accent, None),
             Role::LinkTarget | Role::MathSource => (muted, None),
             Role::Body if style.quote_depth > 0 => (muted, None),
             Role::Body => (body, None),
