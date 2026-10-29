@@ -53,6 +53,7 @@ pub struct Run {
 pub enum Block {
     Text(Vec<Run>),
     Table(table::Table),
+    Image(Box<Image>),
     Code {
         language: Option<String>,
         runs: Vec<Run>,
@@ -66,21 +67,36 @@ pub enum Block {
 }
 
 #[derive(Debug)]
+pub struct Image {
+    pub target: String,
+    pub alt: String,
+    pub prefix: Vec<Run>,
+    pub style: Style,
+    pub source: Range<usize>,
+}
+
+#[derive(Debug)]
 pub struct Layout {
     pub blocks: Vec<Block>,
 }
 
 pub fn layout(document: &Document) -> Layout {
-    build_layout(document, true)
+    build_layout(document, true, false)
+}
+
+/// Retain image blocks only when the caller can display them. Table images keep
+/// their text references until inline image layout within cells is supported.
+pub fn with_images(document: &Document) -> Layout {
+    build_layout(document, true, true)
 }
 
 /// Plain export does not need independently owned code/table metadata or
 /// per-block vectors. Keep its allocation behavior independent of decoration.
 pub(crate) fn plain_layout(document: &Document) -> Layout {
-    build_layout(document, false)
+    build_layout(document, false, false)
 }
 
-fn build_layout(document: &Document, semantic_blocks: bool) -> Layout {
+fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Layout {
     let mut flow = Flow::default();
     let mut style = Style::default();
     let mut styles = Vec::new();
@@ -200,6 +216,57 @@ fn build_layout(document: &Document, semantic_blocks: bool) -> Layout {
                         Tag::Strong => style.bold = true,
                         _ => style.strike = true,
                     }
+                }
+                Tag::Image { dest_url, .. } if images && table.is_none() => {
+                    let prefix_start = if flow.prefix_pending {
+                        flow.runs
+                            .iter()
+                            .rposition(|run| {
+                                !matches!(run.style.role, Role::ListMarker | Role::QuoteMarker)
+                            })
+                            .map_or(0, |index| index + 1)
+                    } else {
+                        flow.runs.len()
+                    };
+                    let prefix = flow.runs.split_off(prefix_start);
+                    flow.flush();
+                    let mut alt = String::new();
+                    let mut end = item.source.end;
+                    let mut depth = 1;
+                    for part in events.by_ref() {
+                        end = part.source.end;
+                        match &part.event {
+                            Event::Start(Tag::Image { .. }) => depth += 1,
+                            Event::End(TagEnd::Image) => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            Event::Text(text)
+                            | Event::Code(text)
+                            | Event::Html(text)
+                            | Event::InlineHtml(text) => alt.push_str(text),
+                            Event::InlineMath(_) | Event::DisplayMath(_) => alt.push_str(
+                                document
+                                    .source_slice(part.source.clone())
+                                    .unwrap_or_default(),
+                            ),
+                            Event::SoftBreak | Event::HardBreak => alt.push(' '),
+                            Event::FootnoteReference(label) => alt.push_str(&format!("[^{label}]")),
+                            _ => {}
+                        }
+                    }
+                    flow.blocks.push(Block::Image(Box::new(Image {
+                        target: dest_url.to_string(),
+                        alt,
+                        prefix,
+                        style,
+                        source: item.source.start..end,
+                    })));
+                    flow.prefix_pending = false;
+                    flow.trailing_newlines = 1;
+                    flow.breaks(2);
                 }
                 Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. } => {
                     styles.push(style);

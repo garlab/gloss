@@ -15,8 +15,10 @@ the fixed comparison data and reproduction tools.
 2. Table cells, alignment, wrapping, inline math, and numbered-cell fallbacks are
    implemented with bounded measurement and temporary row storage. See
    [table rendering](tables.md) for the limits and measurements.
-3. Add bounded local PNG/JPEG/SVG images through shared image placement and
-   transport. Keep alt text and references when graphics are unavailable.
+3. Local PNG/JPEG/SVG images are implemented through shared raster placement and
+   transport, with selectable captions, bounded decoding/cache/output, and text
+   fallback. See [local images](images.md) for the SVG subset and measurements.
+   Broader SVG/font support and images inside tables remain follow-up work.
 4. Add optional Mermaid rendering through that image path. Select a backend
    after measuring startup, process memory, cache behavior, and compatibility.
 

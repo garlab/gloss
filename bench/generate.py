@@ -4,6 +4,9 @@ from pathlib import Path
 import argparse
 import hashlib
 import json
+import shutil
+import struct
+import zlib
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--work-dir", type=Path, required=True)
@@ -170,6 +173,51 @@ for name, content in table_cases.items():
     (CORPORA / name).write_text(content, encoding="utf-8")
     metadata[name] = {"description": "Table layout feature/control input."}
 metadata["tables-math-100.md"]["equations"] = 100
+
+# Small reproducible assets and documents; generated data stays in WORK_DIR.
+assets = CORPORA / "assets"
+assets.mkdir(exist_ok=True)
+for fixture in (PROJECT / "tests/fixtures/assets").iterdir():
+    shutil.copyfile(fixture, assets / fixture.name)
+
+def png(name, width, height):
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    row = b"\0" + bytes((65, 145, 195, 255)) * width
+    data = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+    data += chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b"")
+    (assets / name).write_bytes(data)
+
+png("large.png", 2000, 2000)
+png("budget.png", 400, 200)
+(assets / "invalid.png").write_bytes(b"not a PNG")
+(assets / "filtered.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><filter id="f"/></svg>\n')
+(assets / "oversized.svg").write_text(" " * (256 * 1024 + 1))
+for i in range(32):
+    (assets / f"vector-{i}.svg").write_text(
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60">'
+        f'<rect width="120" height="60" fill="rgb({i * 8},145,195)"/></svg>\n')
+
+image_cases = {
+    "images-png.md": ("![PNG](assets/color-grid.png)\n", 1),
+    "images-jpeg.md": ("![JPEG](assets/gradient.jpg)\n", 1),
+    "images-svg.md": ("![Geometry](assets/vector-0.svg)\n", 1),
+    "images-svg-text.md": ("![Labels](assets/diagram.svg)\n", 1),
+    "images-repeated-100.md": ("![Cached](assets/color-grid.png)\n\n" * 100, 100),
+    "images-unique-32.md": ("".join(f"![Vector {i}](assets/vector-{i}.svg)\n\n" for i in range(32)), 32),
+    "images-large.md": ("![Four million pixels](assets/large.png)\n", 1),
+    "images-invalid.md": (("![Invalid](assets/invalid.png)\n\n![Filter](assets/filtered.svg)\n\n"
+        "![Oversized](assets/oversized.svg)\n\n![Remote](https://example.com/image.png)\n\n"
+        "![Missing](assets/missing.png)\n\n") * 10 + "![Valid](assets/color-grid.png)\n", 1),
+    # 400*200*4 cell-padded bytes per image, capped at 64 MiB per invocation.
+    "images-budget-1000.md": ("![Bounded](assets/budget.png)\n\n" * 1000, 209),
+}
+asset_hashes = {"assets/" + path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in sorted(assets.iterdir()) if path.is_file()}
+for name, (content, images) in image_cases.items():
+    (CORPORA / name).write_text(content, encoding="utf-8")
+    metadata[name] = {"images": images, "assets": asset_hashes,
+                      "description": "Local image decoding, caching, fitting, or budget control."}
 
 for name, info in metadata.items():
     data = (CORPORA / name).read_bytes()

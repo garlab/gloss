@@ -11,6 +11,13 @@ row share the inline math baseline and reserve enough terminal rows. Quote rails
 and list indentation continue through the table. `--show-math-source` prints
 selectable TeX after the physical row containing each rendered equation.
 
+Vertical separators and quote rails span every reserved row above and below the
+text baseline. This fixes gaps beside tall fractions and roots. List bullets are
+printed once. Pseudo-terminal checks cover border continuity with color disabled,
+neighboring cells, and a short viewport. The measurements below describe the
+original table implementation; [local images](images.md) records subsequent
+measurements including this border correction and shared raster placement.
+
 `NO_COLOR` removes styling while retaining table structure and the selected math
 mode. An unsupported terminal or `--math tex` retains source TeX in cells. Raw
 HTML remains text; HTML table layout, merged cells, and HTML line-break handling

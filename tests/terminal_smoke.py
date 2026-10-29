@@ -26,7 +26,7 @@ GRAPHICS = re.compile(rb"\x1b_G(.*?)\x1b\\", re.DOTALL)
 CSI = re.compile(rb"\x1b\[([0-9;]*)([A-Za-z])")
 
 
-def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None):
+def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None, file=None, cwd=None):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, columns * 10, rows * 20))
     env = dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty")
@@ -34,12 +34,13 @@ def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None):
         env.pop(name, None)
     env.update(variables or {})
     process = subprocess.Popen(
-        [str(BINARY), *args, "-"], stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE, env=env
+        [str(BINARY), *args, str(file) if file else "-"], stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE, env=env, cwd=cwd
     )
     os.close(slave)
     output = bytearray()
     try:
-        process.stdin.write(source.encode())
+        if file is None:
+            process.stdin.write(source.encode())
         process.stdin.close()
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
@@ -104,7 +105,7 @@ def attributes_at(output, needle=None):
     return state
 
 
-def screen(output, columns):
+def screen(output, columns, return_cells=False):
     """Interpret the emitted ASCII test text and cursor/graphics subset.
 
     Rows are absolute scrollback rows. This checks that all image rectangles fit
@@ -112,6 +113,7 @@ def screen(output, columns):
     """
     row = column = offset = 0
     text_cells = []
+    glyphs = {}
     images = []
     header = None
     payload = bytearray()
@@ -168,16 +170,18 @@ def screen(output, columns):
                 offset += 2
             else:
                 assert 32 <= byte < 127, "unexpected control character"
+                character = chr(byte)
             assert column < columns, "text unexpectedly relied on terminal autowrap"
             if byte != 32:
                 text_cells.append((column, row))
+                glyphs[column, row] = character
             column += 1
         offset += 1
     assert header is None
     for x, y in text_cells:
         for left, top, width, height in images:
             assert not (left <= x < left + width and top <= y < top + height), "text overlaps equation"
-    return images
+    return (images, glyphs) if return_cells else images
 
 
 class TerminalSmoke(unittest.TestCase):
@@ -233,6 +237,26 @@ class TerminalSmoke(unittest.TestCase):
         self.assertIn(r"$\sqrt{x}$", plain(output))
         self.assertEqual(len(screen(output, 80)), 2)
 
+    def test_table_borders_span_every_reserved_equation_row(self):
+        body = "| Left | Right |\n| --- | --- |\n| $\\displaystyle\\frac{a+b}{c}$ | $\\sqrt{x}$ |\n"
+        for prefix in ("", "> "):
+            for no_color in (False, True):
+                with self.subTest(prefix=prefix, no_color=no_color):
+                    source = "Above.\n\n" + "\n".join(prefix + line for line in body.splitlines()) + "\n\nBelow.\n"
+                    output, error = terminal(source, rows=8, variables={"NO_COLOR": "1"} if no_color else {})
+                    self.assertFalse(error)
+                    images, cells = screen(output, 80, return_cells=True)
+                    self.assertEqual(len(images), 2)
+                    top = min(image[1] for image in images)
+                    bottom = max(image[1] + image[3] for image in images)
+                    self.assertGreater(bottom - top, 1)
+                    columns = {column for (column, row), char in cells.items() if char == "│" and top <= row < bottom}
+                    self.assertEqual(len(columns), 2 if prefix else 1)
+                    for column in columns:
+                        for row in range(top, bottom):
+                            self.assertEqual(cells.get((column, row)), "│", (column, row))
+                    self.assertIn("Below.", plain(output))
+
     def test_table_fallbacks_keep_source_and_do_not_block_later_graphics(self):
         source = "| First | Second | Third |\n| --- | --- | --- |\n| $x$ | beta | gamma |\n"
         narrow, error = terminal(source, columns=14)
@@ -263,6 +287,69 @@ class TerminalSmoke(unittest.TestCase):
         self.assertEqual(value.count("•"), 1)
         self.assertIn("│ After", value)
         screen(output, 80)
+
+    def test_local_images_resolve_against_the_document_and_preserve_captions(self):
+        fixture = Path(__file__).resolve().parent / "fixtures/images.md"
+        output, error = terminal(file=fixture, cwd="/", args=("--show-math-source",))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 6)
+        self.assertIn("[image: A blue color grid]", plain(output))
+        self.assertIn("assets/gradient.jpg", plain(output))
+        self.assertIn("Remote example", plain(output))
+        self.assertNotIn("TeX:", plain(output))
+        self.assertEqual(plain(output).count("•"), 1)
+
+    def test_image_modes_are_independent_of_math_and_respect_terminal_fallbacks(self):
+        base = Path(__file__).resolve().parent / "fixtures"
+        source = "Before.\n\n![Blue](assets/color-grid.png)\n\nAfter $x$.\n"
+        arguments = ("--base-dir", str(base))
+        output, error = terminal(source, args=(*arguments, "--math", "tex"))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+        self.assertIn("$x$", plain(output))
+        output, error = terminal(source, args=(*arguments, "--images", "off"))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+        self.assertNotIn("$x$", plain(output))
+        for variables in ({"TERM_PROGRAM": "", "TERM": "xterm-256color"}, {"TMUX": "test"}, {"TERM": "dumb"}):
+            output, error = terminal(source, args=arguments, variables=variables)
+            self.assertFalse(error)
+            self.assertFalse(GRAPHICS.search(output))
+            self.assertIn("[image: Blue] (assets/color-grid.png)", plain(output))
+        output, error = terminal(source, args=(*arguments, "--images", "kitty"), variables={"TERM_PROGRAM": "", "TERM": "xterm-256color"})
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+
+    def test_image_fitting_quote_rails_and_stdin_base_directory(self):
+        base = Path(__file__).resolve().parent / "fixtures"
+        source = "> ![Diagram](assets/diagram.svg)\n\nAfter.\n"
+        for columns, rows in ((22, 8), (80, 24)):
+            output, error = terminal(source, cwd=base, columns=columns, rows=rows, variables={"NO_COLOR": "1"})
+            self.assertFalse(error)
+            images, cells = screen(output, columns, return_cells=True)
+            self.assertEqual(len(images), 1)
+            left, top, width, height = images[0]
+            self.assertLessEqual(height, rows - 1)
+            rails = {x for (x, y), char in cells.items() if char == "│" and top <= y < top + height}
+            self.assertEqual(len(rails), 1)
+            for x in rails:
+                self.assertLess(x, left)
+                for y in range(top, top + height):
+                    self.assertEqual(cells.get((x, y)), "│")
+            self.assertIn("After.", plain(output))
+
+    def test_missing_unsupported_and_table_images_keep_their_references(self):
+        base = Path(__file__).resolve().parent / "fixtures"
+        source = "![Missing](missing.png)\n\n![Remote](https://example.com/image.png)\n\n| Icon |\n| --- |\n| ![Cell](assets/color-grid.png) |\n\n![Good](assets/color-grid.png)\n\nAfter.\n"
+        output, error = terminal(source, args=("--base-dir", str(base)))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 80)), 1)
+        for label in ("Missing", "Remote", "Cell", "Good", "After."):
+            self.assertIn(label, plain(output))
+        control = "![a\x1b[2J](missing.png)\n"
+        output, error = terminal(control)
+        self.assertFalse(error)
+        self.assertNotIn(b"\x1b[2J", output)
 
     def test_unknown_terminal_keeps_tex(self):
         output, error = terminal(variables={"TERM": "xterm-256color", "TERM_PROGRAM": ""})

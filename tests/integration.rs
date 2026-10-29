@@ -350,6 +350,56 @@ fn table_plain_export_preserves_existing_separators_and_ignores_viewport() {
 }
 
 #[test]
+fn image_blocks_keep_alt_text_source_ranges_and_independent_exports() {
+    let source = "Before ![**Blue** &amp; `green`](assets/picture.png) after.\r\n\r\n| Icon |\r\n| --- |\r\n| ![cell](assets/picture.png) |\r\n";
+    let document = Document::parse(source.into());
+    let flow = layout::with_images(&document);
+    let images: Vec<_> = flow
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            layout::Block::Image(image) => Some(image),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].alt, "Blue & green");
+    assert_eq!(images[0].target, "assets/picture.png");
+    assert_eq!(
+        document.source_slice(images[0].source.clone()).unwrap(),
+        "![**Blue** &amp; `green`](assets/picture.png)"
+    );
+    assert!(
+        layout::layout(&document)
+            .blocks
+            .iter()
+            .all(|block| !matches!(block, layout::Block::Image(_)))
+    );
+    let plain = cli(
+        &[
+            "--images",
+            "kitty",
+            "--base-dir",
+            "missing",
+            "--output",
+            "text",
+            "-",
+        ],
+        source,
+    );
+    assert!(plain.status.success() && plain.stderr.is_empty());
+    assert_eq!(plain.stdout, export::text(&document).as_bytes());
+    assert!(
+        String::from_utf8(plain.stdout)
+            .unwrap()
+            .contains("Before [image: Blue & green] (assets/picture.png) after.")
+    );
+    let exact = cli(&["--images", "kitty", "--output", "source", "-"], source);
+    assert!(exact.status.success());
+    assert_eq!(exact.stdout, source.as_bytes());
+}
+
+#[test]
 fn filtering_preserves_unicode_and_whitespace_but_removes_c0_and_c1_controls() {
     let input = "café\0\u{1b}\u{7}\u{85}\u{9b}\n\t中文 👩‍💻";
     assert_eq!(render::text::sanitize(input), "café\n\t中文 👩‍💻");

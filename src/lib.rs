@@ -5,7 +5,9 @@
 pub mod document;
 pub mod export;
 pub mod highlight;
+pub mod images;
 pub mod layout;
 pub mod math;
+pub mod raster;
 pub mod render;
 pub mod terminal;

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{math::Raster, terminal::Geometry};
+use crate::{raster::Raster, terminal::Geometry};
 
 use super::Style;
 
@@ -16,9 +16,10 @@ pub enum Part {
         text: String,
         style: Style,
     },
-    Math {
+    Image {
         image: Arc<Raster>,
-        source: String,
+        baseline: f64,
+        source: Option<String>,
         columns: usize,
     },
 }
@@ -27,7 +28,7 @@ impl Part {
     pub fn columns(&self) -> usize {
         match self {
             Self::Text { text, .. } => UnicodeWidthStr::width(text.as_str()),
-            Self::Math { columns, .. } => *columns,
+            Self::Image { columns, .. } => *columns,
         }
     }
 }
@@ -46,10 +47,10 @@ pub struct Metrics {
 }
 
 impl Line {
-    pub fn has_math(&self) -> bool {
+    pub fn has_images(&self) -> bool {
         self.parts
             .iter()
-            .any(|part| matches!(part, Part::Math { .. }))
+            .any(|part| matches!(part, Part::Image { .. }))
     }
 
     /// Terminals report cell size, but not the font's baseline. The text baseline
@@ -62,7 +63,7 @@ impl Line {
             .parts
             .iter()
             .filter_map(|part| match part {
-                Part::Math { image, .. } => Some(image.baseline),
+                Part::Image { baseline, .. } => Some(*baseline),
                 _ => None,
             })
             .fold(ascent, f64::max);
@@ -72,9 +73,11 @@ impl Line {
             .parts
             .iter()
             .filter_map(|part| match part {
-                Part::Math { image, .. } => {
-                    Some((baseline - image.baseline).ceil() as u32 + image.height)
-                }
+                Part::Image {
+                    image,
+                    baseline: image_baseline,
+                    ..
+                } => Some((baseline - image_baseline).ceil() as u32 + image.height),
                 _ => None,
             })
             .fold((text_row + 1) * cell_height, u32::max);
@@ -127,8 +130,8 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
     };
     for part in &parts {
         match part {
-            Part::Math { columns, .. } => {
-                builder.word.push(Fragment::Math(part));
+            Part::Image { columns, .. } => {
+                builder.word.push(Fragment::Image(part));
                 builder.word_columns += columns;
             }
             Part::Text { text, style } => {
@@ -179,7 +182,7 @@ enum Fragment<'a> {
         style: Style,
         columns: usize,
     },
-    Math(&'a Part),
+    Image(&'a Part),
 }
 
 #[derive(Default)]
@@ -224,7 +227,7 @@ impl<'a> Wrapper<'a> {
                         self.split_text(text, style);
                     }
                 }
-                Fragment::Math(part) => {
+                Fragment::Image(part) => {
                     if self.current.columns > 0
                         && self.current.columns + part.columns() > self.width
                     {
@@ -284,20 +287,20 @@ mod tests {
             .iter()
             .map(|part| match part {
                 Part::Text { text, .. } => text.as_str(),
-                Part::Math { .. } => "[math]",
+                Part::Image { .. } => "[math]",
             })
             .collect()
     }
 
     fn math(columns: usize, height: u32, baseline: f64) -> Part {
-        Part::Math {
+        Part::Image {
             image: Arc::new(Raster {
                 width: columns as u32 * 10,
                 height,
-                baseline,
                 rgba: Vec::new(),
             }),
-            source: "$x$".into(),
+            baseline,
+            source: Some("$x$".into()),
             columns,
         }
     }
@@ -390,8 +393,11 @@ mod tests {
         assert!(metrics.text_row >= 2);
         assert!(metrics.rows > metrics.text_row + 1);
         for part in &lines[0].parts {
-            if let Part::Math { image, .. } = part {
-                let top = (metrics.baseline - image.baseline).ceil();
+            if let Part::Image {
+                image, baseline, ..
+            } = part
+            {
+                let top = (metrics.baseline - baseline).ceil();
                 assert!(top >= 0.);
                 assert!(top + f64::from(image.height) <= f64::from(metrics.rows * 20));
             }

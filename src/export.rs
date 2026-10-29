@@ -27,7 +27,9 @@ pub fn text(document: &Document) -> String {
                 }
                 output.push('\n');
             }
-            Block::Table(_) => unreachable!("plain layout keeps tables as text runs"),
+            Block::Table(_) | Block::Image(_) => {
+                unreachable!("plain layout keeps tables and images as text runs")
+            }
         }
     }
     output

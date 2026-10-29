@@ -7,7 +7,7 @@ use std::io::{self, Write};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::{math::Raster, terminal::Geometry};
+use crate::{raster::Raster, terminal::Geometry};
 
 pub fn write_display(
     out: &mut impl Write,
@@ -114,7 +114,6 @@ pub(crate) fn pad(raster: &Raster, width: u32, height: u32, x: u32, y: u32) -> i
     Ok(Raster {
         width,
         height,
-        baseline: raster.baseline + f64::from(y),
         rgba,
     })
 }

@@ -75,6 +75,7 @@ fn logical_lines(runs: &[Run]) -> impl Iterator<Item = LogicalLine> + '_ {
     })
 }
 
+#[derive(Clone)]
 pub(super) struct Frame {
     first: String,
     continuation: String,
@@ -108,6 +109,13 @@ impl Frame {
             },
             options,
         )
+    }
+
+    pub(super) fn continued(&self) -> Self {
+        Self {
+            first: self.continuation.clone(),
+            ..self.clone()
+        }
     }
 
     pub(super) fn width(&self) -> usize {
@@ -302,10 +310,11 @@ pub(super) fn prepare_parts(
             ) {
                 Ok(image) => {
                     *remaining = remaining.saturating_sub(image.rgba.len());
-                    parts.push(Part::Math {
+                    parts.push(Part::Image {
                         columns: image.width.div_ceil(cell_width) as usize,
-                        image: Arc::new(image),
-                        source: run.text,
+                        baseline: image.baseline,
+                        image: Arc::new(image.pixels),
+                        source: Some(run.text),
                     });
                     continue;
                 }
@@ -363,6 +372,45 @@ pub(super) fn write_cell(
     Ok(())
 }
 
+/// Use the same reserved rows, quote rails, padding, and transport as equations.
+pub(super) fn write_picture(
+    out: &mut impl Write,
+    image: Arc<crate::raster::Raster>,
+    frame: &Frame,
+    options: &Options,
+    loader: &mut crate::images::Loader,
+) -> io::Result<bool> {
+    let geometry = options.geometry();
+    let cell_width = u32::from(geometry.cell_width.max(1));
+    let cell_height = u32::from(geometry.cell_height.max(1));
+    let columns = image.width.div_ceil(cell_width) as usize;
+    let inset = frame.width.saturating_sub(columns) / 2;
+    let baseline = image.height as f64 - (cell_height as f64 - (cell_height as f64 * 0.78).floor());
+    let line = Line {
+        columns: inset + columns,
+        parts: vec![
+            Part::Text {
+                text: " ".repeat(inset),
+                style: frame.style,
+            },
+            Part::Image {
+                image,
+                baseline,
+                columns,
+                source: None,
+            },
+        ],
+    };
+    let rows = line.metrics(geometry).rows;
+    if !loader.reserve_output(
+        columns as u64 * u64::from(cell_width) * u64::from(rows) * u64::from(cell_height),
+    ) {
+        return Ok(false);
+    }
+    write_line(out, &line, frame, true, options)?;
+    Ok(true)
+}
+
 pub(super) fn write_text(
     out: &mut impl Write,
     value: &str,
@@ -410,7 +458,7 @@ pub(super) fn write_line(
     } else {
         prefix_columns + line.columns + frame.right
     };
-    if line.has_math() {
+    if line.has_images() {
         kitty::reserve(out, metrics.rows)?;
         // Paint a heading's background before transparent images are placed.
         if let Some(style) = frame.fill
@@ -428,6 +476,7 @@ pub(super) fn write_line(
             }
             write!(out, "\r")?;
         }
+        paint_vertical_borders(out, line, prefix, frame.prefix_style, metrics, options)?;
         if metrics.text_row > 0 {
             write!(out, "\x1b[{}B", metrics.text_row)?;
         }
@@ -438,10 +487,15 @@ pub(super) fn write_line(
     for part in &line.parts {
         match part {
             Part::Text { text: value, style } => painter.span(out, value, *style)?,
-            Part::Math { image, columns, .. } => {
+            Part::Image {
+                image,
+                columns,
+                baseline,
+                ..
+            } => {
                 painter.finish(out)?;
                 let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
-                let y = (metrics.baseline - image.baseline).ceil().max(0.) as u32;
+                let y = (metrics.baseline - baseline).ceil().max(0.) as u32;
                 let image = kitty::pad(image, width, height, 0, y)?;
                 if metrics.text_row > 0 {
                     write!(out, "\x1b[{}A", metrics.text_row)?;
@@ -459,17 +513,23 @@ pub(super) fn write_line(
         painter.spaces(out, remaining, style)?;
     }
     painter.finish(out)?;
-    if line.has_math() {
+    if line.has_images() {
         write!(out, "\x1b[{}B\r", metrics.rows - metrics.text_row)?;
         if options.show_math_source {
             let sources: Vec<_> = line
                 .parts
                 .iter()
                 .filter_map(|part| match part {
-                    Part::Math { source, .. } => Some(text::sanitize(source)),
+                    Part::Image {
+                        source: Some(source),
+                        ..
+                    } => Some(text::sanitize(source)),
                     _ => None,
                 })
                 .collect();
+            if sources.is_empty() {
+                return Ok(());
+            }
             write_text(
                 out,
                 &format!("TeX: {}\n", sources.join("  ")),
@@ -486,6 +546,61 @@ pub(super) fn write_line(
         writeln!(out)?;
     }
     Ok(())
+}
+
+/// Table separators and quote rails span the complete reserved image rectangle,
+/// including rows above and below the text baseline. Paint before the images.
+fn paint_vertical_borders(
+    out: &mut impl Write,
+    line: &Line,
+    prefix: &str,
+    prefix_style: Style,
+    metrics: lines::Metrics,
+    options: &Options,
+) -> io::Result<()> {
+    if metrics.rows <= 1 {
+        return Ok(());
+    }
+    let mut markers = Vec::new();
+    let mut column = options.viewport().left;
+    for character in prefix.chars() {
+        if character == '│' {
+            markers.push((column, prefix_style));
+        }
+        column += unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
+    }
+    for part in &line.parts {
+        if let Part::Text { text, style } = part
+            && style.role == Role::TableBorder
+        {
+            let mut offset = 0;
+            for character in text.chars() {
+                if character == '│' {
+                    markers.push((column + offset, *style));
+                }
+                offset += unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
+            }
+        }
+        column += part.columns();
+    }
+    if markers.is_empty() {
+        return Ok(());
+    }
+    for row in 0..metrics.rows {
+        if row != metrics.text_row {
+            for (column, style) in &markers {
+                write!(out, "\r")?;
+                if *column > 0 {
+                    write!(out, "\x1b[{column}C")?;
+                }
+                span(out, "│", *style, options)?;
+            }
+        }
+        if row + 1 < metrics.rows {
+            write!(out, "\x1b[1B")?;
+        }
+    }
+    write!(out, "\x1b[{}A\r", metrics.rows - 1)
 }
 
 #[cfg(test)]

@@ -86,9 +86,11 @@ its table representation with tests before changing current output.
 
 ## Shared images
 
-Introduce a terminal-independent raster value with dimensions and pixel data,
-then let the terminal renderer place it and select a transport. Math can share
-the placement/transport path while retaining its baseline and equation metadata.
+The initial implementation uses `src/raster.rs` for dimensions and straight RGBA
+pixels, `src/images.rs` for bounded local decoding, and the existing line painter
+and Kitty transport for placement. Math retains its baseline and equation
+metadata separately. [Local images](images.md) records the supported SVG subset,
+resource limits, cache behavior, and measurements.
 
 Start with local PNG, JPEG, and SVG references resolved relative to the Markdown
 file. Preserve alt text and source references when images cannot be displayed.
@@ -97,13 +99,14 @@ opt-in feature; rendering a document must not imply fetching every URL.
 
 Check encoded byte size and dimensions before decoding. Bound decoded pixels,
 intermediate allocations, SVG complexity/work, and cache bytes. Reject nested or
-external SVG resource loading. Initialize system fonts only when an image needs
-text rendering. Existing bounded decoder designs and their tests are useful
-building blocks, but desktop preview limits need recalibration for a terminal.
+external SVG resource loading. The initial implementation lazily registers a
+small set of already bundled fonts for SVG text; it does not scan system fonts.
+Any broader font discovery must remain lazy and be measured separately.
 
-Cache keys must describe content, renderer version, size, and any theme/font
-inputs that affect pixels. Use byte-accounted eviction, reject entries larger
-than the cache budget, and avoid simultaneous copies of raw, padded, and encoded
+Cache keys must describe content, size, and any theme/font inputs that affect
+pixels. Persistent caches also need the renderer version; the current cache is
+invocation-local, with fixed fonts and no recoloring. Use byte-accounted
+eviction, reject entries larger than the cache budget, and avoid simultaneous copies of raw, padded, and encoded
 pixels where possible. Pipes, plain export, source export, and text-only
 fallbacks must not decode images.
 

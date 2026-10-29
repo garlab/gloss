@@ -22,6 +22,12 @@ struct Args {
     /// Auto enables graphics for known Ghostty/Kitty sessions. Pipes always use TeX.
     #[arg(long, value_enum, default_value_t = Math::Auto)]
     math: Math,
+    /// Local PNG/JPEG/SVG images: auto detects Kitty graphics; off retains text.
+    #[arg(long, value_enum, default_value_t = Images::Auto)]
+    images: Images,
+    /// Base directory for image paths; defaults to the document directory or cwd for stdin.
+    #[arg(long)]
+    base_dir: Option<PathBuf>,
     /// Print selectable TeX beneath lines with rendered equations.
     #[arg(long)]
     show_math_source: bool,
@@ -53,6 +59,13 @@ enum Output {
 enum Math {
     Auto,
     Tex,
+    Kitty,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Images {
+    Auto,
+    Off,
     Kitty,
 }
 
@@ -121,9 +134,29 @@ fn run() -> Result<(), Box<dyn Error>> {
                 ),
                 light_background: args.light,
                 show_math_source: args.show_math_source,
+                image_base: (terminal.graphics_allowed
+                    && match args.images {
+                        Images::Auto => terminal.kitty_hint,
+                        Images::Off => false,
+                        Images::Kitty => true,
+                    })
+                .then(|| {
+                    args.base_dir.clone().unwrap_or_else(|| {
+                        args.file
+                            .as_deref()
+                            .filter(|path| *path != std::path::Path::new("-"))
+                            .and_then(std::path::Path::parent)
+                            .unwrap_or(std::path::Path::new("."))
+                            .to_path_buf()
+                    })
+                }),
             };
-            let warnings =
-                render::write(&mut out, &document, &layout::layout(&document), &options)?;
+            let flow = if options.image_base.is_some() {
+                layout::with_images(&document)
+            } else {
+                layout::layout(&document)
+            };
+            let warnings = render::write(&mut out, &document, &flow, &options)?;
             out.flush()?;
             for warning in warnings {
                 eprintln!("mdviewer: {}", render::text::sanitize(&warning));

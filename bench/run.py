@@ -27,7 +27,8 @@ import termios
 import time
 
 RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
-             "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow"]
+             "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow",
+             "mdviewer/terminal-images"]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--work-dir", type=Path, required=True)
 parser.add_argument("--binary", type=Path, required=True)
@@ -40,6 +41,8 @@ parser.add_argument("--hardware", default="unspecified", help="Generic CPU/RAM d
 parser.add_argument("--profile", default="unspecified", help="Build command or profile used for the binary")
 parser.add_argument("--binary-revision", help="Source revision actually used to build the binary")
 parser.add_argument("--no-highlight", action="store_true", help="Measure mdviewer with syntax highlighting disabled")
+parser.add_argument("--image-mode", choices=["auto", "off", "legacy"], default="auto",
+                    help="Use legacy for binaries predating --images; off measures the disabled path")
 args = parser.parse_args()
 PROJECT = Path(__file__).resolve().parent.parent
 ROOT = args.work_dir.expanduser().resolve()
@@ -65,9 +68,12 @@ def command(renderer, name):
         "mdviewer/terminal-tex": ["--math", "tex"],
         "mdviewer/terminal-narrow": ["--math", "tex"],
         "mdviewer/terminal-math": ["--math", "kitty"],
+        "mdviewer/terminal-images": ["--math", "tex"],
         "mdviewer/plain-pipe": ["--output", "text"],
     }[renderer]
-    return [str(BINARY), *flags, *(["--no-highlight"] if args.no_highlight else []), file]
+    image_flags = [] if args.image_mode == "legacy" else ["--images",
+        "kitty" if args.image_mode == "auto" and renderer == "mdviewer/terminal-images" else args.image_mode]
+    return [str(BINARY), *flags, *image_flags, *(["--no-highlight"] if args.no_highlight else []), file]
 
 
 def kill_group(process):
@@ -207,6 +213,10 @@ for name in ["tables-1m.md", "tables-10m.md", "tables-wide.md", "tables-over-lim
             cases.append(("mdviewer/terminal-narrow", name))
         if name == "tables-math-100.md":
             cases.append(("mdviewer/terminal-math", name))
+for name in CORPORA:
+    if name.startswith("images-"):
+        cases.append(("mdviewer/terminal-images", name))
+        cases.append(("mdviewer/plain-pipe", name))
 cases = [(renderer, name) for renderer, name in cases
          if (not args.renderer or renderer in args.renderer)
          and (not args.corpus or any(fnmatch.fnmatchcase(name, pattern) for pattern in args.corpus))]
@@ -216,6 +226,9 @@ for name in {name for _, name in cases}:
     data = (ROOT / "corpora" / name).read_bytes()
     if len(data) != CORPORA[name]["bytes"] or hashlib.sha256(data).hexdigest() != CORPORA[name]["sha256"]:
         parser.error(f"corpus checksum mismatch: {name}")
+    for asset, checksum in CORPORA[name].get("assets", {}).items():
+        if hashlib.sha256((ROOT / "corpora" / asset).read_bytes()).hexdigest() != checksum:
+            parser.error(f"asset checksum mismatch: {asset}")
 del data
 
 results = {
@@ -227,6 +240,7 @@ results = {
         "binary_sha256": hashlib.sha256(BINARY.read_bytes()).hexdigest(),
         "binary_bytes": BINARY.stat().st_size,
         "syntax_highlighting": "disabled" if args.no_highlight else "default",
+        "image_rendering": args.image_mode,
         "glow_version": read_command(["glow", "--version"]),
         "profile": args.profile,
         "hardware": args.hardware,
@@ -246,6 +260,8 @@ results = {
 for renderer, name in cases:
     print(f"START {renderer} {name}", flush=True)
     expected_images = CORPORA[name].get("equations", 0) if renderer == "mdviewer/terminal-math" else 0
+    if args.image_mode == "auto" and renderer.startswith("mdviewer/terminal"):
+        expected_images += CORPORA[name].get("images", 0)
 
     def valid_sample(sample):
         return (not sample["timed_out"] and sample["exit_code"] == 0

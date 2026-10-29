@@ -7,7 +7,31 @@ use katex_native::{
     raster,
 };
 
-pub use raster::Raster;
+/// Math-specific baseline metadata around the shared pixel representation.
+pub struct Raster {
+    pub pixels: crate::raster::Raster,
+    pub baseline: f64,
+}
+
+impl std::ops::Deref for Raster {
+    type Target = crate::raster::Raster;
+    fn deref(&self) -> &Self::Target {
+        &self.pixels
+    }
+}
+
+impl From<raster::Raster> for Raster {
+    fn from(value: raster::Raster) -> Self {
+        Self {
+            baseline: value.baseline,
+            pixels: crate::raster::Raster {
+                width: value.width,
+                height: value.height,
+                rgba: value.rgba,
+            },
+        }
+    }
+}
 
 pub struct MathEngine {
     context: KatexContext,
@@ -97,11 +121,11 @@ impl MathEngine {
         if display {
             self.next_number = self.next_number.saturating_add(layout.equation_numbers);
         }
-        Ok(result)
+        Ok(result.into())
     }
 }
 
-fn beside(body: Raster, tag: Raster, gap: u32) -> Result<Raster, String> {
+fn beside(body: raster::Raster, tag: raster::Raster, gap: u32) -> Result<raster::Raster, String> {
     let baseline = body.baseline.max(tag.baseline).ceil().max(0.);
     let body_top = (baseline - body.baseline).ceil().max(0.) as u32;
     let tag_top = (baseline - tag.baseline).ceil().max(0.) as u32;
@@ -118,7 +142,7 @@ fn beside(body: Raster, tag: Raster, gap: u32) -> Result<Raster, String> {
     if u64::from(width) * u64::from(height) > 8_000_000 {
         return Err("the formula exceeds the raster size limit".into());
     }
-    let mut result = Raster {
+    let mut result = raster::Raster {
         width,
         height,
         baseline,

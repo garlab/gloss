@@ -10,10 +10,11 @@ mod theme;
 mod viewport;
 
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 use crate::{
     document::Document,
-    layout::{Block, Layout, Role, Style},
+    layout::{Block, Layout, Role, Run, Style},
     math::MathEngine,
     terminal::Geometry,
 };
@@ -34,6 +35,9 @@ pub struct Options {
     pub font_size: f64,
     pub light_background: bool,
     pub show_math_source: bool,
+    /// Enable local images, resolving relative references against this directory.
+    /// None bypasses all image file access and decoding.
+    pub image_base: Option<PathBuf>,
 }
 
 impl Default for Options {
@@ -48,6 +52,7 @@ impl Default for Options {
             font_size: 24.,
             light_background: false,
             show_math_source: false,
+            image_base: None,
         }
     }
 }
@@ -77,6 +82,7 @@ pub fn write(
 ) -> io::Result<Vec<String>> {
     let mut engine = None;
     let mut highlighter = None;
+    let mut images = None;
     let mut warnings = Vec::new();
     let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
     let geometry = options.geometry();
@@ -97,6 +103,7 @@ pub fn write(
                             .find(|run| run.style.role == Role::CodeBlock)
                             .map_or(0, |run| run.style.quote_depth),
                         Some(Block::Table(table)) => table.style.quote_depth,
+                        Some(Block::Image(image)) => image.style.quote_depth,
                         _ => 0,
                     };
                     let edges = (
@@ -136,6 +143,37 @@ pub fn write(
                     table::write(out, table, &mut engine, options, &mut warnings)?;
                 } else {
                     table::write_plain(out, table)?;
+                }
+            }
+            Block::Image(image) => {
+                let frame = inline::Frame::for_block(&image.prefix, image.style, options);
+                let mut rendered = false;
+                if formatted && let Some(base) = &options.image_base {
+                    let loader = images.get_or_insert_with(crate::images::Loader::default);
+                    let width = frame.width() as u32 * u32::from(geometry.cell_width.max(1));
+                    let height = u32::from(geometry.rows.saturating_sub(2).max(1))
+                        * u32::from(geometry.cell_height.max(1));
+                    if let Ok(pixels) = loader.load(base, &image.target, width, height) {
+                        rendered = inline::write_picture(out, pixels, &frame, options, loader)?;
+                    }
+                }
+                let caption = Run {
+                    text: format!("[image: {}] ({})", image.alt, image.target),
+                    style: Style {
+                        role: Role::LinkTarget,
+                        code: false,
+                        link: false,
+                        ..image.style
+                    },
+                    math: None,
+                    source: Some(image.source.clone()),
+                };
+                if formatted {
+                    let frame = if rendered { frame.continued() } else { frame };
+                    inline::write_cell(out, &[caption], &frame, options, false)?;
+                } else {
+                    text::write_runs(out, &[caption], false)?;
+                    writeln!(out)?;
                 }
             }
             Block::DisplayMath { tex, source, style } => {

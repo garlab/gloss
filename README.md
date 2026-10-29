@@ -29,6 +29,7 @@ mdviewer --show-math-source tests/fixtures/inline.md
 mdviewer tests/fixtures/style.md
 mdviewer tests/fixtures/code.md
 mdviewer tests/fixtures/tables.md
+mdviewer tests/fixtures/images.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
@@ -57,6 +58,19 @@ between rows. Oversized rows use the same fallback, preserving all content and
 selectable source TeX. Width estimation and temporary row storage have explicit
 limits; see [table rendering](docs/tables.md).
 
+Local PNG, JPEG, and SVG images render in graphics-capable sessions. Paths are
+relative to the Markdown file, or the working directory for stdin; `--base-dir`
+overrides that directory. Every image retains a selectable `[image: alt] (path)`
+caption. Missing, unsupported, or over-limit images keep that reference.
+
+Images fit the reading column and viewport without enlargement. Inline image
+references become separate blocks; images inside tables remain text references.
+SVG supports bounded shapes, gradients, clipping, and text using bundled fonts.
+Filters, masks, reusable elements, nested images, external resources, and text
+with unavailable glyphs fall back to the reference. No network requests, system
+font scans, or helper processes are used. See [local images](docs/images.md) for
+the supported subset and resource limits.
+
 The reading column is at most 80 cells wide, with two-column horizontal margins.
 Text and equations share that column in both graphics and TeX modes. The width
 fits the terminal, and margins shrink automatically in narrow windows.
@@ -69,6 +83,7 @@ mdviewer --width 0 --margin 0 notes.md  # Use the available terminal width.
 The default `--math auto` enables graphics in sessions identified as Ghostty or
 Kitty by `TERM` or `TERM_PROGRAM`. This uses environment hints, assumes graphics
 are enabled, and does not probe the terminal or read keyboard input.
+`--images auto` uses the same detection independently of the math setting.
 
 Other terminals use selectable TeX. Recognized tmux, screen, and Zellij sessions,
 `TERM=dumb`, and very small windows also use TeX. Multiplexer graphics passthrough
@@ -79,6 +94,9 @@ is not implemented.
 | `--math tex` | Keep all equations as selectable source TeX. |
 | `--math kitty` | Enable graphics in another compatible terminal; pipe, multiplexer, and small-window restrictions still apply. |
 | `--show-math-source` | Print selectable TeX beneath rendered equations. |
+| `--images off` | Keep image references as text and skip image file access. |
+| `--images kitty` | Enable local images in another compatible terminal, subject to the same graphics restrictions. |
+| `--base-dir <directory>` | Override the directory used to resolve local image paths. |
 | `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
 | `--margin <columns>` | Set the horizontal margin, default `2`. |
 | `--light` | Use a light color palette for text and equations. |
@@ -89,12 +107,14 @@ Equation size follows the terminal cell height by default, and oversized equatio
 shrink to fit. Cell dimensions are read on Unix when available, with an estimated
 fallback. Font baselines are estimated; appearance can vary by font and terminal.
 Background detection is not implemented. A nonempty `NO_COLOR` disables text
-styling without disabling math images.
+styling without disabling images.
 
 ## Copying and pipes
 
 Normal terminal selection copies prose. Selecting an equation image alone does
 not recover its TeX; use `--show-math-source` or `--math tex` when copying math.
+Image captions and source paths are selectable too; selecting pixels does not
+copy an image file or recover text drawn inside it.
 
 ```sh
 cat notes.md | mdviewer -
@@ -103,7 +123,8 @@ mdviewer notes.md > notes.txt
 mdviewer --output source notes.md | pbcopy  # macOS
 ```
 
-Pipes receive readable text with source TeX, even with `--math kitty`: no ANSI
+Pipes receive readable text with source TeX and image references, even with
+`--math kitty` or `--images kitty`: no ANSI
 styles, graphics, added margins, or screen-width wrapping. `--output text`
 selects that representation on a terminal too. Diagnostics go to stderr.
 
@@ -118,6 +139,7 @@ change the clipboard itself.
   footnotes, and aligned, wrapped tables.
 - `$...$` inline math, `$$...$$` display math, and fenced `math` blocks.
 - Equation tags and automatic numbering, with tags placed after the formula.
+- Bounded local PNG/JPEG/SVG images with selectable captions and text fallbacks.
 - Unicode-aware terminal wrapping, preserving graphemes and keeping
   equations whole.
 - Individual formula failures fall back to source TeX without interrupting the
@@ -129,8 +151,7 @@ Backslash-parenthesis and backslash-bracket math delimiters are not recognized.
 Complex combinations of nested blocks still need layout improvements.
 Embedded languages inside code strings or HTML are not
 highlighted separately; unsupported fences remain uncolored.
-Markdown images are shown as text references and are not fetched. HTML is not
-executed.
+Remote image URLs remain text references. HTML is not executed.
 
 ## Development
 
@@ -158,6 +179,8 @@ implementation limits, dependency costs, and comparison with that baseline.
 The [rendering optimizations](docs/performance-optimizations.md) record subsequent
 reductions in time, memory, output volume, and executable size.
 The [table implementation](docs/tables.md) records its limits and measured cost.
+The [local image implementation](docs/images.md) records decoder, cache, output,
+and SVG limits, together with its measurements.
 Crate publication is disabled while `katex-native` uses a local path dependency.
 
 ## License

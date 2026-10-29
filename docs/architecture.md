@@ -1,6 +1,6 @@
 # Architecture
 
-mdviewer separates the original document, layout, math rasterization, and terminal
+mdviewer separates the original document, layout, raster generation, and terminal
 output. The Rust library API is not yet stable; these boundaries guide further
 implementation.
 
@@ -10,16 +10,19 @@ implementation.
 UTF-8 Markdown
 ├── exact source output
 └── Document: original source → borrowed event iterator + byte ranges
-    └── Layout: text runs + code blocks + table cells + display math blocks
+    └── Layout: text runs + code blocks + table cells + math + local image blocks
         ├── plain text export with source TeX
         └── reading column + semantic styles + cell-aware lines
             ├── themed terminal text with source TeX
-            └── math rasters → Kitty graphics and native text
+            └── math/local image rasters → Kitty graphics and native text
 ```
 
 The CLI chooses an output mode before rendering. Non-terminal stdout always uses
 text export unless exact source output was requested. Math is laid out only when
 graphics are selected.
+Local image blocks are built only when image graphics are enabled. Disabled or
+unsupported graphics retain the existing flat image references and never open
+image files. Text and exact source exports bypass all image decoding.
 
 `Document::events()` parses on iteration and borrows unchanged text from the
 source. Each call starts a new parser; the document does not retain an owned
@@ -31,11 +34,13 @@ event vector alongside the layout. Layout still owns its decoded text runs.
 | --- | --- |
 | `src/main.rs` | Arguments, input, output policy, errors, and diagnostics. |
 | `src/document.rs` | CommonMark events, original Markdown, and source ranges; normalize fenced math. |
-| `src/layout.rs` | Convert events into text runs, code/table blocks, indentation context, and display math blocks. |
+| `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
 | `src/highlight/` | Lazily compile bundled language queries and produce bounded semantic UTF-8 token spans. |
 | `src/layout/lines.rs` | Wrap borrowed word fragments at grapheme boundaries and measure inline baselines, independently of escape sequences. |
 | `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, and track numbering. |
+| `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
+| `src/images.rs` | Resolve local references, bound file/decode work, and cache fitted rasters by content. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
 | `src/render/mod.rs` | Coordinate rendering and per-formula fallbacks. |
@@ -64,6 +69,16 @@ over-limit rows use numbered cells with source TeX. Plain export still builds
 flat runs, preserving its previous separators and avoiding table measurement or
 cell storage. [Table rendering](tables.md) defines the limits.
 
+Image blocks retain alt text, the original target, source range, and list/quote
+context. They render one at a time with selectable captions, including on decode
+failure. The loader keeps a bounded invocation-local cache of encoded content
+and fitted pixels. It registers bundled SVG text fonts only when required.
+The line painter accepts shared rasters with optional baseline/source metadata;
+equations and ordinary images reuse row reservation, cell padding, quote rails,
+and transport. Table separators and quote rails cover every reserved image row.
+Images within table cells remain references. [Local images](images.md) defines
+the supported formats and limits.
+
 Text rendering consumes logical lines with one-line lookahead for quote context.
 Wrapping borrows word fragments and allocates text for the resulting physical
 lines, rather than allocating every grapheme. The writer shares ANSI state
@@ -72,9 +87,8 @@ line boundary. The original source, full layout, parser working storage, and a
 single very long logical line can still require memory proportional to input;
 this is not a constant-memory document reader.
 
-The [feature design](feature-design.md) describes shared image placement,
-optional renderers, and math-library extraction
-boundaries. These are future changes, not additional modules already present.
+The [feature design](feature-design.md) describes optional renderers and
+math-library extraction boundaries. Mermaid rendering remains future work.
 
 ## Contracts to preserve
 
@@ -88,7 +102,8 @@ boundaries. These are future changes, not additional modules already present.
   sequences through styled or plain rendering. Exact source output deliberately
   bypasses filtering.
 - **Failures stay local.** Invalid formulas retain their source while later text
-  and equations continue rendering. Image dimensions and raster allocation are
+  and equations continue rendering. Failed local images keep their captions.
+  Image dimensions and raster allocation are
   bounded. Inline rendering does not advance display equation numbering.
 - **Layout respects terminal cells.** Wrapping preserves graphemes and keeps
   images whole. Text and equations share the same width and margins, including
@@ -119,7 +134,7 @@ a particular terminal version.
 Theme colors and decorative prefixes are applied only during terminal rendering.
 Width, margins, heading markers, quote rails, and code padding never enter plain
 text or exact source exports. `NO_COLOR` disables styling while keeping the
-reading layout and the selected math mode.
+reading layout and the selected math/image modes.
 
 Use the fixtures for manual checks at normal and narrow widths, with tall
 equations, light and dark backgrounds, and output near the bottom of the screen.
