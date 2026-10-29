@@ -10,15 +10,31 @@ use pulldown_cmark::{Event, Tag, TagEnd};
 use crate::document::Document;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Role {
+    #[default]
+    Body,
+    Heading(u8),
+    CodeBlock,
+    ListMarker,
+    QuoteMarker,
+    LinkTarget,
+    Rule,
+    MathSource,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Style {
     pub bold: bool,
     pub italic: bool,
     pub strike: bool,
     pub code: bool,
     pub link: bool,
+    pub role: Role,
+    pub indent: usize,
+    pub quote_depth: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Run {
     pub text: String,
     pub style: Style,
@@ -32,7 +48,11 @@ pub struct Run {
 #[derive(Debug)]
 pub enum Block {
     Text(Vec<Run>),
-    DisplayMath { tex: String, source: Range<usize> },
+    DisplayMath {
+        tex: String,
+        source: Range<usize>,
+        style: Style,
+    },
 }
 
 #[derive(Debug)]
@@ -46,6 +66,7 @@ pub fn layout(document: &Document) -> Layout {
     let mut styles = Vec::new();
     let mut links = Vec::new();
     let mut lists = Vec::new();
+    let mut item_indents = Vec::new();
     for item in document.events() {
         match &item.event {
             Event::Start(tag) => match tag {
@@ -56,10 +77,16 @@ pub fn layout(document: &Document) -> Layout {
                 }
                 Tag::HtmlBlock | Tag::Table(_) => flow.breaks(2),
                 Tag::Heading { .. } | Tag::CodeBlock(_) => {
-                    flow.breaks(2);
+                    if !flow.prefix_pending {
+                        flow.breaks(2);
+                    }
                     styles.push(style);
                     style.bold = matches!(tag, Tag::Heading { .. });
                     style.code = matches!(tag, Tag::CodeBlock(_));
+                    style.role = match tag {
+                        Tag::Heading { level, .. } => Role::Heading(*level as u8),
+                        _ => Role::CodeBlock,
+                    };
                 }
                 Tag::Emphasis | Tag::Strong | Tag::Strikethrough => {
                     styles.push(style);
@@ -92,11 +119,29 @@ pub fn layout(document: &Document) -> Layout {
                         }
                         _ => "- ".into(),
                     };
-                    flow.prefix(&format!("{padding}{marker}"), style);
+                    item_indents.push(style.indent);
+                    style.indent = padding.len() + marker.len();
+                    flow.prefix(
+                        &format!("{padding}{marker}"),
+                        Style {
+                            role: Role::ListMarker,
+                            ..style
+                        },
+                    );
                 }
                 Tag::BlockQuote(_) => {
-                    flow.breaks(2);
-                    flow.prefix("> ", style);
+                    if !flow.prefix_pending {
+                        flow.breaks(2);
+                    }
+                    styles.push(style);
+                    style.quote_depth += 1;
+                    flow.prefix(
+                        "> ",
+                        Style {
+                            role: Role::QuoteMarker,
+                            ..style
+                        },
+                    );
                 }
                 Tag::TableHead | Tag::TableRow => flow.breaks(1),
                 Tag::FootnoteDefinition(label) => {
@@ -106,7 +151,11 @@ pub fn layout(document: &Document) -> Layout {
                 _ => {}
             },
             Event::End(tag) => match tag {
-                TagEnd::Paragraph | TagEnd::HtmlBlock | TagEnd::Table | TagEnd::BlockQuote(_) => {
+                TagEnd::Paragraph | TagEnd::HtmlBlock | TagEnd::Table => {
+                    flow.breaks(2);
+                }
+                TagEnd::BlockQuote(_) => {
+                    style = styles.pop().unwrap_or_default();
                     flow.breaks(2);
                 }
                 TagEnd::Heading(_) | TagEnd::CodeBlock => {
@@ -121,7 +170,15 @@ pub fn layout(document: &Document) -> Layout {
                         flow.push("]", style, None);
                     }
                     if let Some(url) = links.pop() {
-                        flow.push(&format!(" ({url})"), style, None);
+                        flow.push(
+                            &format!(" ({url})"),
+                            Style {
+                                role: Role::LinkTarget,
+                                link: false,
+                                ..style
+                            },
+                            None,
+                        );
                     }
                     style = styles.pop().unwrap_or_default();
                 }
@@ -129,7 +186,11 @@ pub fn layout(document: &Document) -> Layout {
                     lists.pop();
                     flow.breaks(if lists.is_empty() { 2 } else { 1 });
                 }
-                TagEnd::Item | TagEnd::TableHead | TagEnd::TableRow => flow.breaks(1),
+                TagEnd::Item => {
+                    style.indent = item_indents.pop().unwrap_or_default();
+                    flow.breaks(1);
+                }
+                TagEnd::TableHead | TagEnd::TableRow => flow.breaks(1),
                 TagEnd::TableCell => flow.push(" | ", style, None),
                 _ => {}
             },
@@ -167,6 +228,7 @@ pub fn layout(document: &Document) -> Layout {
                 flow.blocks.push(Block::DisplayMath {
                     tex: tex.to_string(),
                     source: item.source.clone(),
+                    style,
                 });
                 flow.trailing_newlines = 2;
             }
@@ -174,7 +236,14 @@ pub fn layout(document: &Document) -> Layout {
             Event::HardBreak => flow.breaks(1),
             Event::Rule => {
                 flow.breaks(2);
-                flow.push("---", style, Some(item.source.clone()));
+                flow.push(
+                    "---",
+                    Style {
+                        role: Role::Rule,
+                        ..style
+                    },
+                    Some(item.source.clone()),
+                );
                 flow.breaks(2);
             }
             Event::TaskListMarker(checked) => {

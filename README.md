@@ -26,12 +26,26 @@ Cargo's binary directory must be on your `PATH`.
 cargo install --path . --locked
 mdviewer tests/fixtures/math.md
 mdviewer --show-math-source tests/fixtures/inline.md
+mdviewer tests/fixtures/style.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
 
 ## Terminal rendering
+
+Terminal output uses a dark color palette, distinct heading levels, tinted inline
+code, shaded code blocks, and colored links and list markers. Lists and quotes
+keep their indentation when lines wrap. Use `--light` for a light background.
+
+The reading column is at most 80 cells wide, with two-column horizontal margins.
+Text and equations share that column in both graphics and TeX modes. The width
+fits the terminal, and margins shrink automatically in narrow windows.
+
+```sh
+mdviewer --width 100 --margin 3 notes.md
+mdviewer --width 0 --margin 0 notes.md  # Use the available terminal width.
+```
 
 The default `--math auto` enables graphics in sessions identified as Ghostty or
 Kitty by `TERM` or `TERM_PROGRAM`. This uses environment hints, assumes graphics
@@ -46,7 +60,9 @@ is not implemented.
 | `--math tex` | Keep all equations as selectable source TeX. |
 | `--math kitty` | Enable graphics in another compatible terminal; pipe, multiplexer, and small-window restrictions still apply. |
 | `--show-math-source` | Print selectable TeX beneath rendered equations. |
-| `--light` | Use dark equation ink for a light background. |
+| `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
+| `--margin <columns>` | Set the horizontal margin, default `2`. |
+| `--light` | Use a light color palette for text and equations. |
 | `--font-size <pixels>` | Override the equation font size, from 4 to 256 pixels. |
 
 Equation size follows the terminal cell height by default, and oversized equations
@@ -68,8 +84,8 @@ mdviewer --output source notes.md | pbcopy  # macOS
 ```
 
 Pipes receive readable text with source TeX, even with `--math kitty`: no ANSI
-styles, graphics, or added screen-width wrapping. `--output text` selects that
-representation on a terminal too. Diagnostics go to stderr.
+styles, graphics, added margins, or screen-width wrapping. `--output text`
+selects that representation on a terminal too. Diagnostics go to stderr.
 
 `--output source` preserves the original UTF-8 Markdown byte for byte, including
 line endings and final-newline state. It bypasses parsing and control-character
@@ -82,7 +98,7 @@ change the clipboard itself.
   footnotes, and basic tables.
 - `$...$` inline math, `$$...$$` display math, and fenced `math` blocks.
 - Equation tags and automatic numbering, with tags placed after the formula.
-- Unicode-aware wrapping in graphics mode, preserving graphemes and keeping
+- Unicode-aware terminal wrapping, preserving graphemes and keeping
   equations whole.
 - Individual formula failures fall back to source TeX without interrupting the
   rest of the document.
@@ -90,10 +106,10 @@ change the clipboard itself.
 Math support follows the KaTeX subset implemented by `katex-native`.
 Backslash-parenthesis and backslash-bracket math delimiters are not recognized.
 
-Nested lists and quotes need layout improvements. Tables are not column-aligned,
-code is not syntax-highlighted, and text-only output relies on terminal soft
-wrapping. Markdown images are shown as text references and are not fetched.
-HTML is not executed.
+Complex combinations of nested blocks still need layout improvements. Tables are
+not column-aligned, and code blocks are shaded but not syntax-highlighted.
+Markdown images are shown as text references and are not fetched. HTML is not
+executed.
 
 ## Development
 
@@ -107,8 +123,9 @@ python3 tests/terminal_smoke.py target/debug/mdviewer  # Unix, Python 3
 
 Rust tests cover parsing, source preservation, wrapping, math, and output
 contracts. Pseudo-terminal tests cover graphics selection, fallbacks, narrow
-windows, Unicode, and image/text placement. Visual checks in real terminals are
-still needed to assess font alignment, scrolling, and selection behavior.
+windows, Unicode, reading width, themes, and image/text placement. Visual checks
+in real terminals are still needed to assess font alignment, scrolling, and
+selection behavior.
 
 See [architecture](docs/architecture.md) for module boundaries and contracts, and
 [the roadmap](docs/roadmap.md) for remaining implementation work. Crate publication

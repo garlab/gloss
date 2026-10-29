@@ -32,8 +32,8 @@ configuration before distribution is enabled.
 
 ## Markdown and equation layout
 
-- Improve nested lists and quotes, continuation indentation, table column sizing,
-  and code-block syntax highlighting.
+- Refine mixed nesting of lists, quotes, code, and display math. Add table column
+  sizing and code-block syntax highlighting.
 - Add backslash-parenthesis and backslash-bracket math delimiters with coverage
   for escaping, code spans, and code fences.
 - Refine equation tag placement and the treatment of oversized formulas.

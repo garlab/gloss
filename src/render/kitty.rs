@@ -9,7 +9,13 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::{math::Raster, terminal::Geometry};
 
-pub fn write_display(out: &mut impl Write, raster: &Raster, geometry: Geometry) -> io::Result<()> {
+pub fn write_display(
+    out: &mut impl Write,
+    raster: &Raster,
+    geometry: Geometry,
+    left: usize,
+    content_width: usize,
+) -> io::Result<()> {
     let columns = raster.width.div_ceil(u32::from(geometry.cell_width.max(1)));
     let rows = raster
         .height
@@ -20,7 +26,7 @@ pub fn write_display(out: &mut impl Write, raster: &Raster, geometry: Geometry) 
     // tightly cropped glyphs to fill whole rows, changing the font size.
     let padded = pad(raster, width, height, 0, (height - raster.height) / 2)?;
     reserve(out, rows)?;
-    let margin = u32::from(geometry.columns).saturating_sub(columns) / 2;
+    let margin = left as u32 + (content_width as u32).saturating_sub(columns) / 2;
     if margin > 0 {
         write!(out, "\x1b[{margin}C")?;
     }

@@ -220,5 +220,78 @@ class TerminalSmoke(unittest.TestCase):
         self.assertIn("éé", text)
 
 
+    def test_terminal_width_and_margin_apply_without_graphics(self):
+        source = ("A paragraph with several ordinary words that should wrap predictably. " * 5) + "\n"
+        output, error = terminal(
+            source, args=("--width", "32", "--margin", "4"), columns=120,
+            variables={"TERM": "xterm-256color", "TERM_PROGRAM": ""},
+        )
+        self.assertFalse(error)
+        lines = [line for line in plain(output).splitlines() if line.strip()]
+        self.assertGreater(len(lines), 5)
+        self.assertTrue(all(line.startswith("    ") and len(line) <= 36 for line in lines))
+        self.assertFalse(GRAPHICS.search(output))
+        self.assertEqual(" ".join(line.strip() for line in lines), source.strip())
+
+    def test_default_width_is_bounded_and_zero_uses_available_space(self):
+        source = "word " * 100 + "\n"
+        bounded, _ = terminal(source, args=("--math", "tex"), columns=120)
+        full, _ = terminal(source, args=("--math", "tex", "--width", "0"), columns=120)
+        self.assertLessEqual(max(map(len, plain(bounded).splitlines())), 82)
+        self.assertGreater(max(map(len, plain(full).splitlines())), 82)
+
+    def test_wrapped_lists_and_quotes_keep_their_prefixes(self):
+        source = (
+            "- A long list item with enough words to require multiple lines at this width.\n\n"
+            "> A long quotation with enough words to require multiple lines at this width.\n"
+            ">\n"
+            "> Another paragraph in the quotation.\n"
+        )
+        output, error = terminal(source, args=("--math", "tex", "--width", "28"), columns=100)
+        self.assertFalse(error)
+        groups = [group.splitlines() for group in plain(output).strip("\n").split("\n\n")]
+        self.assertTrue(groups[0][0].startswith("  • "))
+        self.assertTrue(all(line.startswith("    ") for line in groups[0][1:]))
+        quoted = [line for group in groups[1:] for line in group]
+        self.assertTrue(all(line.startswith("  │") for line in quoted))
+        self.assertIn("  │ ", quoted)
+        self.assertTrue(all(len(line) <= 30 for group in groups for line in group))
+
+    def test_code_panels_preserve_blank_lines_and_indentation(self):
+        source = "```text\nfirst\n\n    indented\nlast\n```\n"
+        output, error = terminal(source, args=("--width", "24", "--math", "tex"), columns=80)
+        self.assertFalse(error)
+        lines = [line.rstrip() for line in plain(output).splitlines() if line.strip()]
+        self.assertEqual(lines, ["  │ first", "  │", "  │     indented", "  │ last"])
+
+    def test_light_theme_changes_colors_without_changing_text_layout(self):
+        source = "# Heading\n\nText with **emphasis**, `code`, and a [link](https://example.com).\n"
+        dark, error = terminal(source, args=("--math", "tex"))
+        light, light_error = terminal(source, args=("--math", "tex", "--light"))
+        self.assertFalse(error or light_error)
+        self.assertEqual(plain(dark), plain(light))
+        self.assertNotEqual(CSI.findall(dark), CSI.findall(light))
+        self.assertIn(b"48;5;", dark)
+        self.assertIn(b"48;5;", light)
+
+    def test_inline_and_display_images_stay_inside_the_reading_column(self):
+        source = (
+            "Text $x^2$ and $\\frac{a}{b}$ here.\n\n"
+            "$$\n\\underbrace{a+b+c+d+e+f+g+h}_{\\text{a wide equation}}\n$$\n"
+        )
+        output, error = terminal(source, args=("--width", "24", "--margin", "3"), columns=120)
+        self.assertFalse(error)
+        images = screen(output, 120)
+        self.assertEqual(len(images), 3)
+        self.assertTrue(all(3 <= left and left + width <= 27 for left, _, width, _ in images))
+
+    def test_heading_background_and_large_margins_preserve_math_placement(self):
+        output, error = terminal("# Energy $E=mc^2$\n", args=("--width", "30", "--margin", "9"), columns=100)
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 100)), 1)
+        narrow, error = terminal(args=("--width", "0", "--margin", "1000"), columns=20, rows=12)
+        self.assertFalse(error)
+        self.assertEqual(len(screen(narrow, 20)), 3)
+
 if __name__ == "__main__":
     unittest.main()

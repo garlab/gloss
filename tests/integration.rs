@@ -56,15 +56,31 @@ fn preserves_math_sources_and_excludes_code() {
 #[test]
 fn source_pipe_preserves_exact_utf8_crlf_and_final_newline_state() {
     let input = "# café\r\n\r\n$α^2$  \r\nno final newline";
-    let output = cli(&["--output", "source", "-"], input);
+    let output = cli(
+        &["--output", "source", "--width", "12", "--margin", "9", "-"],
+        input,
+    );
     assert!(output.status.success());
     assert_eq!(output.stdout, input.as_bytes());
     assert!(output.stderr.is_empty());
 }
 
 #[test]
-fn redirected_output_is_clean_text_even_when_kitty_is_requested() {
-    let output = cli(&["--math", "kitty", "--show-math-source", "-"], FIXTURE);
+fn redirected_output_ignores_graphics_theme_width_and_margins() {
+    let output = cli(
+        &[
+            "--math",
+            "kitty",
+            "--show-math-source",
+            "--width",
+            "12",
+            "--margin",
+            "9",
+            "--light",
+            "-",
+        ],
+        FIXTURE,
+    );
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let text = String::from_utf8(output.stdout).unwrap();

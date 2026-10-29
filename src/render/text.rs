@@ -4,31 +4,41 @@ use std::io::{self, Write};
 
 use crate::layout::{Run, Style};
 
+use super::theme::Theme;
+
 pub fn write_runs(out: &mut impl Write, runs: &[Run], styled: bool) -> io::Result<()> {
     for run in runs {
-        write_span(out, &run.text, run.style, styled)?;
+        write_span(out, &run.text, run.style, styled, Theme { light: false })?;
     }
     Ok(())
 }
 
-pub fn write_span(out: &mut impl Write, text: &str, style: Style, styled: bool) -> io::Result<()> {
+pub(super) fn write_span(
+    out: &mut impl Write,
+    text: &str,
+    style: Style,
+    styled: bool,
+    theme: Theme,
+) -> io::Result<()> {
     let mut attributes = Vec::new();
     if style.bold {
-        attributes.push("1");
+        attributes.push("1".to_owned());
     }
     if style.italic {
-        attributes.push("3");
+        attributes.push("3".to_owned());
     }
     if style.strike {
-        attributes.push("9");
-    }
-    if style.code {
-        attributes.push("36");
+        attributes.push("9".to_owned());
     }
     if style.link {
-        attributes.push("4");
+        attributes.push("4".to_owned());
     }
-    let decorated = styled && !attributes.is_empty();
+    let (foreground, background) = theme.colors(style);
+    attributes.push(format!("38;5;{foreground}"));
+    if let Some(background) = background {
+        attributes.push(format!("48;5;{background}"));
+    }
+    let decorated = styled;
     if decorated {
         write!(out, "\x1b[{}m", attributes.join(";"))?;
     }

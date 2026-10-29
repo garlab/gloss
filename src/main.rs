@@ -25,9 +25,15 @@ struct Args {
     /// Print selectable TeX beneath lines with rendered equations.
     #[arg(long)]
     show_math_source: bool,
-    /// Use dark equation ink on a light terminal background.
+    /// Use a light theme for text and equations.
     #[arg(long)]
     light: bool,
+    /// Maximum content width, excluding margins; 0 uses the terminal width.
+    #[arg(short = 'w', long, default_value_t = 80)]
+    width: u16,
+    /// Horizontal margin in columns; reduced automatically in narrow terminals.
+    #[arg(long, default_value_t = 2)]
+    margin: u16,
     /// Equation font size in pixels; defaults to 90% of the terminal cell height.
     #[arg(long, value_parser = clap::value_parser!(u16).range(4..=256))]
     font_size: Option<u16>,
@@ -102,6 +108,9 @@ fn run() -> Result<(), Box<dyn Error>> {
             let options = render::Options {
                 styled: terminal.styled,
                 kitty: kitty.then_some(terminal.geometry),
+                terminal: Some(terminal.geometry),
+                width: args.width,
+                margin: args.margin,
                 font_size: args.font_size.map_or_else(
                     || (f64::from(terminal.geometry.cell_height) * 0.9).clamp(4., 256.),
                     f64::from,
