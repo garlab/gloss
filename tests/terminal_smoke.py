@@ -16,13 +16,16 @@ import struct
 import subprocess
 import sys
 import termios
+import tempfile
 import time
 import unittest
+import zlib
 
 
 BINARY = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else Path("target/debug/mdviewer").resolve()
 SAMPLE = "Above.\n\nBefore $\\frac{a}{b}$, between $x^2$ and $\\sqrt{1+x}$ after.\n\nBelow.\n"
 GRAPHICS = re.compile(rb"\x1b_G(.*?)\x1b\\", re.DOTALL)
+OSC = re.compile(rb"\x1b\]8;;[^\x1b\x07]*(?:\x1b\\|\x07)")
 CSI = re.compile(rb"\x1b\[([0-9;]*)([A-Za-z])")
 
 
@@ -30,7 +33,7 @@ def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None, file=N
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, columns * 10, rows * 20))
     env = dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty")
-    for name in ("TMUX", "STY", "ZELLIJ", "NO_COLOR"):
+    for name in ("TMUX", "STY", "ZELLIJ", "NO_COLOR", "COLORFGBG"):
         env.pop(name, None)
     env.update(variables or {})
     process = subprocess.Popen(
@@ -73,7 +76,7 @@ def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None, file=N
 
 
 def plain(output):
-    return CSI.sub(b"", GRAPHICS.sub(b"", output)).replace(b"\r", b"").decode()
+    return CSI.sub(b"", OSC.sub(b"", GRAPHICS.sub(b"", output))).replace(b"\r", b"").decode()
 
 def attributes_at(output, needle=None):
     """Interpret SGR state at visible text, independent of escape encoding."""
@@ -105,12 +108,13 @@ def attributes_at(output, needle=None):
     return state
 
 
-def screen(output, columns, return_cells=False):
+def screen(output, columns, return_cells=False, cell_width=10, cell_height=20):
     """Interpret the emitted ASCII test text and cursor/graphics subset.
 
     Rows are absolute scrollback rows. This checks that all image rectangles fit
     the viewport width and that no ordinary text cell is covered by an image.
     """
+    output = OSC.sub(b"", output)
     row = column = offset = 0
     text_cells = []
     glyphs = {}
@@ -131,10 +135,12 @@ def screen(output, columns, return_cells=False):
             if fields[b"m"] == b"0":
                 assert header is not None
                 rgba = base64.b64decode(payload, validate=True)
+                if header.get(b"o") == b"z":
+                    rgba = zlib.decompress(rgba)
                 width, height = int(header[b"s"]), int(header[b"v"])
                 image_columns, image_rows = int(header[b"c"]), int(header[b"r"])
                 assert len(rgba) == width * height * 4
-                assert width == image_columns * 10 and height == image_rows * 20
+                assert width == image_columns * cell_width and height == image_rows * cell_height
                 assert header[b"C"] == b"1" and header[b"q"] == b"2"
                 assert 0 <= column and column + image_columns < columns
                 assert any(rgba[index] for index in range(3, len(rgba), 4))
@@ -185,6 +191,81 @@ def screen(output, columns, return_cells=False):
 
 
 class TerminalSmoke(unittest.TestCase):
+    def test_markdown_extensions_render_and_keep_sources(self):
+        source = "> [!WARNING]\n> Be careful.\n\n<details>\n<summary>More</summary>\n\nBefore \\(x^2\\) after.\n\n</details>\n"
+        output, error = terminal(source, args=["--show-math-source"])
+        self.assertFalse(error)
+        visible = plain(output)
+        self.assertIn("Warning", visible)
+        self.assertIn("More", visible)
+        self.assertNotIn("<details>", visible)
+        self.assertIn(r"TeX: \(x^2\)", visible)
+        self.assertEqual(len(screen(output, 80)), 1)
+
+    def test_links_are_scoped_and_modes_respect_fallbacks(self):
+        source = "[A link](https://example.com) after. [bad](javascript:alert)"
+        output, error = terminal(source)
+        self.assertFalse(error)
+        self.assertIn(b"\x1b]8;;https://example.com\x1b\\", output)
+        self.assertNotIn(b"\x1b]8;;javascript:", output)
+        screen(output, 80)
+        for args, variables in [(["--links", "off"], {}), ([], {"TERM": "dumb"}),
+                                ([], {"TMUX": "test"}), (["--output", "text"], {})]:
+            output, error = terminal(source, args=args, variables=variables)
+            self.assertFalse(error)
+            self.assertNotIn(b"\x1b]8;", output)
+            self.assertIn("https://example.com", plain(output))
+        output, _ = terminal(source, args=["--links", "always"], variables={"TERM": "xterm", "TERM_PROGRAM": "unknown"})
+        self.assertIn(b"\x1b]8;", output)
+
+    def test_file_rendering_leaves_pending_stdin_untouched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.md"
+            path.write_text("Hello.\n")
+            master, slave = pty.openpty()
+            read_fd, write_fd = os.pipe()
+            try:
+                sentinel = b"pending shell input\n"
+                os.write(write_fd, sentinel)
+                os.close(write_fd)
+                result = subprocess.run([str(BINARY), str(path)], stdin=read_fd, stdout=slave,
+                    stderr=subprocess.PIPE, env=dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty"), timeout=5)
+                self.assertEqual(result.returncode, 0)
+                self.assertFalse(result.stderr)
+                self.assertEqual(os.read(read_fd, 1024), sentinel)
+            finally:
+                os.close(read_fd)
+                os.close(slave)
+                os.close(master)
+
+    def test_theme_hints_and_explicit_theme_precedence(self):
+        light, _ = terminal("Paragraph.\n", variables={"COLORFGBG": "0;15"})
+        dark, _ = terminal("Paragraph.\n", args=["--theme", "dark"], variables={"COLORFGBG": "0;15"})
+        explicit, _ = terminal("Paragraph.\n", args=["--theme", "light"])
+        alias, _ = terminal("Paragraph.\n", args=["--light"])
+        self.assertEqual(light, explicit)
+        self.assertEqual(alias, explicit)
+        self.assertEqual(plain(dark), plain(light))
+        self.assertNotEqual(attributes_at(light, b"Paragraph"), attributes_at(dark, b"Paragraph"))
+
+    def test_geometry_environment_fills_missing_dimensions_without_overriding_ioctl(self):
+        source = "word " * 50 + "\n"
+        fallback, error = terminal(source, args=["--width", "0"], columns=0, rows=0,
+            variables={"COLUMNS": "50", "LINES": "20"})
+        self.assertFalse(error)
+        self.assertTrue(all(len(line) < 50 for line in plain(fallback).splitlines()))
+        reported, error = terminal(source, args=["--width", "0"], columns=80, rows=24,
+            variables={"COLUMNS": "12", "LINES": "8"})
+        self.assertFalse(error)
+        self.assertTrue(any(len(line) > 50 for line in plain(reported).splitlines()))
+
+    def test_cell_size_override_uses_matching_pixel_rectangles(self):
+        for size in ("8x16", "12x28", "20x40"):
+            width, height = map(int, size.split("x"))
+            output, error = terminal(args=["--cell-size", size])
+            self.assertFalse(error)
+            self.assertEqual(len(screen(output, 80, cell_width=width, cell_height=height)), 3)
+
     def test_auto_ghostty_renders_inline_math_without_replacing_prose(self):
         output, error = terminal()
         self.assertFalse(error)

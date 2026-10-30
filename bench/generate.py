@@ -242,6 +242,22 @@ for name, (content, diagrams) in mermaid_cases.items():
     (CORPORA / name).write_text(content, encoding="utf-8")
     metadata[name] = {"diagrams": diagrams, "description": "Mermaid native subset, cache, worker, or fallback control."}
 
+extensions = (PROJECT / "tests/fixtures/extensions.md").read_text()
+extension_cases = {
+    "extensions-basic.md": (extensions, 2),
+    "extensions-repeated-1000.md": ("Before \\(x^2+1\\) after.\n\n" * 1000, 1000),
+    "extensions-details-1m.md": (("<details>\n<summary>More information</summary>\n\n"
+        "> [!NOTE]\n> Read the [guide](https://example.com/guide).\n\n"
+        "**Expanded** body and `literal code`.\n\n</details>\n\n") * 7000, 0),
+    "extensions-over-limit.md": ("---\ntitle: " + "x" * (17 * 1024) + "\n---\n\n"
+        + "<details>\n<summary>Large</summary>\n\n" + "text " * (60 * 1024) + "\n</details>\n\n"
+        + "\\(" + "x" * (17 * 1024) + "\\)\n\n"
+        + "```text\n\\(code\\)\n<details>literal</details>\n```\n", 0),
+}
+for name, (content, equations) in extension_cases.items():
+    (CORPORA / name).write_text(content, encoding="utf-8")
+    metadata[name] = {"equations": equations, "description": "Markdown extensions, projections, links, or source fallback."}
+
 for name, info in metadata.items():
     data = (CORPORA / name).read_bytes()
     info.update(bytes=len(data), lines=data.count(b"\n"), sha256=hashlib.sha256(data).hexdigest())

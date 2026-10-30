@@ -53,7 +53,8 @@ File reads use fixed-size buffers and reject growth beyond the observed size.
 Unix opens are nonblocking and reject nonregular files. Native codecs and SVG
 rasterization run in-process: the cumulative time budget cannot interrupt a
 single decode and is not a hard deadline. Source input, layout, temporary decoder
-storage, cached pixels, padding, and base64 transport have separate allocations.
+storage, cached pixels, padding, and compression have separate allocations.
+Base64 transport uses a fixed 4 KiB output buffer.
 The limits bound added image work rather than total process memory or filesystem
 latency.
 
@@ -62,7 +63,9 @@ bounds. A content hash accelerates lookup, with byte equality checked before a
 hit. Files are reread, so aliases can reuse pixels and changed files invalidate
 them. Renderer code and fonts are fixed within the invocation; images keep their
 original colors. Cache hits avoid decoding but still pad and transmit each
-placement. Kitty image reuse and payload compression remain optimization work.
+placement. Transport now compresses beneficial payloads before base64 encoding;
+terminal-side image reuse remains follow-up work. See the
+[streaming and graphics measurements](streaming-and-graphics.md).
 
 The output budget is now shared by local Markdown images and
 [native Mermaid diagrams](mermaid.md); existing math output has its own

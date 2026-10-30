@@ -454,7 +454,7 @@ fn kitty_transmits_a_complete_rgba_image_and_optional_selectable_source() {
         .skip(1)
         .map(|part| part.split_once("\x1b\\").unwrap().0)
         .collect();
-    assert!(commands.len() > 1, "fixture should exercise chunking");
+    assert!(!commands.is_empty());
     let header = commands[0].split_once(';').unwrap().0;
     let number = |key: &str| -> usize {
         header
@@ -480,7 +480,15 @@ fn kitty_transmits_a_complete_rgba_image_and_optional_selectable_source() {
         }));
         encoded.push_str(payload);
     }
-    let rgba = STANDARD.decode(encoded).unwrap();
+    let mut rgba = STANDARD.decode(encoded).unwrap();
+    if header.contains("o=z") {
+        use std::io::Read;
+        let mut pixels = Vec::new();
+        flate2::read::ZlibDecoder::new(rgba.as_slice())
+            .read_to_end(&mut pixels)
+            .unwrap();
+        rgba = pixels;
+    }
     assert_eq!(rgba.len(), number("s=") * number("v=") * 4);
     assert!(rgba.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 200));
     assert_eq!(text.matches(r"\frac{a+b}{c}\tag{42}").count(), 1);
@@ -610,4 +618,239 @@ fn mermaid_modes_preserve_plain_and_exact_exports() {
         assert!(exact.status.success() && exact.stderr.is_empty());
         assert_eq!(exact.stdout, source.as_bytes());
     }
+}
+
+#[test]
+fn backslash_math_preserves_spans_and_excludes_escaped_delimiters_and_code() {
+    let source = r#"Inline \(a_*b+\alpha\) and $c$.
+
+\[
+\frac{x}{y}
+\]
+
+`\(code\)` and ``\[also code\]`` and \\(escaped\\).
+
+```tex
+\(fenced\)
+\[fenced\]
+```
+
+    \(indented\)
+
+[Link \(x\)](https://example.com/\(path\))
+"#;
+    let document = Document::parse(source.into());
+    let math: Vec<_> = document
+        .events()
+        .filter_map(|event| match event.event {
+            Event::InlineMath(tex) | Event::DisplayMath(tex) => Some((
+                tex.into_string(),
+                document.source_slice(event.source).unwrap().to_owned(),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        math,
+        [
+            (r"a_*b+\alpha".into(), r"\(a_*b+\alpha\)".into()),
+            ("c".into(), "$c$".into()),
+            ("\n\\frac{x}{y}\n".into(), "\\[\n\\frac{x}{y}\n\\]".into()),
+            ("x".into(), r"\(x\)".into()),
+        ]
+    );
+    assert_eq!(export::source(&document), source);
+    let plain = export::text(&document);
+    assert!(plain.contains(r"\(a_*b+\alpha\)"));
+    assert!(plain.contains(r"\["));
+    assert!(plain.contains(r"\(fenced\)"));
+    assert!(plain.contains("https://example.com/(path)"));
+    assert_eq!(document.events().count(), document.events().count());
+}
+
+#[test]
+fn extensions_expand_details_preserve_metadata_and_keep_exact_source() {
+    let source = "---\r\ntitle: **literal**\r\nunsafe: !!tag &alias\r\n---\r\n\r\n<details>\r\n<summary>Result \\(x\\)</summary>\r\n\r\nBody **bold**.\r\n\r\n<details open>\r\n<summary>Nested</summary>\r\n\r\nStill here.\r\n\r\n</details>\r\n\r\n</details>";
+    let document = Document::parse(source.into());
+    let text = export::text(&document);
+    assert!(text.contains("title: **literal**"));
+    assert!(text.contains("unsafe: !!tag &alias"));
+    assert!(text.contains("Body bold.") && text.contains("Still here."));
+    assert!(!text.contains("<details") && !text.contains("<summary>"));
+    let math = document
+        .events()
+        .find(|event| matches!(event.event, Event::InlineMath(_)))
+        .unwrap();
+    assert_eq!(document.source_slice(math.source).unwrap(), r"\(x\)");
+    assert_eq!(export::source(&document), source);
+    for event in document.events() {
+        assert!(document.source_slice(event.source).is_some());
+    }
+}
+
+#[test]
+fn incomplete_oversized_and_code_extensions_keep_content() {
+    for source in [
+        "---\nunclosed: true\nBody".to_owned(),
+        format!("---\ntitle: {}\n---\nBody", "x".repeat(17 * 1024)),
+        "<details>\n<summary>Unclosed</summary>\n\nBody".to_owned(),
+        "```html\n<details>\n<summary>Code</summary>\n</details>\n```".to_owned(),
+        "<!--\n<details>\n<summary>Comment</summary>\n</details>\n-->".to_owned(),
+        format!(
+            "<details>\n<summary>Large</summary>\n\n{}\n</details>",
+            "x".repeat(257 * 1024)
+        ),
+    ] {
+        let document = Document::parse(source.clone());
+        assert_eq!(export::source(&document), source);
+        let text = export::text(&document);
+        if source.contains("<details>") {
+            assert!(text.contains("<details>"), "{text}");
+        } else {
+            assert!(text.contains("Body"));
+        }
+    }
+    let source = "\\(unclosed\n\nOther paragraph \\(x\\) and `code`";
+    let document = Document::parse(source.into());
+    assert_eq!(
+        document
+            .events()
+            .filter(|event| matches!(event.event, Event::InlineMath(_)))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn alerts_have_labels_and_streamed_output_matches_retained_layout() {
+    let source = include_str!("fixtures/extensions.md");
+    let document = Document::parse(source.into());
+    let text = export::text(&document);
+    for label in ["Note", "Tip", "Important", "Warning", "Caution"] {
+        assert!(text.contains(label));
+    }
+    assert!(!text.contains("[!NOTE]"));
+    for source in [
+        source,
+        include_str!("fixtures/style.md"),
+        include_str!("fixtures/tables.md"),
+        include_str!("fixtures/inline.md"),
+    ] {
+        let document = Document::parse(source.into());
+        let options = render::Options {
+            terminal: Some(Geometry::default()),
+            styled: true,
+            links: true,
+            ..Default::default()
+        };
+        let (mut retained, mut streamed) = (Vec::new(), Vec::new());
+        render::write(
+            &mut retained,
+            &document,
+            &layout::layout(&document),
+            &options,
+        )
+        .unwrap();
+        render::write_document(&mut streamed, &document, &options).unwrap();
+        assert_eq!(retained, streamed);
+    }
+}
+
+#[test]
+fn hyperlinks_wrap_without_leaking_and_reject_unsafe_targets() {
+    let source = "[A long **link label** that wraps](https://example.com/path?q=1) end. [unsafe](javascript:alert) [relative](file.md)";
+    let document = Document::parse(source.into());
+    let options = render::Options {
+        terminal: Some(Geometry::default()),
+        links: true,
+        width: 20,
+        ..Default::default()
+    };
+    let mut out = Vec::new();
+    render::write_document(&mut out, &document, &options).unwrap();
+    let value = String::from_utf8(out).unwrap();
+    assert!(value.contains("\x1b]8;;https://example.com/path?q=1\x1b\\"));
+    assert!(!value.contains("\x1b]8;;javascript:") && !value.contains("\x1b]8;;file.md"));
+    assert!(!export::text(&document).contains('\x1b'));
+    let mut active = false;
+    let mut rest = value.as_str();
+    while let Some((prefix, next)) = rest.split_once("\x1b]8;;") {
+        assert!(!active || !prefix.contains('\n'));
+        let (target, suffix) = next.split_once("\x1b\\").unwrap();
+        active = !target.is_empty();
+        rest = suffix;
+    }
+    assert!(!active);
+    for invalid in [
+        "",
+        "javascript:alert(1)",
+        "file:///etc/passwd",
+        "https://",
+        "https://example.com/\x1b]52;bad",
+        "https://example.com/\u{009c}",
+        "https://example.com/a\nb",
+        "https://example.com/a b",
+        "https:\\example.com",
+    ] {
+        assert!(!mdviewer::links::allowed(invalid), "{invalid:?}");
+    }
+    for valid in [
+        "https://example.com/path?q=1#anchor",
+        "mailto:reader@example.com",
+        "HTTP://example.com",
+    ] {
+        assert!(mdviewer::links::allowed(valid));
+    }
+}
+
+#[test]
+fn multiline_math_in_quotes_and_tables_retains_tex_without_container_markers() {
+    let source = "> \\[\n> x^2\n> \\]\n\n| Equation |\n| --- |\n| \\(x_1\\) |\n";
+    let document = Document::parse(source.into());
+    let math: Vec<_> = document
+        .events()
+        .filter_map(|item| match item.event {
+            Event::InlineMath(tex) | Event::DisplayMath(tex) => Some(tex.into_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(math, ["\nx^2\n", "x_1"]);
+}
+
+#[test]
+fn adjacent_math_and_unicode_projections_never_leak_placeholders() {
+    for source in [
+        r"\(α+β\)\(γ\)",
+        r"\(x\),\(y\).",
+        r"\[x\]\[y\]",
+        "é \\(x\\) **bold** \\(界\\)\r\n",
+    ] {
+        let document = Document::parse(source.into());
+        let equations: Vec<_> = document
+            .events()
+            .filter_map(|item| match item.event {
+                Event::InlineMath(tex) | Event::DisplayMath(tex) => Some(tex.into_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(equations.len(), 2, "{source}: {equations:?}");
+        assert!(!equations.iter().any(|tex| tex == "m"));
+        for item in document.events() {
+            assert!(document.source_slice(item.source).is_some());
+        }
+    }
+}
+
+#[test]
+fn many_openers_before_protected_code_keep_source_without_math() {
+    let source = format!("{} `code` \\)\n", "\\(".repeat(4000));
+    let document = Document::parse(source.clone());
+    assert_eq!(
+        document
+            .events()
+            .filter(|item| matches!(item.event, Event::InlineMath(_)))
+            .count(),
+        0
+    );
+    assert_eq!(export::source(&document), source);
 }

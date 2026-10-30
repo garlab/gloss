@@ -1,6 +1,8 @@
 //! Native math uses katex-native for layout and rasterization, independently
 //! of any terminal protocol.
 
+use std::{collections::VecDeque, sync::Arc};
+
 use katex_native::{
     Color,
     katex::{KatexContext, Settings},
@@ -8,8 +10,9 @@ use katex_native::{
 };
 
 /// Math-specific baseline metadata around the shared pixel representation.
+#[derive(Clone)]
 pub struct Raster {
-    pub pixels: crate::raster::Raster,
+    pub pixels: Arc<crate::raster::Raster>,
     pub baseline: f64,
 }
 
@@ -24,11 +27,11 @@ impl From<raster::Raster> for Raster {
     fn from(value: raster::Raster) -> Self {
         Self {
             baseline: value.baseline,
-            pixels: crate::raster::Raster {
+            pixels: Arc::new(crate::raster::Raster {
                 width: value.width,
                 height: value.height,
                 rgba: value.rgba,
-            },
+            }),
         }
     }
 }
@@ -36,6 +39,30 @@ impl From<raster::Raster> for Raster {
 pub struct MathEngine {
     context: KatexContext,
     next_number: u32,
+    cache: VecDeque<Entry>,
+    cache_bytes: usize,
+}
+
+const CACHE_BYTES: usize = 8 * 1024 * 1024;
+const CACHE_ENTRIES: usize = 64;
+const CACHE_SOURCE_BYTES: usize = 16 * 1024;
+
+#[derive(PartialEq, Eq)]
+struct Parameters {
+    display: bool,
+    font_size: u64,
+    color: [u8; 4],
+    width: u32,
+    height: u32,
+    number: u32,
+}
+
+struct Entry {
+    tex: String,
+    parameters: Parameters,
+    raster: Raster,
+    next_number: u32,
+    bytes: usize,
 }
 
 impl Default for MathEngine {
@@ -43,6 +70,8 @@ impl Default for MathEngine {
         Self {
             context: KatexContext::default(),
             next_number: 1,
+            cache: VecDeque::new(),
+            cache_bytes: 0,
         }
     }
 }
@@ -85,6 +114,25 @@ impl MathEngine {
         if !font_size.is_finite() || font_size <= 0. || max_width == 0 || max_height == 0 {
             return Err("invalid formula dimensions".into());
         }
+        let parameters = Parameters {
+            display,
+            font_size: font_size.to_bits(),
+            color: [color.r, color.g, color.b, color.a],
+            width: max_width,
+            height: max_height,
+            number: self.next_number,
+        };
+        if let Some(index) = self
+            .cache
+            .iter()
+            .position(|entry| entry.parameters == parameters && entry.tex == tex)
+        {
+            let entry = self.cache.remove(index).unwrap();
+            self.next_number = entry.next_number;
+            let raster = entry.raster.clone();
+            self.cache.push_back(entry);
+            return Ok(raster);
+        }
         let settings = Settings::builder().display_mode(display).build();
         let layout = katex_native::layout_numbered(&self.context, tex, &settings, self.next_number)
             .map_err(|err| err.to_string())?;
@@ -121,7 +169,28 @@ impl MathEngine {
         if display {
             self.next_number = self.next_number.saturating_add(layout.equation_numbers);
         }
-        Ok(result.into())
+        let result: Raster = result.into();
+        let bytes = result
+            .rgba
+            .len()
+            .saturating_add(tex.len())
+            .saturating_add(256);
+        if bytes <= CACHE_BYTES && tex.len() <= CACHE_SOURCE_BYTES {
+            while self.cache.len() >= CACHE_ENTRIES || self.cache_bytes + bytes > CACHE_BYTES {
+                if let Some(entry) = self.cache.pop_front() {
+                    self.cache_bytes -= entry.bytes;
+                }
+            }
+            self.cache.push_back(Entry {
+                tex: tex.into(),
+                parameters,
+                raster: result.clone(),
+                next_number: self.next_number,
+                bytes,
+            });
+            self.cache_bytes += bytes;
+        }
+        Ok(result)
     }
 }
 
@@ -157,4 +226,44 @@ fn beside(body: raster::Raster, tag: raster::Raster, gap: u32) -> Result<raster:
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_shares_pixels_but_separates_bounds_colors_and_numbering() {
+        let mut engine = MathEngine::default();
+        let color = Color {
+            r: 200,
+            g: 200,
+            b: 200,
+            a: 255,
+        };
+        let first = engine.render_inline("x+1", 24., color, 800, 400).unwrap();
+        let repeated = engine.render_inline("x+1", 24., color, 800, 400).unwrap();
+        assert!(Arc::ptr_eq(&first.pixels, &repeated.pixels));
+        let other = engine.render_inline("x+1", 24., color, 40, 400).unwrap();
+        assert!(!Arc::ptr_eq(&first.pixels, &other.pixels));
+        let other = engine
+            .render_inline("x+1", 24., Color { r: 0, ..color }, 800, 400)
+            .unwrap();
+        assert!(!Arc::ptr_eq(&first.pixels, &other.pixels));
+        let formula = r"\begin{equation}x=1\end{equation}";
+        let numbered = engine
+            .render_display(formula, 24., color, 800, 400)
+            .unwrap();
+        let second = engine
+            .render_display(formula, 24., color, 800, 400)
+            .unwrap();
+        assert_ne!(numbered.rgba, second.rgba);
+        assert_eq!(engine.next_number, 3);
+        for index in 0..80 {
+            engine
+                .render_inline(&format!("x+{index}"), 24., color, 800, 400)
+                .unwrap();
+        }
+        assert!(engine.cache.len() <= CACHE_ENTRIES && engine.cache_bytes <= CACHE_BYTES);
+    }
 }

@@ -136,7 +136,11 @@ fn bounded_row(row: &Row, columns: usize) -> bool {
 fn push_text(line: &mut Line, value: String, style: Style) {
     if !value.is_empty() {
         line.columns += UnicodeWidthStr::width(value.as_str());
-        line.parts.push(Part::Text { text: value, style });
+        line.parts.push(Part::Text {
+            text: value,
+            style,
+            target: None,
+        });
     }
 }
 

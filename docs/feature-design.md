@@ -15,8 +15,9 @@ planned unless the [README](../README.md) says otherwise. The
 | 4 | Mermaid | An optional renderer producing images through that same path, with a source fallback. |
 
 Task lists, strikethrough, basic footnotes, and native TeX math already work.
-Smaller additions are GitHub alerts, front matter, expanded details sections, and
-backslash-parenthesis/backslash-bracket math delimiters. Interactive paging,
+GitHub alerts, inert front matter, an expanded details subset, validated terminal
+links, and backslash math delimiters are implemented; see
+[Markdown extensions](markdown-extensions.md) for current coverage. Interactive paging,
 search, heading navigation, resize reflow, and watch mode follow separately.
 
 Every step must retain fast ordinary-document rendering, readable output on
@@ -192,12 +193,12 @@ For every feature:
 
 The initial 10 MiB mixed document reaches about 332 MiB peak RSS; 5,000 equations
 produce about 184 MiB of graphics output. These are optimization targets, not
-acceptable resource ceilings. Investigate retained document/event/run copies and
-bounded block processing before adding more whole-document representations.
-The [rendering optimizations](performance-optimizations.md) remove retained
-event copies and reduce text output costs; full input and layout storage remain.
-Evaluate math raster caching, duplicate image reuse, and payload compression
-against both memory and output cost.
+acceptable resource ceilings. The CLI now streams completed blocks, caches bounded math rasters, and compresses
+beneficial graphics payloads. The [initial rendering optimizations](performance-optimizations.md)
+remain a historical reference. Source, optional extension projections, parser
+working storage, and whole code/table blocks still scale with input. Continue
+evaluating those costs and terminal-side duplicate image reuse against memory,
+latency, scrollback behavior, and output volume.
 
 The PTY baseline excludes terminal image decoding, GPU work, and scrollback.
 Graphics changes also need real-terminal checks for scrolling, selection,

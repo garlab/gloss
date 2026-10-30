@@ -15,6 +15,7 @@ pub enum Part {
     Text {
         text: String,
         style: Style,
+        target: Option<Arc<String>>,
     },
     Image {
         image: Arc<Raster>,
@@ -88,7 +89,13 @@ impl Line {
         }
     }
 
-    fn push_text(&mut self, text: &str, style: Style, columns: usize) {
+    fn push_text(
+        &mut self,
+        text: &str,
+        style: Style,
+        columns: usize,
+        target: &Option<Arc<String>>,
+    ) {
         if text.is_empty() {
             return;
         }
@@ -96,8 +103,10 @@ impl Line {
         if let Some(Part::Text {
             text: previous,
             style: previous_style,
+            target: previous_target,
         }) = self.parts.last_mut()
             && *previous_style == style
+            && previous_target == target
         {
             previous.push_str(text);
             return;
@@ -105,6 +114,7 @@ impl Line {
         self.parts.push(Part::Text {
             text: text.to_owned(),
             style,
+            target: target.clone(),
         });
     }
 
@@ -134,7 +144,11 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
                 builder.word.push(Fragment::Image(part));
                 builder.word_columns += columns;
             }
-            Part::Text { text, style } => {
+            Part::Text {
+                text,
+                style,
+                target,
+            } => {
                 let mut start = 0;
                 let mut columns = 0;
                 for (offset, grapheme) in text.grapheme_indices(true) {
@@ -144,7 +158,7 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
                         columns += UnicodeWidthStr::width(grapheme);
                         continue;
                     }
-                    builder.fragment(&text[start..offset], *style, columns);
+                    builder.fragment(&text[start..offset], *style, columns, target);
                     start = offset + grapheme.len();
                     columns = 0;
                     match grapheme {
@@ -156,16 +170,16 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
                             builder.word();
                             let spaces = 4 - builder.current.columns % 4;
                             for _ in 0..spaces {
-                                builder.space(" ", *style, 1);
+                                builder.space(" ", *style, 1, target);
                             }
                         }
                         value => {
                             builder.word();
-                            builder.space(value, *style, UnicodeWidthStr::width(value));
+                            builder.space(value, *style, UnicodeWidthStr::width(value), target);
                         }
                     }
                 }
-                builder.fragment(&text[start..], *style, columns);
+                builder.fragment(&text[start..], *style, columns, target);
             }
         }
     }
@@ -180,6 +194,7 @@ enum Fragment<'a> {
     Text {
         text: &'a str,
         style: Style,
+        target: &'a Option<Arc<String>>,
         columns: usize,
     },
     Image(&'a Part),
@@ -195,12 +210,19 @@ struct Wrapper<'a> {
 }
 
 impl<'a> Wrapper<'a> {
-    fn fragment(&mut self, text: &'a str, style: Style, columns: usize) {
+    fn fragment(
+        &mut self,
+        text: &'a str,
+        style: Style,
+        columns: usize,
+        target: &'a Option<Arc<String>>,
+    ) {
         if !text.is_empty() {
             self.word.push(Fragment::Text {
                 text,
                 style,
                 columns,
+                target,
             });
             self.word_columns += columns;
         }
@@ -220,11 +242,12 @@ impl<'a> Wrapper<'a> {
                     text,
                     style,
                     columns,
+                    target,
                 } => {
                     if self.current.columns + columns <= self.width {
-                        self.current.push_text(text, style, columns);
+                        self.current.push_text(text, style, columns, target);
                     } else {
-                        self.split_text(text, style);
+                        self.split_text(text, style, target);
                     }
                 }
                 Fragment::Image(part) => {
@@ -241,7 +264,7 @@ impl<'a> Wrapper<'a> {
         self.word = word;
     }
 
-    fn split_text(&mut self, text: &str, style: Style) {
+    fn split_text(&mut self, text: &str, style: Style, target: &Option<Arc<String>>) {
         let mut start = 0;
         let mut columns = 0;
         for (offset, grapheme) in text.grapheme_indices(true) {
@@ -249,19 +272,21 @@ impl<'a> Wrapper<'a> {
             if self.current.columns + columns > 0
                 && self.current.columns + columns + size > self.width
             {
-                self.current.push_text(&text[start..offset], style, columns);
+                self.current
+                    .push_text(&text[start..offset], style, columns, target);
                 self.line();
                 start = offset;
                 columns = 0;
             }
             columns += size;
         }
-        self.current.push_text(&text[start..], style, columns);
+        self.current
+            .push_text(&text[start..], style, columns, target);
     }
 
-    fn space(&mut self, text: &str, style: Style, columns: usize) {
+    fn space(&mut self, text: &str, style: Style, columns: usize, target: &Option<Arc<String>>) {
         if self.current.columns + columns <= self.width {
-            self.current.push_text(text, style, columns);
+            self.current.push_text(text, style, columns, target);
         }
     }
 
@@ -278,6 +303,7 @@ mod tests {
     fn text(value: &str) -> Part {
         Part::Text {
             text: value.into(),
+            target: None,
             style: Style::default(),
         }
     }
@@ -313,6 +339,7 @@ mod tests {
                 text("he"),
                 Part::Text {
                     text: "llo".into(),
+                    target: None,
                     style: Style {
                         bold: true,
                         ..Default::default()
@@ -357,6 +384,7 @@ mod tests {
                 text("X ab"),
                 Part::Text {
                     text: "cdefghij".into(),
+                    target: None,
                     style: Style {
                         bold: true,
                         ..Default::default()

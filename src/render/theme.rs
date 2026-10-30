@@ -29,6 +29,17 @@ impl Theme {
                 (if self.light { 245 } else { 240 }, None)
             }
             Role::TableHeader => (accent, None),
+            Role::Alert(kind) => {
+                use pulldown_cmark::BlockQuoteKind::*;
+                let (dark, light) = match kind {
+                    Note => (81, 25),
+                    Tip => (114, 28),
+                    Important => (177, 90),
+                    Warning => (222, 94),
+                    Caution => (210, 124),
+                };
+                (if self.light { light } else { dark }, None)
+            }
             Role::LinkTarget | Role::MathSource => (muted, None),
             Role::Body if style.quote_depth > 0 => (muted, None),
             Role::Body => (body, None),

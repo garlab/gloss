@@ -106,6 +106,22 @@ impl Painter {
         Ok(())
     }
 
+    pub fn linked_span(
+        &mut self,
+        out: &mut impl Write,
+        text: &str,
+        style: Style,
+        target: Option<&str>,
+    ) -> io::Result<()> {
+        if let Some(target) = target.filter(|target| crate::links::allowed(target)) {
+            write!(out, "\x1b]8;;{target}\x1b\\")?;
+            self.span(out, text, style)?;
+            out.write_all(b"\x1b]8;;\x1b\\")
+        } else {
+            self.span(out, text, style)
+        }
+    }
+
     pub fn spaces(&mut self, out: &mut impl Write, count: usize, style: Style) -> io::Result<()> {
         if count > 0 {
             self.style(out, style)?;

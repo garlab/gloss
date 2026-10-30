@@ -25,6 +25,7 @@ use viewport::Viewport;
 
 pub struct Options {
     pub styled: bool,
+    pub links: bool,
     /// Color known fenced languages; ignored for unstyled/plain output.
     pub highlight: bool,
     pub kitty: Option<Geometry>,
@@ -49,6 +50,7 @@ impl Default for Options {
     fn default() -> Self {
         Self {
             styled: false,
+            links: false,
             highlight: true,
             kitty: None,
             terminal: None,
@@ -80,49 +82,130 @@ impl Options {
     }
 }
 
-/// Returns non-fatal math errors. Failed equations are shown as their source.
+/// Render a retained layout, returning non-fatal math warnings.
 pub fn write(
     out: &mut impl Write,
     document: &Document,
     layout: &Layout,
     options: &Options,
 ) -> io::Result<Vec<String>> {
-    let mut engine = None;
-    let mut highlighter = None;
-    let mut images = None;
-    let mut mermaid = None;
-    let mut warnings = Vec::new();
-    let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
-    let geometry = options.geometry();
-    let viewport = options.viewport();
-    if formatted && !layout.blocks.is_empty() {
-        if options.styled {
-            out.write_all(b"\x1b[0m")?;
-        }
-        writeln!(out)?;
-    }
+    let mut renderer = Renderer::new(out, document, options);
     for (index, block) in layout.blocks.iter().enumerate() {
+        let before = index
+            .checked_sub(1)
+            .and_then(|index| layout.blocks.get(index));
+        renderer.block(
+            block,
+            (
+                quote(before, false),
+                quote(layout.blocks.get(index + 1), true),
+            ),
+        )?;
+    }
+    Ok(renderer.warnings)
+}
+
+/// The CLI needs only a completed block and one-block lookahead for quote rails.
+/// Highlighters, raster caches, and the diagram worker are reused across blocks.
+pub fn write_document(
+    out: &mut impl Write,
+    document: &Document,
+    options: &Options,
+) -> io::Result<Vec<String>> {
+    let mut renderer = Renderer::new(out, document, options);
+    let mut pending = None;
+    let mut previous = 0;
+    crate::layout::visit(
+        document,
+        true,
+        options.image_base.is_some(),
+        options.links,
+        |next| {
+            if let Some(block) = pending.take() {
+                renderer.block(&block, (previous, quote(Some(&next), true)))?;
+                previous = quote(Some(&block), false);
+            }
+            pending = Some(next);
+            Ok::<_, io::Error>(())
+        },
+    )?;
+    if let Some(block) = pending {
+        renderer.block(&block, (previous, 0))?;
+    }
+    Ok(renderer.warnings)
+}
+
+fn quote(block: Option<&Block>, first: bool) -> usize {
+    match block {
+        Some(Block::Text(runs) | Block::Code { runs, .. }) => {
+            let mut styles = runs.iter().filter(|run| {
+                !run.text.trim().is_empty()
+                    && !matches!(run.style.role, Role::ListMarker | Role::QuoteMarker)
+            });
+            (if first {
+                styles.next()
+            } else {
+                styles.next_back()
+            })
+            .map_or(0, |run| run.style.quote_depth)
+        }
+        Some(Block::Table(table)) => table.style.quote_depth,
+        Some(Block::Image(image)) => image.style.quote_depth,
+        Some(Block::DisplayMath { style, .. }) => style.quote_depth,
+        None => 0,
+    }
+}
+
+struct Renderer<'a, W> {
+    out: &'a mut W,
+    document: &'a Document,
+    options: &'a Options,
+    engine: Option<MathEngine>,
+    highlighter: Option<crate::highlight::Highlighter>,
+    images: Option<crate::images::Loader>,
+    mermaid: Option<crate::mermaid::Engine>,
+    warnings: Vec<String>,
+    started: bool,
+}
+
+impl<'a, W: Write> Renderer<'a, W> {
+    fn new(out: &'a mut W, document: &'a Document, options: &'a Options) -> Self {
+        Self {
+            out,
+            document,
+            options,
+            engine: None,
+            highlighter: None,
+            images: None,
+            mermaid: None,
+            warnings: Vec::new(),
+            started: false,
+        }
+    }
+
+    fn block(&mut self, block: &Block, edges: (usize, usize)) -> io::Result<()> {
+        let options = self.options;
+        let document = self.document;
+        let out = &mut self.out;
+        let engine = &mut self.engine;
+        let highlighter = &mut self.highlighter;
+        let images = &mut self.images;
+        let mermaid = &mut self.mermaid;
+        let warnings = &mut self.warnings;
+        let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
+        let geometry = options.geometry();
+        let viewport = options.viewport();
+        if !self.started && formatted {
+            if options.styled {
+                out.write_all(b"\x1b[0m")?;
+            }
+            writeln!(out)?;
+        }
+        self.started = true;
         match block {
             Block::Text(runs) => {
                 if formatted {
-                    let block_quote = |block: Option<&Block>| match block {
-                        Some(Block::Code { runs, .. }) => runs
-                            .iter()
-                            .find(|run| run.style.role == Role::CodeBlock)
-                            .map_or(0, |run| run.style.quote_depth),
-                        Some(Block::Table(table)) => table.style.quote_depth,
-                        Some(Block::Image(image)) => image.style.quote_depth,
-                        _ => 0,
-                    };
-                    let edges = (
-                        block_quote(
-                            index
-                                .checked_sub(1)
-                                .and_then(|previous| layout.blocks.get(previous)),
-                        ),
-                        block_quote(layout.blocks.get(index + 1)),
-                    );
-                    inline::write(out, runs, &mut engine, options, &mut warnings, edges)?;
+                    inline::write(out, runs, engine, options, warnings, edges)?;
                 } else {
                     text::write_runs(out, runs, false)?;
                 }
@@ -133,21 +216,21 @@ pub fn write(
                         && language
                             .as_deref()
                             .is_some_and(|label| label.eq_ignore_ascii_case("mermaid"))
-                        && diagram::write(out, runs, &mut mermaid, &mut images, options)?
+                        && diagram::write(out, runs, mermaid, images, options)?
                     {
-                        continue;
+                        return Ok(());
                     }
                     let highlighted = if options.styled && options.highlight {
-                        code::highlight(runs, language.as_deref(), &mut highlighter)
+                        code::highlight(runs, language.as_deref(), highlighter)
                     } else {
                         None
                     };
                     inline::write(
                         out,
                         highlighted.as_deref().unwrap_or(runs),
-                        &mut engine,
+                        engine,
                         options,
-                        &mut warnings,
+                        warnings,
                         (0, 0),
                     )?;
                 } else {
@@ -156,7 +239,7 @@ pub fn write(
             }
             Block::Table(table) => {
                 if formatted {
-                    table::write(out, table, &mut engine, options, &mut warnings)?;
+                    table::write(out, table, engine, options, warnings)?;
                 } else {
                     table::write_plain(out, table)?;
                 }
@@ -182,7 +265,8 @@ pub fn write(
                         ..image.style
                     },
                     math: None,
-                    source: Some(image.source.clone()),
+                    target: None,
+                    source: Some(image.source.clone().into()),
                 };
                 if formatted {
                     let frame = if rendered { frame.continued() } else { frame };
@@ -248,6 +332,6 @@ pub fn write(
                 }
             }
         }
+        Ok(())
     }
-    Ok(warnings)
 }

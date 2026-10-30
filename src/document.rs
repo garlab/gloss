@@ -1,6 +1,8 @@
 //! Parsing retains original Markdown alongside source ranges, independently of
 //! terminal styling and image placement. Copying must never depend on pixels.
 
+mod extensions;
+
 use std::ops::Range;
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -14,11 +16,13 @@ pub struct SpannedEvent<'a> {
 #[derive(Debug)]
 pub struct Document {
     source: String,
+    prepared: extensions::Prepared,
 }
 
 impl Document {
     pub fn parse(source: String) -> Self {
-        Self { source }
+        let prepared = extensions::prepare(&source);
+        Self { source, prepared }
     }
 
     pub fn source(&self) -> &str {
@@ -32,10 +36,22 @@ impl Document {
             | Options::ENABLE_STRIKETHROUGH
             | Options::ENABLE_TASKLISTS
             | Options::ENABLE_FOOTNOTES
-            | Options::ENABLE_MATH;
-        let mut parsed = Parser::new_ext(&self.source, options).into_offset_iter();
+            | Options::ENABLE_MATH
+            | Options::ENABLE_GFM;
+        let input = self.prepared.text.as_deref().unwrap_or(&self.source);
+        let mut parsed = Parser::new_ext(input, options).into_offset_iter();
         std::iter::from_fn(move || {
-            let (event, range) = parsed.next()?;
+            let (mut event, range) = parsed.next()?;
+            let range = self.prepared.original_range(range);
+            if matches!(event, Event::InlineMath(_) | Event::DisplayMath(_))
+                && let Some(tex) = self.prepared.math(&range)
+            {
+                event = if matches!(event, Event::InlineMath(_)) {
+                    Event::InlineMath(tex.into())
+                } else {
+                    Event::DisplayMath(tex.into())
+                };
+            }
             // A fenced `math` block has the same rendering semantics as $$...$$,
             // but its source range still includes the original fence.
             if matches!(&event, Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
@@ -44,7 +60,7 @@ impl Document {
                 let mut tex = String::new();
                 let mut end = range.end;
                 for (part, part_range) in parsed.by_ref() {
-                    end = part_range.end;
+                    end = self.prepared.original_range(part_range).end;
                     match part {
                         Event::Text(text) => tex.push_str(&text),
                         Event::End(TagEnd::CodeBlock) => break,
@@ -65,7 +81,7 @@ impl Document {
     }
 
     /// Returns the exact Markdown for a source range, including delimiters.
-    pub fn source_slice(&self, range: Range<usize>) -> Option<&str> {
-        self.source.get(range)
+    pub fn source_slice(&self, range: impl Into<Range<usize>>) -> Option<&str> {
+        self.source.get(range.into())
     }
 }

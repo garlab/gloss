@@ -6,6 +6,7 @@
 use std::io::{self, Write};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use flate2::{Compression, write::ZlibEncoder};
 
 use crate::{raster::Raster, terminal::Geometry};
 
@@ -63,25 +64,38 @@ pub(crate) fn transmit(
             "invalid RGBA raster",
         ));
     }
-    let encoded = STANDARD.encode(&raster.rgba);
-    let mut chunks = encoded.as_bytes().chunks(4096).peekable();
+    // Compress before base64, as specified by the graphics protocol. Keep raw
+    // bytes when compression does not help. Encoding uses a fixed stack buffer
+    // instead of retaining another full-size copy of the image.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(&raster.rgba)?;
+    let compressed = encoder.finish()?;
+    let (payload, compression) = if compressed.len() + 16 < raster.rgba.len() {
+        (compressed.as_slice(), ",o=z")
+    } else {
+        (raster.rgba.as_slice(), "")
+    };
+    let mut chunks = payload.chunks(3072).peekable();
     let mut first = true;
+    let mut encoded = [0_u8; 4096];
     while let Some(chunk) = chunks.next() {
         let more = u8::from(chunks.peek().is_some());
         if first {
             // q=2 suppresses replies; C=1 leaves cursor management to us.
-            // No explicit image ID: the terminal allocates one without replacing
-            // equations left in scrollback by a previous mdviewer invocation.
+            // Terminal-allocated IDs preserve output from previous invocations.
             write!(
                 out,
-                "\x1b_Ga=T,t=d,f=32,s={},v={},c={columns},r={rows},C=1,q=2,m={more};",
+                "\x1b_Ga=T,t=d,f=32,s={},v={},c={columns},r={rows},C=1,q=2{compression},m={more};",
                 raster.width, raster.height
             )?;
             first = false;
         } else {
             write!(out, "\x1b_Gq=2,m={more};")?;
         }
-        out.write_all(chunk)?;
+        let count = STANDARD
+            .encode_slice(chunk, &mut encoded)
+            .expect("3072 bytes fit the base64 buffer");
+        out.write_all(&encoded[..count])?;
         out.write_all(b"\x1b\\")?;
     }
     Ok(())
@@ -116,4 +130,64 @@ pub(crate) fn pad(raster: &Raster, width: u32, height: u32, x: u32, y: u32) -> i
         height,
         rgba,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    fn decode(raster: &Raster) -> (Vec<u8>, usize, bool) {
+        let mut output = Vec::new();
+        transmit(&mut output, raster, raster.width, raster.height).unwrap();
+        let output = String::from_utf8(output).unwrap();
+        let mut payload = String::new();
+        let mut chunks = 0;
+        let compressed = output.contains(",o=z,");
+        for command in output.split("\x1b_G").skip(1) {
+            let (control, data) = command.split_once(';').unwrap();
+            let data = data.strip_suffix("\x1b\\").unwrap();
+            assert!(data.len() <= 4096 && data.len() % 4 == 0);
+            assert!(control.contains("q=2"));
+            payload.push_str(data);
+            chunks += 1;
+        }
+        let mut bytes = STANDARD.decode(payload).unwrap();
+        if compressed {
+            let mut pixels = Vec::new();
+            flate2::read::ZlibDecoder::new(bytes.as_slice())
+                .read_to_end(&mut pixels)
+                .unwrap();
+            bytes = pixels;
+        }
+        (bytes, chunks, compressed)
+    }
+
+    #[test]
+    fn compressed_and_incompressible_pixels_round_trip_with_bounded_chunks() {
+        let mut random = 1_u32;
+        let rgba: Vec<_> = (0..100 * 100 * 4)
+            .map(|_| {
+                random ^= random << 13;
+                random ^= random >> 17;
+                random ^= random << 5;
+                random as u8
+            })
+            .collect();
+        let raster = Raster {
+            width: 100,
+            height: 100,
+            rgba,
+        };
+        let (bytes, chunks, compressed) = decode(&raster);
+        assert_eq!(bytes, raster.rgba);
+        assert!(chunks > 1 && !compressed);
+        let raster = Raster {
+            rgba: vec![255; 100 * 100 * 4],
+            ..raster
+        };
+        let (bytes, _, compressed) = decode(&raster);
+        assert_eq!(bytes, raster.rgba);
+        assert!(compressed);
+    }
 }

@@ -47,7 +47,8 @@ fn logical_lines(runs: &[Run]) -> impl Iterator<Item = LogicalLine> + '_ {
                             text: value.to_owned(),
                             style: run.style,
                             math: None,
-                            source: run.source.clone(),
+                            target: run.target.clone(),
+                            source: run.source,
                         });
                     }
                     if piece.ends_with('\n') {
@@ -250,6 +251,7 @@ pub(super) fn write(
             let line = Line {
                 parts: vec![Part::Text {
                     text: "─".repeat(frame.width),
+                    target: None,
                     style: frame.style,
                 }],
                 columns: frame.width,
@@ -313,7 +315,7 @@ pub(super) fn prepare_parts(
                     parts.push(Part::Image {
                         columns: image.width.div_ceil(cell_width) as usize,
                         baseline: image.baseline,
-                        image: Arc::new(image.pixels),
+                        image: image.pixels,
                         source: Some(run.text),
                     });
                     continue;
@@ -332,6 +334,7 @@ pub(super) fn prepare_parts(
         };
         parts.push(Part::Text {
             text: value,
+            target: if options.links { run.target } else { None },
             style: run.style,
         });
     }
@@ -391,6 +394,7 @@ pub(super) fn write_picture(
         parts: vec![
             Part::Text {
                 text: " ".repeat(inset),
+                target: None,
                 style: frame.style,
             },
             Part::Image {
@@ -423,6 +427,7 @@ pub(super) fn write_text(
             text: value.to_owned(),
             style,
             math: None,
+            target: None,
             source: None,
         }],
         &mut None,
@@ -486,7 +491,11 @@ pub(super) fn write_line(
     painter.span(out, prefix, frame.prefix_style)?;
     for part in &line.parts {
         match part {
-            Part::Text { text: value, style } => painter.span(out, value, *style)?,
+            Part::Text {
+                text: value,
+                style,
+                target,
+            } => painter.linked_span(out, value, *style, target.as_deref().map(String::as_str))?,
             Part::Image {
                 image,
                 columns,
@@ -570,7 +579,7 @@ fn paint_vertical_borders(
         column += unicode_width::UnicodeWidthChar::width(character).unwrap_or(0);
     }
     for part in &line.parts {
-        if let Part::Text { text, style } = part
+        if let Part::Text { text, style, .. } = part
             && style.role == Role::TableBorder
         {
             let mut offset = 0;
@@ -620,6 +629,7 @@ mod tests {
             [Run {
                 text: "$x$".into(),
                 math: Some("x".into()),
+                target: None,
                 style: Style::default(),
                 source: None,
             }],

@@ -186,7 +186,9 @@ the table excludes this sampling overhead.
 The complex graph spends most of its time in native layout; a two-second deadline
 keeps worse cases from monopolizing the viewer. The 40-distinct input renders 32
 diagrams and retains all remaining source. Cached repeats avoid layout work but
-still transmit pixels; image reuse/compression remains useful future work.
+still transmit pixels. The measurements above predate compressed transport; see
+[streaming and graphics measurements](streaming-and-graphics.md) for its effect.
+Terminal-side image reuse remains follow-up work.
 
 Nine disabled-feature cases add 36 processes. The small/medium diagram inputs
 take 3.27–4.32 ms with about 3.06–3.27 MiB RSS; the large fallback document takes

@@ -4,9 +4,9 @@
 pub mod lines;
 pub mod table;
 
-use std::ops::Range;
+use std::{num::NonZeroUsize, ops::Range, sync::Arc};
 
-use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
+use pulldown_cmark::{BlockQuoteKind, CodeBlockKind, Event, Tag, TagEnd};
 
 use crate::{document::Document, highlight::Highlight};
 
@@ -23,6 +23,7 @@ pub enum Role {
     MathSource,
     TableHeader,
     TableBorder,
+    Alert(BlockQuoteKind),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -38,15 +39,46 @@ pub struct Style {
     pub quote_depth: usize,
 }
 
+/// A source range with a nonzero end representation, so an optional span takes
+/// two words. String offsets cannot reach usize::MAX. This keeps hyperlink
+/// metadata from increasing the size of every retained table/code run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceSpan {
+    pub start: usize,
+    end: NonZeroUsize,
+}
+
+impl From<Range<usize>> for SourceSpan {
+    fn from(range: Range<usize>) -> Self {
+        Self {
+            start: range.start,
+            end: NonZeroUsize::new(
+                range
+                    .end
+                    .checked_add(1)
+                    .expect("source offsets fit within Rust string bounds"),
+            )
+            .unwrap(),
+        }
+    }
+}
+
+impl From<SourceSpan> for Range<usize> {
+    fn from(span: SourceSpan) -> Self {
+        span.start..span.end.get() - 1
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Run {
     pub text: String,
     pub style: Style,
+    pub target: Option<Arc<String>>,
     /// The equation without delimiters. `text` retains the original TeX for
     /// plain output and copying, even when the terminal shows an image.
     pub math: Option<String>,
     /// A source span, not a byte-for-byte mapping: entities and escapes decode.
-    pub source: Option<Range<usize>>,
+    pub source: Option<SourceSpan>,
 }
 
 #[derive(Debug)]
@@ -90,14 +122,39 @@ pub fn with_images(document: &Document) -> Layout {
     build_layout(document, true, true)
 }
 
-/// Plain export does not need independently owned code/table metadata or
-/// per-block vectors. Keep its allocation behavior independent of decoration.
-pub(crate) fn plain_layout(document: &Document) -> Layout {
-    build_layout(document, false, false)
+fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Layout {
+    let mut blocks = Vec::new();
+    let result: Result<(), std::convert::Infallible> = visit(
+        document,
+        semantic_blocks,
+        images,
+        semantic_blocks,
+        |block| {
+            blocks.push(block);
+            Ok(())
+        },
+    );
+    result.unwrap();
+    Layout { blocks }
 }
 
-fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Layout {
-    let mut flow = Flow::default();
+/// Visit completed blocks without retaining the entire layout. Source and the
+/// CommonMark parser still scale with input; tables and code remain whole blocks.
+pub fn visit<E>(
+    document: &Document,
+    semantic_blocks: bool,
+    images: bool,
+    hyperlinks: bool,
+    sink: impl FnMut(Block) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut flow = Flow {
+        sink,
+        runs: Vec::new(),
+        trailing_newlines: 0,
+        prefix_pending: false,
+        has_output: false,
+        target: None,
+    };
     let mut style = Style::default();
     let mut styles = Vec::new();
     let mut links = Vec::new();
@@ -128,7 +185,7 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         flow.runs.len()
                     };
                     let prefix = flow.runs.split_off(prefix_start);
-                    flow.flush();
+                    flow.flush()?;
                     flow.trailing_newlines = 0;
                     flow.prefix_pending = false;
                     table = Some(table::Builder {
@@ -161,7 +218,7 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         flow.runs.len()
                     };
                     let prefix = flow.runs.split_off(prefix_start);
-                    flow.flush();
+                    flow.flush()?;
                     flow.runs = prefix;
                     let code_style = Style {
                         bold: false,
@@ -189,11 +246,12 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                             }
                             CodeBlockKind::Indented => None,
                         };
-                        flow.blocks.push(Block::Code {
+                        let runs = std::mem::take(&mut flow.runs);
+                        flow.emit(Block::Code {
                             language,
-                            runs: std::mem::take(&mut flow.runs),
+                            runs,
                             source: item.source.start..end,
-                        });
+                        })?;
                     }
                     flow.breaks(2);
                 }
@@ -229,7 +287,7 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         flow.runs.len()
                     };
                     let prefix = flow.runs.split_off(prefix_start);
-                    flow.flush();
+                    flow.flush()?;
                     let mut alt = String::new();
                     let mut end = item.source.end;
                     let mut depth = 1;
@@ -257,13 +315,13 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                             _ => {}
                         }
                     }
-                    flow.blocks.push(Block::Image(Box::new(Image {
+                    flow.emit(Block::Image(Box::new(Image {
                         target: dest_url.to_string(),
                         alt,
                         prefix,
                         style,
                         source: item.source.start..end,
-                    })));
+                    })))?;
                     flow.prefix_pending = false;
                     flow.trailing_newlines = 1;
                     flow.breaks(2);
@@ -271,7 +329,10 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                 Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. } => {
                     styles.push(style);
                     style.link = true;
-                    links.push(dest_url.to_string());
+                    let target = Arc::new(dest_url.to_string());
+                    flow.target =
+                        (hyperlinks && crate::links::allowed(&target)).then(|| target.clone());
+                    links.push(target);
                     if matches!(tag, Tag::Image { .. }) {
                         flow.push("[image: ", style, None);
                     }
@@ -301,7 +362,7 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         },
                     );
                 }
-                Tag::BlockQuote(_) => {
+                Tag::BlockQuote(kind) => {
                     if !flow.prefix_pending {
                         flow.breaks(2);
                     }
@@ -314,6 +375,25 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                             ..style
                         },
                     );
+                    if let Some(kind) = kind {
+                        let label = match kind {
+                            BlockQuoteKind::Note => "Note",
+                            BlockQuoteKind::Tip => "Tip",
+                            BlockQuoteKind::Important => "Important",
+                            BlockQuoteKind::Warning => "Warning",
+                            BlockQuoteKind::Caution => "Caution",
+                        };
+                        flow.push(
+                            label,
+                            Style {
+                                role: Role::Alert(*kind),
+                                bold: true,
+                                ..style
+                            },
+                            None,
+                        );
+                        flow.breaks(1);
+                    }
                 }
                 Tag::TableHead | Tag::TableRow if table.is_some() => {
                     table.as_mut().unwrap().row.header = matches!(tag, Tag::TableHead);
@@ -333,12 +413,15 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                 TagEnd::Table if table.is_some() => {
                     let mut finished = table.take().unwrap().table;
                     finished.source.end = item.source.end;
-                    flow.blocks.push(Block::Table(finished));
+                    flow.emit(Block::Table(finished))?;
                     flow.trailing_newlines = 1;
                     flow.breaks(2);
                 }
                 TagEnd::Paragraph | TagEnd::HtmlBlock | TagEnd::Table => {
                     flow.breaks(2);
+                    if table.is_none() {
+                        flow.flush()?;
+                    }
                 }
                 TagEnd::BlockQuote(_) => {
                     style = styles.pop().unwrap_or_default();
@@ -367,6 +450,10 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         );
                     }
                     style = styles.pop().unwrap_or_default();
+                    flow.target = links
+                        .last()
+                        .filter(|target| hyperlinks && crate::links::allowed(target))
+                        .cloned();
                 }
                 TagEnd::List(_) => {
                     lists.pop();
@@ -375,6 +462,9 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                 TagEnd::Item => {
                     style.indent = item_indents.pop().unwrap_or_default();
                     flow.breaks(1);
+                    if table.is_none() {
+                        flow.flush()?;
+                    }
                 }
                 TagEnd::TableHead | TagEnd::TableRow if table.is_some() => {
                     table.as_mut().unwrap().row();
@@ -386,7 +476,10 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
                         .cell(std::mem::take(&mut flow.runs), item.source.end);
                     flow.trailing_newlines = 0;
                 }
-                TagEnd::TableHead | TagEnd::TableRow => flow.breaks(1),
+                TagEnd::TableHead | TagEnd::TableRow => {
+                    flow.breaks(1);
+                    flow.flush()?;
+                }
                 TagEnd::TableCell => flow.push(" | ", style, None),
                 _ => {}
             },
@@ -435,12 +528,12 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
             }
             Event::DisplayMath(tex) => {
                 flow.breaks(2);
-                flow.flush();
-                flow.blocks.push(Block::DisplayMath {
+                flow.flush()?;
+                flow.emit(Block::DisplayMath {
                     tex: tex.to_string(),
                     source: item.source.clone(),
                     style,
-                });
+                })?;
                 flow.trailing_newlines = 2;
             }
             Event::SoftBreak => flow.push(" ", style, None),
@@ -465,21 +558,20 @@ fn build_layout(document: &Document, semantic_blocks: bool, images: bool) -> Lay
             }
         }
     }
-    flow.flush();
-    Layout {
-        blocks: flow.blocks,
-    }
+    flow.flush()?;
+    Ok(())
 }
 
-#[derive(Default)]
-struct Flow {
-    blocks: Vec<Block>,
+struct Flow<F> {
+    sink: F,
+    has_output: bool,
+    target: Option<Arc<String>>,
     runs: Vec<Run>,
     trailing_newlines: usize,
     prefix_pending: bool,
 }
 
-impl Flow {
+impl<E, F: FnMut(Block) -> Result<(), E>> Flow<F> {
     fn push(&mut self, text: &str, style: Style, source: Option<Range<usize>>) {
         if text.is_empty() {
             return;
@@ -494,8 +586,9 @@ impl Flow {
         self.runs.push(Run {
             text: text.to_owned(),
             style,
+            target: self.target.clone(),
             math: None,
-            source,
+            source: source.map(Into::into),
         });
     }
 
@@ -505,7 +598,7 @@ impl Flow {
     }
 
     fn breaks(&mut self, count: usize) {
-        if (!self.runs.is_empty() || !self.blocks.is_empty()) && self.trailing_newlines < count {
+        if (!self.runs.is_empty() || self.has_output) && self.trailing_newlines < count {
             self.push(
                 &"\n".repeat(count - self.trailing_newlines),
                 Style::default(),
@@ -514,10 +607,16 @@ impl Flow {
         }
     }
 
-    fn flush(&mut self) {
+    fn emit(&mut self, block: Block) -> Result<(), E> {
+        self.has_output = true;
+        (self.sink)(block)
+    }
+
+    fn flush(&mut self) -> Result<(), E> {
         if !self.runs.is_empty() {
-            self.blocks
-                .push(Block::Text(std::mem::take(&mut self.runs)));
+            let block = Block::Text(std::mem::take(&mut self.runs));
+            self.emit(block)?;
         }
+        Ok(())
     }
 }

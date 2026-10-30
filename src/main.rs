@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::{CommandFactory, Parser, ValueEnum};
-use mdviewer::{document::Document, export, layout, render, terminal::Terminal};
+use mdviewer::{document::Document, export, render, terminal::Terminal};
 
 #[derive(Parser)]
 #[command(
@@ -39,8 +39,17 @@ struct Args {
     /// Print selectable TeX beneath lines with rendered equations.
     #[arg(long)]
     show_math_source: bool,
-    /// Use a light theme for text and equations.
-    #[arg(long)]
+    /// Terminal hyperlinks: auto enables known terminals; off keeps visible targets.
+    #[arg(long, value_enum, default_value_t = Links::Auto)]
+    links: Links,
+    /// Theme: auto uses COLORFGBG when available and otherwise defaults to dark.
+    #[arg(long, value_enum, default_value_t = Theme::Auto)]
+    theme: Theme,
+    /// Terminal cell dimensions in pixels, e.g. 10x20; overrides reported geometry.
+    #[arg(long, value_parser = mdviewer::terminal::cell_size)]
+    cell_size: Option<(u16, u16)>,
+    /// Use a light theme for text and equations (alias for --theme light).
+    #[arg(long, conflicts_with = "theme")]
     light: bool,
     /// Keep code blocks uncolored while retaining the rest of the theme.
     #[arg(long)]
@@ -75,6 +84,20 @@ enum Images {
     Auto,
     Off,
     Kitty,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Links {
+    Auto,
+    Off,
+    Always,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Theme {
+    Auto,
+    Dark,
+    Light,
 }
 
 fn main() -> ExitCode {
@@ -112,7 +135,11 @@ fn run() -> Result<(), Box<dyn Error>> {
             io::stdin().read_to_string(&mut source)?;
         }
     }
-    let terminal = Terminal::detect();
+    let mut terminal = Terminal::detect();
+    if let Some((width, height)) = args.cell_size {
+        terminal.geometry.cell_width = width;
+        terminal.geometry.cell_height = height;
+    }
     let mut out = io::BufWriter::new(io::stdout().lock());
     if args.output == Output::Source {
         // Bypass parsing altogether: preserve CRLF, spacing, and final-newline state.
@@ -120,7 +147,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     } else {
         let document = Document::parse(source);
         if args.output == Output::Text || !terminal.interactive {
-            out.write_all(export::text(&document).as_bytes())?;
+            export::write(&mut out, &document)?;
         } else {
             let kitty = terminal.graphics_allowed
                 && match args.math {
@@ -135,6 +162,12 @@ fn run() -> Result<(), Box<dyn Error>> {
             }
             let options = render::Options {
                 styled: terminal.styled,
+                links: terminal.links_allowed
+                    && match args.links {
+                        Links::Auto => terminal.kitty_hint,
+                        Links::Off => false,
+                        Links::Always => true,
+                    },
                 highlight: !args.no_highlight,
                 kitty: kitty.then_some(terminal.geometry),
                 terminal: Some(terminal.geometry),
@@ -144,7 +177,12 @@ fn run() -> Result<(), Box<dyn Error>> {
                     || (f64::from(terminal.geometry.cell_height) * 0.9).clamp(4., 256.),
                     f64::from,
                 ),
-                light_background: args.light,
+                light_background: args.light
+                    || match args.theme {
+                        Theme::Auto => terminal.light_background,
+                        Theme::Dark => false,
+                        Theme::Light => true,
+                    },
                 show_math_source: args.show_math_source,
                 mermaid: terminal.graphics_allowed
                     && match args.mermaid {
@@ -170,12 +208,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     })
                 }),
             };
-            let flow = if options.image_base.is_some() {
-                layout::with_images(&document)
-            } else {
-                layout::layout(&document)
-            };
-            let warnings = render::write(&mut out, &document, &flow, &options)?;
+            let warnings = render::write_document(&mut out, &document, &options)?;
             out.flush()?;
             for warning in warnings {
                 eprintln!("mdviewer: {}", render::text::sanitize(&warning));

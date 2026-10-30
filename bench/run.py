@@ -45,6 +45,7 @@ parser.add_argument("--image-mode", choices=["auto", "off", "legacy"], default="
                     help="Use legacy for binaries predating --images; off measures the disabled path")
 parser.add_argument("--mermaid-mode", choices=["auto", "off", "legacy"], default="auto",
                     help="Use legacy for binaries predating --mermaid")
+parser.add_argument("--no-links", action="store_true", help="Disable OSC 8 links in a binary that supports --links")
 parser.add_argument("--process-tree", action="store_true",
                     help="Sample descendant RSS with ps; measure timing separately without this overhead")
 args = parser.parse_args()
@@ -60,7 +61,7 @@ if not BINARY.is_file() or not os.access(BINARY, os.X_OK):
 CORPORA = json.loads((ROOT / "corpora.json").read_text(encoding="utf-8"))
 MARKER = b"\x1b_Ga=T,"
 ENV = dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty", COLORTERM="truecolor")
-for key in ("NO_COLOR", "TMUX", "STY", "ZELLIJ", "GLOW_STYLE", "GLOW_WIDTH"):
+for key in ("NO_COLOR", "TMUX", "STY", "ZELLIJ", "GLOW_STYLE", "GLOW_WIDTH", "COLORFGBG"):
     ENV.pop(key, None)
 
 
@@ -80,7 +81,7 @@ def command(renderer, name):
         "kitty" if args.image_mode == "auto" and renderer == "mdviewer/terminal-images" else args.image_mode]
     mermaid_flags = [] if args.mermaid_mode == "legacy" else ["--mermaid",
         "kitty" if args.mermaid_mode == "auto" and renderer == "mdviewer/terminal-mermaid" else args.mermaid_mode]
-    return [str(BINARY), *flags, *image_flags, *mermaid_flags, *(["--no-highlight"] if args.no_highlight else []), file]
+    return [str(BINARY), *flags, *image_flags, *mermaid_flags, *(["--no-highlight"] if args.no_highlight else []), *(["--links", "off"] if args.no_links else []), file]
 
 
 def process_tree(pid):
@@ -243,6 +244,11 @@ for name in ["tables-1m.md", "tables-10m.md", "tables-wide.md", "tables-over-lim
         if name == "tables-math-100.md":
             cases.append(("mdviewer/terminal-math", name))
 for name in CORPORA:
+    if name.startswith("extensions-"):
+        cases.append(("mdviewer/terminal-tex", name))
+        cases.append(("mdviewer/plain-pipe", name))
+        if CORPORA[name].get("equations", 0):
+            cases.append(("mdviewer/terminal-math", name))
     if name.startswith("images-"):
         cases.append(("mdviewer/terminal-images", name))
         cases.append(("mdviewer/plain-pipe", name))
@@ -275,6 +281,7 @@ results = {
         "image_rendering": args.image_mode,
         "mermaid_rendering": args.mermaid_mode,
         "process_tree_sampling": args.process_tree,
+        "hyperlinks": "disabled" if args.no_links else "default",
         "glow_version": read_command(["glow", "--version"]),
         "profile": args.profile,
         "hardware": args.hardware,

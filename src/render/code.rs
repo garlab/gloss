@@ -54,9 +54,10 @@ pub(super) fn highlight(
                     ..run.style
                 },
                 math: None,
+                target: run.target.clone(),
                 // This is still a source span: Markdown can remove quote/list
                 // indentation, so decoded offsets must not be added blindly.
-                source: run.source.clone(),
+                source: run.source,
             });
             position = next;
         }

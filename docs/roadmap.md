@@ -26,16 +26,19 @@ the fixed comparison data and reproduction tools.
    compatibility and resource checks. Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
-Alongside these steps, add alerts, bounded front matter handling, expanded
-details/summary sections, and validated clickable links. Preserve source-based
+Alerts, inert bounded front matter, an expanded details/summary subset, and
+validated clickable links are implemented. See [Markdown extensions](markdown-extensions.md)
+for coverage and limits; broaden HTML/detail forms only with source-preservation
+checks. Preserve source-based
 exports and benchmark absent, disabled, and enabled feature paths. Large inputs
 and local measurement outputs stay outside the repository.
 
 Track binary/dependency growth, helper processes, and encoded output as well as
 latency and RSS. [Rendering optimizations](performance-optimizations.md) remove
 retained event copies and reduce text-rendering allocations. Continue reducing
-parser/layout memory and evaluate math image reuse/compression; current
-measurements are not resource ceilings.
+parser/layout memory beyond the CLI's completed-block streaming path. Bounded
+math-raster caching and compressed graphics transport are implemented; evaluate
+terminal-side image reuse separately. Current measurements are not resource ceilings.
 
 ## Reproducible builds and distribution
 
@@ -55,8 +58,9 @@ configuration before distribution is enabled.
 
 - Add bounded capability queries and explicit override behavior while preserving
   document stdin and user input. Retain text fallbacks when queries fail.
-- Query theme colors and improve geometry discovery while preserving manual
-  controls and sensible behavior when a terminal does not answer.
+- Add actual theme/color and geometry queries when input ownership permits.
+  Environment theme hints, reported/environment geometry, `--theme`, and
+  `--cell-size` overrides are implemented; see [terminal discovery](terminal-detection.md).
 - Validate inline baselines, image placement, scrolling, and selection in Ghostty
   and Kitty across fonts, zoom levels, and narrow windows. Record tested versions
   and any terminal-specific limitations.
@@ -67,8 +71,9 @@ configuration before distribution is enabled.
 
 - Refine mixed nesting of lists, quotes, code, and display math. Improve tables
   and code layout through the ordered work above.
-- Add backslash-parenthesis and backslash-bracket math delimiters with coverage
-  for escaping, code spans, and code fences.
+- Backslash-parenthesis and backslash-bracket math delimiters are implemented
+  within bounded paragraph/table-cell spans, with escaping and code exclusions.
+  Broaden supported contexts only with source-range and resource checks.
 - Refine equation tag placement and the treatment of oversized formulas.
   Preserve individual source fallbacks and bounded raster allocation.
 - Consider library-side raster limits and a reusable body/tag raster result in

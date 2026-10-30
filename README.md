@@ -31,6 +31,7 @@ mdviewer tests/fixtures/code.md
 mdviewer tests/fixtures/tables.md
 mdviewer tests/fixtures/images.md
 mdviewer tests/fixtures/mermaid.md
+mdviewer tests/fixtures/extensions.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
@@ -38,9 +39,18 @@ argument or pass `-` to read Markdown from stdin.
 
 ## Terminal rendering
 
-Terminal output uses a dark color palette, distinct heading levels, tinted inline
+Terminal output uses distinct heading levels, tinted inline
 code, shaded code blocks, and colored links and list markers. Lists and quotes
-keep their indentation when lines wrap. Use `--light` for a light background.
+keep their indentation when lines wrap. The default theme uses `COLORFGBG` when
+available and otherwise selects dark. Use `--theme light` (or `--light`) and
+`--theme dark` to choose explicitly.
+
+GitHub alerts retain colored labels. Leading YAML/TOML-style front matter stays
+visible as inert metadata. Supported details/summary sections expand, and
+`\(...\)` / `\[...\]` join the existing math delimiters. Web/mail links are
+clickable in recognized Ghostty/Kitty sessions, with visible targets retained.
+Use `--links off` to disable hyperlinks. See [Markdown extensions](docs/markdown-extensions.md)
+for syntax, limits, and fallback behavior.
 
 Fenced code uses syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX,
 JSON, Bash/shell, Go, TOML, and YAML. Common aliases such as `rs`, `py`, `js`,
@@ -113,15 +123,19 @@ is not implemented.
 | `--show-mermaid-source` | Print selectable code beneath rendered Mermaid diagrams. |
 | `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
 | `--margin <columns>` | Set the horizontal margin, default `2`. |
-| `--light` | Use a light color palette for text and equations. |
+| `--theme auto\|dark\|light` | Select the palette; auto uses an optional `COLORFGBG` hint. |
+| `--light` | Alias for `--theme light`. |
+| `--cell-size <width>x<height>` | Override terminal cell dimensions in pixels, from 1 to 512 each. |
+| `--links auto\|off\|always` | Control validated OSC 8 hyperlinks; plain/source exports remain independent. |
 | `--no-highlight` | Disable code syntax colors while retaining the theme and layout. |
 | `--font-size <pixels>` | Override the equation font size, from 4 to 256 pixels. |
 
 Equation size follows the terminal cell height by default, and oversized equations
 shrink to fit. Cell dimensions are read on Unix when available, with an estimated
 fallback. Font baselines are estimated; appearance can vary by font and terminal.
-Background detection is not implemented. A nonempty `NO_COLOR` disables text
-styling without disabling images.
+Theme hints are estimates and can be overridden. A nonempty `NO_COLOR` disables
+text styling without disabling images or hyperlinks. See
+[terminal discovery](docs/terminal-detection.md) for precedence and limitations.
 
 ## Copying and pipes
 
@@ -152,7 +166,8 @@ change the clipboard itself.
 
 - Headings, emphasis, lists, quotes, code, links, task lists, strikethrough,
   footnotes, and aligned, wrapped tables.
-- `$...$` inline math, `$$...$$` display math, and fenced `math` blocks.
+- `$...$` / `\(...\)` inline math, `$$...$$` / `\[...\]` display math, and fenced `math` blocks.
+- GitHub alerts, inert front matter, expanded details, and validated terminal links.
 - Equation tags and automatic numbering, with tags placed after the formula.
 - Bounded local PNG/JPEG/SVG images with selectable captions and text fallbacks.
 - Native rendering of supported Mermaid fences, with optional selectable source.
@@ -162,7 +177,6 @@ change the clipboard itself.
   rest of the document.
 
 Math support follows the KaTeX subset implemented by `katex-native`.
-Backslash-parenthesis and backslash-bracket math delimiters are not recognized.
 
 Complex combinations of nested blocks still need layout improvements.
 Embedded languages inside code strings or HTML are not
@@ -194,6 +208,8 @@ The [syntax highlighting measurements](docs/syntax-highlighting.md) record its
 implementation limits, dependency costs, and comparison with that baseline.
 The [rendering optimizations](docs/performance-optimizations.md) record subsequent
 reductions in time, memory, output volume, and executable size.
+The [streaming and graphics measurements](docs/streaming-and-graphics.md) cover
+completed-block rendering, math caching, compression, and Markdown extensions.
 The [table implementation](docs/tables.md) records its limits and measured cost.
 The [local image implementation](docs/images.md) records decoder, cache, output,
 and SVG limits, together with its measurements.
