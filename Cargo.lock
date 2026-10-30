@@ -267,6 +267,8 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 [[package]]
 name = "document-graphics"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31c462e5bc9b2b382ef5ac8c95273c8bd4fd466cbb9cb953f2049ea018bd2787"
 dependencies = [
  "katex-native",
  "libc",

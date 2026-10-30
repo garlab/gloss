@@ -187,6 +187,7 @@ impl Loader {
                 document_graphics::svg::Error::Invalid => Error::Invalid,
                 document_graphics::svg::Error::Unsupported => Error::Unsupported,
                 document_graphics::svg::Error::Limit => Error::Limit,
+                _ => Error::Unsupported,
             })
     }
 }

@@ -10,20 +10,21 @@ with text fallbacks; interactive paging and resize handling are planned.
 ## Build and run
 
 A Rust 1.90 or newer toolchain is required. Math uses the published
-[`katex-native`](https://crates.io/crates/katex-native) crate. Shared native diagram
-and SVG rendering uses the standalone [document-graphics](https://github.com/garlab/document-graphics) library. Its first
-release is pending; for now, place its checkout beside mdviewer and add this to
-an untracked `.cargo/config.toml` (merging with any existing settings):
+[`katex-native`](https://crates.io/crates/katex-native) crate, and diagram and SVG
+rendering the published [`document-graphics`](https://crates.io/crates/document-graphics)
+crate.
+
+To work on document-graphics alongside mdviewer, place its checkout beside
+mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
+existing settings):
 
 ```toml
 [patch.crates-io]
 document-graphics = { path = "../document-graphics" }
 ```
 
-Run Cargo from the mdviewer root. After publication, remove only this override
-and run `cargo update -p document-graphics --precise 0.1.0` to record the registry
-source and checksum in Cargo.lock. Later local library changes can use the same
-override; keep temporary path resolutions out of registry-based lockfile commits.
+Run Cargo from the mdviewer root. Keep the path resolution this writes to
+Cargo.lock out of commits.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
