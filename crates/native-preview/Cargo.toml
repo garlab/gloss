@@ -1,0 +1,32 @@
+[package]
+name = "native-preview"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+description = "Bounded native Mermaid and SVG previews with isolated worker support."
+license = "MIT"
+readme = "README.md"
+documentation = "https://docs.rs/native-preview"
+keywords = ["mermaid", "svg", "preview", "rendering"]
+categories = ["rendering", "text-processing"]
+include = ["src/**", "tests/**", "README.md", "LICENSE", "Cargo.toml"]
+
+[dependencies]
+katex-native = "=0.1.0"
+mermaid-rs-renderer = { version = "=0.3.1", default-features = false }
+resvg = { version = "0.45.1", default-features = false, features = ["text"] }
+roxmltree = "0.20"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[[test]]
+name = "worker"
+harness = false

@@ -1,3 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["crates/native-preview"]
+
 [package]
 name = "mdviewer"
 version = "0.1.0"
@@ -8,14 +12,12 @@ license = "MIT"
 publish = false
 
 [dependencies]
-mermaid-rs-renderer = { version = "=0.3.1", default-features = false }
+native-preview = { version = "=0.1.0", path = "crates/native-preview" }
 base64 = "0.22"
 flate2 = "1.1"
 clap = { version = "4", features = ["derive"] }
-katex-native = { path = "../katex-native", features = ["raster"] }
+katex-native = { version = "=0.1.0", features = ["raster"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-resvg = { version = "0.45", default-features = false, features = ["text"] }
-roxmltree = "0.20"
 pulldown-cmark = { version = "0.13", default-features = false }
 tree-sitter = "0.27"
 tree-sitter-bash = "0.25"

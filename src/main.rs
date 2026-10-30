@@ -120,7 +120,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     if args.mermaid_worker {
-        mdviewer::mermaid::serve(&mut io::stdin().lock(), &mut io::stdout().lock())?;
+        mdviewer::mermaid::worker_main()?;
         return Ok(());
     }
     if args.file.is_none() && io::stdin().is_terminal() {

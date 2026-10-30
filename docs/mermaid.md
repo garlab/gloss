@@ -54,8 +54,9 @@ fitting bounds, and theme over private pipes. A versioned protocol bounds reques
 lengths and validates response dimensions and RGBA byte counts before allocation.
 One I/O thread keeps blocked writes and partial replies within the timeout.
 
-The worker parses and lays out the diagram, then rasterizes through the existing
-image loader. Only this generated SVG route permits simple arrow markers, with
+The shared `native-preview` crate owns parsing, layout, bounded SVG/font
+rasterization, wire protocol and worker supervision. mdviewer retains its
+invocation budget and fitted-image cache. Only this generated SVG route permits simple arrow markers, with
 limits on marker count/size and no recursive paint/marker references. Local SVG
 files retain their previous restrictions. Images use the same margins, quote
 rails, row reservation, padding, and Kitty transport as other graphics.
@@ -74,8 +75,11 @@ rails, row reservation, padding, and Kitty transport as other graphics.
 | 1,000,000 fitted pixels; viewport and reading-column bounds | Validate returned pixels before storing or displaying them. |
 | 64 MiB of cell-padded RGBA placements | Shared with local Markdown images, including cache hits. |
 
-There is no OS-enforced RSS ceiling. Input/structure/raster limits bound added
-work; native parser/layout internals still allocate temporary storage. Unix
+On macOS, the shared worker denies file-data reads, writes, networking and child
+processes, and the parent samples its resident memory against a 256 MiB ceiling.
+Other platforms do not yet have equivalent sandbox/RSS enforcement. Input,
+structure and raster limits bound added work; native parser/layout internals
+still allocate temporary storage. Unix
 workers also set an eight-second CPU limit as a backstop if the parent disappears
 during computation. The total request budget includes startup; the reply timeout cannot bound OS
 process creation itself.
@@ -95,14 +99,14 @@ Unix CPU limit is a backstop for that computation. There is no background servic
 
 ## Validation
 
-Rust tests cover the native subset, fitting, known incompatibilities, source and
-structure limits, protocol validation, truncated replies, worker timeout/reaping,
-and unchanged exports. Pseudo-terminal checks cover graphics detection, modes
+Tests in `native-preview` cover the native subset, fitting, known
+incompatibilities, source and structure limits, protocol validation, truncated
+replies and worker timeout/reaping. mdviewer tests cover policy and unchanged
+exports. Pseudo-terminal checks cover graphics detection, modes
 independent of math/images, selectable source, list bullets, quote rails, narrow
 windows, light/no-color modes, cache reuse after the request budget, and failures
 followed by valid diagrams.
 
-All 46 Rust tests and 36 pseudo-terminal tests pass, as do formatting and Clippy.
 Rendered flowchart, sequence, class, state, and grouping fixtures were inspected;
 the ER attribute issue found during inspection is now an explicit fallback.
 These raster/screen-model checks do not establish compatibility with a particular
@@ -209,3 +213,33 @@ Select `--corpus 'mermaid-*' --renderer mdviewer/terminal-mermaid`; compare
 older binaries without the flag. Run `--process-tree` separately for approximate
 concurrent RSS; it requires permission to inspect process relationships.
 PTY measurements exclude emulator decoding, GPU work, and scrollback memory.
+
+## Shared library
+
+`native-preview` is one workspace crate containing the renderer, restricted SVG
+rasterization, bundled-font setup and worker supervision. The CLI retains its
+five-second invocation budget, 32-attempt limit and 8 MiB cache. GUI consumers can
+choose different scheduling and cache policies without duplicating renderer code.
+Math uses the published `katex-native` 0.1.0 crate.
+
+Extraction validation compared release binaries with published math dependencies
+on both sides, using Rust 1.99 and macOS on Apple Silicon. All 16 text/source
+exports and 32 terminal cases were byte-identical, including image payloads;
+12 GUI diagram PNGs also matched exactly. Rust 1.90 checks cover the complete
+workspace and all targets. The shared crate's packaged sources build independently.
+
+Five fresh measured processes per case, after one warm-up and with before/after
+order alternated, gave these median wall times. Builds finished before measuring.
+Terminal cases include PTY I/O and exclude emulator painting:
+
+| Case | Before | Shared library |
+| --- | ---: | ---: |
+| Plain export, 312 KB prose | 8.75 ms | 8.72 ms |
+| Terminal text, same prose | 34.28 ms | 34.30 ms |
+| Mermaid fixture | 49.17 ms | 54.58 ms |
+
+The terminal worker now also installs the macOS sandbox and resident-memory guard
+already used by the GUI. The Mermaid case includes that additional startup work;
+these samples do not isolate its cost or certify a latency percentile. Existing
+performance baselines remain unchanged; generated outputs and measurements stay
+local.

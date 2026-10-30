@@ -7,20 +7,16 @@ use std::{
     hash::Hasher,
     io::{Cursor, Read},
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use image::{ImageDecoder, ImageFormat, ImageReader};
-use resvg::{tiny_skia, usvg};
 
 use crate::raster::Raster;
+use native_preview::svg::MAX_SOURCE as SVG_BYTES;
 
 const FILE_BYTES: usize = 8 * 1024 * 1024;
-const SVG_BYTES: usize = 256 * 1024;
 const SOURCE_PIXELS: u64 = 4_000_000;
 const OUTPUT_PIXELS: u64 = 1_000_000;
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
@@ -65,7 +61,6 @@ pub struct Loader {
     loads: usize,
     decodes: usize,
     decode_time: Duration,
-    fonts: Option<Arc<usvg::fontdb::Database>>,
 }
 
 impl Loader {
@@ -185,119 +180,14 @@ impl Loader {
     }
 
     fn svg(&mut self, bytes: &[u8], bounds: (u32, u32)) -> Result<Raster, Error> {
-        self.svg_inner(bytes, bounds, false)
-    }
-
-    /// Only the bounded native diagram worker can admit simple arrow markers.
-    pub(crate) fn diagram_svg(
-        &mut self,
-        bytes: &[u8],
-        bounds: (u32, u32),
-    ) -> Result<Raster, Error> {
-        self.svg_inner(bytes, bounds, true)
-    }
-
-    fn svg_inner(
-        &mut self,
-        bytes: &[u8],
-        bounds: (u32, u32),
-        markers: bool,
-    ) -> Result<Raster, Error> {
         let source = std::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
-        let has_text = svg_preflight_inner(source, markers)?;
-        let missing_font = Arc::new(AtomicBool::new(false));
-        let mut options = usvg::Options {
-            image_href_resolver: usvg::ImageHrefResolver {
-                resolve_string: Box::new(|_, _| None),
-                resolve_data: Box::new(|_, _, _| None),
-            },
-            font_family: "KaTeX_Main".into(),
-            ..Default::default()
-        };
-        if has_text {
-            options.fontdb = self
-                .fonts
-                .get_or_insert_with(|| {
-                    let mut database = usvg::fontdb::Database::new();
-                    for font in katex_native::FONTS.iter().filter(|font| {
-                        matches!(
-                            font.font.family,
-                            katex_native::Family::Main
-                                | katex_native::Family::SansSerif
-                                | katex_native::Family::Typewriter
-                        )
-                    }) {
-                        let ids = database
-                            .load_font_source(usvg::fontdb::Source::Binary(Arc::new(font.data)));
-                        for id in ids {
-                            if let Some(mut face) = database.face(id).cloned() {
-                                face.style = if font.font.italic {
-                                    usvg::fontdb::Style::Italic
-                                } else {
-                                    usvg::fontdb::Style::Normal
-                                };
-                                database.remove_face(id);
-                                database.push_face_info(face);
-                            }
-                        }
-                    }
-                    database.set_serif_family("KaTeX_Main");
-                    database.set_sans_serif_family("KaTeX_SansSerif");
-                    database.set_monospace_family("KaTeX_Typewriter");
-                    Arc::new(database)
-                })
-                .clone();
-            let select = usvg::FontResolver::default_font_selector();
-            let missing = missing_font.clone();
-            options.font_resolver.select_font = Box::new(move |font, database| {
-                let selected = select(font, database);
-                if selected.is_none() {
-                    missing.store(true, Ordering::Relaxed);
-                }
-                selected
-            });
-            let select = usvg::FontResolver::default_fallback_selector();
-            let missing = missing_font.clone();
-            options.font_resolver.select_fallback =
-                Box::new(move |character, excluded, database| {
-                    let selected = select(character, excluded, database);
-                    if selected.is_none() {
-                        missing.store(true, Ordering::Relaxed);
-                    }
-                    selected
-                });
-        }
-        let tree = usvg::Tree::from_str(source, &options).map_err(|_| Error::Invalid)?;
-        if missing_font.load(Ordering::Relaxed) {
-            return Err(Error::Unsupported);
-        }
-        let size = tree.size();
-        let original = (size.width().ceil() as u32, size.height().ceil() as u32);
-        validate_source(original)?;
-        let (width, height) = fit(original, bounds);
-        let mut pixels = tiny_skia::Pixmap::new(width, height).ok_or(Error::Limit)?;
-        resvg::render(
-            &tree,
-            tiny_skia::Transform::from_scale(
-                width as f32 / size.width(),
-                height as f32 / size.height(),
-            ),
-            &mut pixels.as_mut(),
-        );
-        // Kitty uses straight alpha; tiny-skia produces premultiplied pixels.
-        let rgba = pixels
-            .pixels()
-            .iter()
-            .flat_map(|pixel| {
-                let pixel = pixel.demultiply();
-                [pixel.red(), pixel.green(), pixel.blue(), pixel.alpha()]
+        native_preview::svg::rasterize(source, native_preview::RasterOptions::fit(bounds))
+            .map(Into::into)
+            .map_err(|error| match error {
+                native_preview::svg::Error::Invalid => Error::Invalid,
+                native_preview::svg::Error::Unsupported => Error::Unsupported,
+                native_preview::svg::Error::Limit => Error::Limit,
             })
-            .collect();
-        Ok(Raster {
-            width,
-            height,
-            rgba,
-        })
     }
 }
 
@@ -384,120 +274,6 @@ fn bitmap(bytes: &[u8], format: ImageFormat, bounds: (u32, u32)) -> Result<Raste
     })
 }
 
-/// Restrict SVG to bounded geometry/text/paint servers. Reuse, filters, masks,
-/// nested images, and foreign content fall back rather than bypass these limits.
-#[cfg(test)]
-fn svg_preflight(source: &str) -> Result<bool, Error> {
-    svg_preflight_inner(source, false)
-}
-
-fn svg_preflight_inner(source: &str, markers: bool) -> Result<bool, Error> {
-    if source.len() > SVG_BYTES {
-        return Err(Error::Limit);
-    }
-    let document = roxmltree::Document::parse_with_options(
-        source,
-        roxmltree::ParsingOptions {
-            allow_dtd: false,
-            nodes_limit: 4096,
-        },
-    )
-    .map_err(|_| Error::Invalid)?;
-    if document.root_element().tag_name().name() != "svg" {
-        return Err(Error::Invalid);
-    }
-    let (mut geometry, mut text_bytes, mut has_text, mut marker_count) = (0, 0, false, 0);
-    for node in document.descendants() {
-        if node.ancestors().take(34).count() > 33 {
-            return Err(Error::Limit);
-        }
-        if node.is_text() {
-            text_bytes += node.text().unwrap_or_default().len();
-        }
-        if text_bytes > 32 * 1024 {
-            return Err(Error::Limit);
-        }
-        if !node.is_element() {
-            continue;
-        }
-        let name = node.tag_name().name();
-        if name == "marker" && markers {
-            marker_count += 1;
-            // Arrow markers cannot recursively reference markers or paint servers.
-            if marker_count > 16 || node.descendants().count() > 8 || node.range().len() > 2048 {
-                return Err(Error::Limit);
-            }
-            for child in node.descendants() {
-                for attr in child.attributes() {
-                    if attr.value().to_ascii_lowercase().contains("url(") {
-                        return Err(Error::Unsupported);
-                    }
-                }
-            }
-        } else if !matches!(
-            name,
-            "svg"
-                | "g"
-                | "defs"
-                | "title"
-                | "desc"
-                | "path"
-                | "rect"
-                | "circle"
-                | "ellipse"
-                | "line"
-                | "polyline"
-                | "polygon"
-                | "linearGradient"
-                | "radialGradient"
-                | "stop"
-                | "clipPath"
-                | "text"
-                | "tspan"
-                | "textPath"
-                | "style"
-        ) {
-            return Err(Error::Unsupported);
-        }
-        has_text |= name == "text";
-        if name == "style" {
-            local_css(node.text().unwrap_or_default())?;
-        }
-        for attr in node.attributes() {
-            if matches!(attr.name(), "d" | "points") {
-                geometry += attr.value().len();
-            }
-            if attr.name() == "href" && !attr.value().starts_with('#') {
-                return Err(Error::Unsupported);
-            }
-            local_css(attr.value())?;
-        }
-        if geometry > 64 * 1024 {
-            return Err(Error::Limit);
-        }
-    }
-    Ok(has_text)
-}
-
-fn local_css(value: &str) -> Result<(), Error> {
-    let value = value.to_ascii_lowercase();
-    if value.contains('\\') || value.contains("@import") || value.contains("@font-face") {
-        return Err(Error::Unsupported);
-    }
-    for suffix in value.split("url(").skip(1) {
-        let reference = suffix
-            .split(')')
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .trim_matches(['\'', '"']);
-        if !reference.starts_with('#') {
-            return Err(Error::Unsupported);
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -554,7 +330,6 @@ mod tests {
         assert_eq!(&blue.rgba[..4], &[0, 0, 255, 255]);
         let small = loader.load(&dir.0, "alias.png", 1, 1).unwrap();
         assert_eq!((small.width, small.height), (1, 1));
-        assert!(loader.fonts.is_none());
         for reference in [
             "https://example.com/a.png",
             "file:///image.png",
@@ -601,7 +376,6 @@ mod tests {
         let shape = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="red" opacity="0.5"/></svg>"#;
         let raster = loader.svg(shape, (100, 100)).unwrap();
         assert_eq!(&raster.rgba[..4], &[255, 0, 0, 128]);
-        assert!(loader.fonts.is_none());
         let text = br#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="30"><text x="2" y="22" font-size="20">Hello</text></svg>"#;
         let raster = loader.svg(text, (100, 100)).unwrap();
         assert!(
@@ -612,7 +386,6 @@ mod tests {
                 .iter()
                 .any(|pixel| pixel[3] > 0)
         );
-        assert!(loader.fonts.as_ref().unwrap().len() <= 8);
         assert!(matches!(loader.svg("<svg xmlns='http://www.w3.org/2000/svg' width='80' height='20'><text x='0' y='16'>中文</text></svg>".as_bytes(), (100, 100)), Err(Error::Unsupported)));
     }
 
@@ -628,19 +401,22 @@ mod tests {
             "<svg><style>@import 'theme.css';</style></svg>",
             "<svg><script>anything</script></svg>",
         ] {
-            assert!(svg_preflight(source).is_err(), "{source}");
+            assert!(native_preview::svg::validate(source).is_err(), "{source}");
         }
         assert!(
-            svg_preflight(&format!(
+            native_preview::svg::validate(&format!(
                 "<svg>{}{}</svg>",
                 "<g>".repeat(40),
                 "</g>".repeat(40)
             ))
             .is_err()
         );
-        assert!(svg_preflight(&format!("<svg>{}</svg>", "<path/>".repeat(4096))).is_err());
         assert!(
-            svg_preflight(&format!(
+            native_preview::svg::validate(&format!("<svg>{}</svg>", "<path/>".repeat(4096)))
+                .is_err()
+        );
+        assert!(
+            native_preview::svg::validate(&format!(
                 "<svg><path d='{}'/></svg>",
                 "M0 0 ".repeat(14_000)
             ))

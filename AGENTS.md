@@ -6,9 +6,8 @@ Treat all project content as public.
   personal identifiers, machine-specific absolute paths, private hostnames,
   internal project references, credentials, and environment dumps. The copyright
   attribution in LICENSE is intentionally public and is exempt from this rule.
-- Use relative paths and generic examples. The local `../katex-native` dependency
-  is intentional until a public dependency is available; do not replace it with an
-  absolute checkout path.
+- Use relative paths and generic examples. Shared dependencies use published
+  versions; local overrides belong in untracked Cargo configuration.
 - Describe the software and its behavior for an outside contributor. Keep private
   development history and conversation-specific instructions out of public docs.
 - Preserve the existing project copyright attribution in LICENSE and required

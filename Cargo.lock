@@ -420,6 +420,8 @@ dependencies = [
 [[package]]
 name = "katex-native"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c87896c9650d0dd2e502432ef0e0eb4857bda16e275a29498a2f85d675059911"
 dependencies = [
  "katex-rs",
  "resvg",
@@ -482,10 +484,8 @@ dependencies = [
  "image",
  "katex-native",
  "libc",
- "mermaid-rs-renderer",
+ "native-preview",
  "pulldown-cmark",
- "resvg",
- "roxmltree",
  "tree-sitter",
  "tree-sitter-bash",
  "tree-sitter-go",
@@ -560,6 +560,17 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "native-preview"
+version = "0.1.0"
+dependencies = [
+ "katex-native",
+ "libc",
+ "mermaid-rs-renderer",
+ "resvg",
+ "roxmltree",
 ]
 
 [[package]]

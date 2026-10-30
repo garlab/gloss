@@ -9,15 +9,10 @@ with text fallbacks; interactive paging and resize handling are planned.
 
 ## Build and run
 
-A Rust 1.90 or newer toolchain and a separate `katex-native` checkout are
-required. The math dependency is not yet publicly available, so this repository
-alone is not sufficient to build. Keep the checkouts beside one another:
-
-```text
-projects/
-├── mdviewer/
-└── katex-native/
-```
+A Rust 1.90 or newer toolchain is required. Math uses the published
+[`katex-native`](https://crates.io/crates/katex-native) crate. Shared native diagram
+and SVG rendering lives in the workspace's [native-preview](crates/native-preview)
+crate; no sibling checkout is needed.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
@@ -215,9 +210,10 @@ The [local image implementation](docs/images.md) records decoder, cache, output,
 and SVG limits, together with its measurements.
 The [Mermaid implementation](docs/mermaid.md) records native coverage, worker
 limits, and comparisons with the official renderer.
-Crate publication is disabled while `katex-native` uses a local path dependency.
+The terminal application is not published to crates.io. The independently versioned
+`native-preview` library has no terminal or GUI dependencies.
 
 ## License
 
 MIT; see [LICENSE](LICENSE). `katex-native` is MIT, and its bundled KaTeX fonts use
-the SIL Open Font License 1.1; see `../katex-native/fonts/OFL.txt`.
+the SIL Open Font License 1.1; see the [font license](https://github.com/garlab/katex-native/blob/main/fonts/OFL.txt).

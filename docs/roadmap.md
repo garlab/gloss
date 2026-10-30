@@ -42,14 +42,15 @@ terminal-side image reuse separately. Current measurements are not resource ceil
 
 ## Reproducible builds and distribution
 
-- Make `katex-native` publicly available and replace the sibling path dependency
-  with a versioned package or pinned public revision.
-- Once that dependency is available, add clean-checkout CI for formatting, Clippy,
+- `katex-native` now comes from crates.io. Shared native rendering is a single
+  workspace library, `native-preview`; keep its API and resource checks covered
+  by both terminal and GUI integration tests.
+- Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
   version against the locked dependencies.
 - Establish a tested platform matrix before adding release binaries or package
-  distribution. Keep crate publication disabled until dependencies are
-  independently obtainable.
+  distribution. The CLI remains unpublished; library releases are versioned
+  independently.
 
 A public checkout should build without private files or machine-specific
 configuration before distribution is enabled.

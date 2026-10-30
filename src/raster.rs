@@ -7,3 +7,13 @@ pub struct Raster {
     pub height: u32,
     pub rgba: Vec<u8>,
 }
+
+impl From<native_preview::Raster> for Raster {
+    fn from(pixels: native_preview::Raster) -> Self {
+        Self {
+            width: pixels.width,
+            height: pixels.height,
+            rgba: pixels.rgba,
+        }
+    }
+}
