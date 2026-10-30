@@ -181,6 +181,10 @@ impl Loader {
 
     fn svg(&mut self, bytes: &[u8], bounds: (u32, u32)) -> Result<Raster, Error> {
         let source = std::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
+        let bounds = (
+            bounds.0.min(document_graphics::MAX_EDGE),
+            bounds.1.min(document_graphics::MAX_EDGE),
+        );
         document_graphics::svg::rasterize(source, document_graphics::RasterOptions::fit(bounds))
             .map(Into::into)
             .map_err(|error| match error {
@@ -377,6 +381,8 @@ mod tests {
         let shape = br#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10" fill="red" opacity="0.5"/></svg>"#;
         let raster = loader.svg(shape, (100, 100)).unwrap();
         assert_eq!(&raster.rgba[..4], &[255, 0, 0, 128]);
+        let raster = loader.svg(shape, (u32::MAX, u32::MAX)).unwrap();
+        assert_eq!((raster.width, raster.height), (20, 10));
         let text = br#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="30"><text x="2" y="22" font-size="20">Hello</text></svg>"#;
         let raster = loader.svg(text, (100, 100)).unwrap();
         assert!(

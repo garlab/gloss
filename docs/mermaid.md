@@ -243,3 +243,30 @@ already used by the GUI. The Mermaid case includes that additional startup work;
 these samples do not isolate its cost or certify a latency percentile. Existing
 performance baselines remain unchanged; generated outputs and measurements stay
 local.
+
+## Extraction review
+
+A second release-build comparison against the accepted pre-extraction build
+(`ba45167`) used the same external corpora, 100×40 PTY, 10×20 pixel cells, warm
+filesystem caches, one warm-up and five alternating fresh processes per build.
+Medians on Apple Silicon macOS:
+
+| Case | Before | Shared library | Reported peak RSS before / after |
+| --- | ---: | ---: | ---: |
+| 10 MiB mixed, styled terminal | 1.129 s | 1.108 s | 58.23 / 58.22 MiB |
+| 1 MiB prose, styled terminal | 68.89 ms | 67.70 ms | 9.47 / 9.45 MiB |
+| 100 equations | 43.46 ms | 43.78 ms | 10.08 / 10.05 MiB |
+| 10 MiB mixed, plain export | 96.17 ms | 95.80 ms | 54.72 / 54.73 MiB |
+| SVG with text | 3.86 ms | 4.00 ms | 5.53 / 5.58 MiB |
+| Six Mermaid diagrams | 49.93 ms | 54.62 ms | 9.98 / 11.33 MiB |
+| 100 repeated Mermaid placements | 19.64 ms | 24.38 ms | 8.02 / 10.19 MiB |
+
+The worker restrictions add about 5 ms of fixed startup cost on this machine.
+Unchanged paths remain within run-to-run variation. RSS is the benchmark
+harness's `wait4` process statistic, not a simultaneous sum of parent and worker
+memory; PTY measurements exclude terminal painting and scrollback storage.
+All 32 fixture/theme/graphics combinations and 82 text/source exports were
+byte-identical. The 42 PTY checks, CLI tests, shared worker tests and GUI consumer
+integration passed. The review also fixed viewport bounds above the library's
+raster limit and rejection of worker replies arriving after their deadline.
+Large corpora and raw results remain outside the repository.
