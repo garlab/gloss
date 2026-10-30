@@ -54,7 +54,7 @@ fitting bounds, and theme over private pipes. A versioned protocol bounds reques
 lengths and validates response dimensions and RGBA byte counts before allocation.
 One I/O thread keeps blocked writes and partial replies within the timeout.
 
-The shared `native-preview` crate owns parsing, layout, bounded SVG/font
+The shared `document-graphics` crate owns parsing, layout, bounded SVG/font
 rasterization, wire protocol and worker supervision. mdviewer retains its
 invocation budget and fitted-image cache. Only this generated SVG route permits simple arrow markers, with
 limits on marker count/size and no recursive paint/marker references. Local SVG
@@ -99,7 +99,7 @@ Unix CPU limit is a backstop for that computation. There is no background servic
 
 ## Validation
 
-Tests in `native-preview` cover the native subset, fitting, known
+Tests in `document-graphics` cover the native subset, fitting, known
 incompatibilities, source and structure limits, protocol validation, truncated
 replies and worker timeout/reaping. mdviewer tests cover policy and unchanged
 exports. Pseudo-terminal checks cover graphics detection, modes
@@ -216,7 +216,7 @@ PTY measurements exclude emulator decoding, GPU work, and scrollback memory.
 
 ## Shared library
 
-`native-preview` is one workspace crate containing the renderer, restricted SVG
+`document-graphics` is a separate library repository containing the renderer, restricted SVG
 rasterization, bundled-font setup and worker supervision. The CLI retains its
 five-second invocation budget, 32-attempt limit and 8 MiB cache. GUI consumers can
 choose different scheduling and cache policies without duplicating renderer code.

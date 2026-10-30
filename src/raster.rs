@@ -8,8 +8,8 @@ pub struct Raster {
     pub rgba: Vec<u8>,
 }
 
-impl From<native_preview::Raster> for Raster {
-    fn from(pixels: native_preview::Raster) -> Self {
+impl From<document_graphics::Raster> for Raster {
+    fn from(pixels: document_graphics::Raster) -> Self {
         Self {
             width: pixels.width,
             height: pixels.height,

@@ -1,8 +1,8 @@
 //! Terminal policy for native diagrams: invocation budgets and fitted-image cache.
 use crate::raster::Raster;
-pub(crate) use native_preview::mermaid::MAX_SOURCE;
-pub use native_preview::worker::worker_main;
-use native_preview::{RasterOptions, mermaid::admissible, worker::Worker};
+pub(crate) use document_graphics::mermaid::MAX_SOURCE;
+pub use document_graphics::worker::worker_main;
+use document_graphics::{RasterOptions, mermaid::admissible, worker::Worker};
 use std::{
     collections::VecDeque,
     sync::{Arc, atomic::AtomicBool},

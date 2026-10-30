@@ -51,8 +51,7 @@ The full source and parser working storage still scale with input.
 | `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache fitted rasters within a byte budget. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, bound file/decode work, and cache fitted rasters by content. |
-| `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `native-preview`. |
-| `crates/native-preview/` | Shared Mermaid validation/layout, bounded SVG/font rasterization, worker protocol, cancellation and process supervision. |
+| `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
 | `src/render/mod.rs` | Coordinate rendering and per-formula fallbacks. |
@@ -66,7 +65,9 @@ The full source and parser working storage still scale with input.
 | `src/render/kitty.rs` | Pad images, compress beneficial payloads, and base64-encode fixed-size graphics chunks. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
-`native-preview` is one library package with `mermaid`, `svg` and `worker` modules.
+`document-graphics` is a separate library repository with `mermaid`, `svg` and
+`worker` modules. It owns shared Mermaid validation/layout, bounded SVG/font
+rasterization, worker protocol, cancellation and process supervision.
 It returns owned RGBA buffers and logical sizes; consumers move those buffers into
 their image types. Terminal caches, total time/output budgets and fitting remain
 in mdviewer. The shared crate contains no global queue or application lifecycle.
@@ -100,7 +101,7 @@ Mermaid stays in the existing code-block model, including its source range and
 indentation. The terminal renderer recognizes the fence language before generic
 highlighting. A cache miss can start one child of the same executable, using a
 bounded private request/reply protocol. The child parses/layouts native diagrams
-and rasterizes through `native-preview` with bundled fonts. Only that generated
+and rasterizes through `document-graphics` with bundled fonts. Only that generated
 SVG path admits bounded, nonrecursive arrow markers; local SVG restrictions
 remain unchanged. The parent validates returned dimensions and byte counts,
 fits the usual reading column, and shares the local-image output budget.

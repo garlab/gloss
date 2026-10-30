@@ -1,6 +1,5 @@
 [workspace]
 resolver = "3"
-members = ["crates/native-preview"]
 
 [package]
 name = "mdviewer"
@@ -12,7 +11,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-native-preview = { version = "=0.1.0", path = "crates/native-preview" }
+document-graphics = "=0.1.0"
 base64 = "0.22"
 flate2 = "1.1"
 clap = { version = "4", features = ["derive"] }

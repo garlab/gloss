@@ -11,8 +11,19 @@ with text fallbacks; interactive paging and resize handling are planned.
 
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Shared native diagram
-and SVG rendering lives in the workspace's [native-preview](crates/native-preview)
-crate; no sibling checkout is needed.
+and SVG rendering uses the standalone [document-graphics](https://github.com/garlab/document-graphics) library. Its first
+release is pending; for now, place its checkout beside mdviewer and add this to
+an untracked `.cargo/config.toml` (merging with any existing settings):
+
+```toml
+[patch.crates-io]
+document-graphics = { path = "../document-graphics" }
+```
+
+Run Cargo from the mdviewer root. After publication, remove only this override
+and run `cargo update -p document-graphics --precise 0.1.0` to record the registry
+source and checksum in Cargo.lock. Later local library changes can use the same
+override; keep temporary path resolutions out of registry-based lockfile commits.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
@@ -211,7 +222,7 @@ and SVG limits, together with its measurements.
 The [Mermaid implementation](docs/mermaid.md) records native coverage, worker
 limits, and comparisons with the official renderer.
 The terminal application is not published to crates.io. The independently versioned
-`native-preview` library has no terminal or GUI dependencies.
+`document-graphics` library has no terminal or GUI dependencies.
 
 ## License
 

@@ -43,8 +43,10 @@ terminal-side image reuse separately. Current measurements are not resource ceil
 ## Reproducible builds and distribution
 
 - `katex-native` now comes from crates.io. Shared native rendering is a single
-  workspace library, `native-preview`; keep its API and resource checks covered
-  by both terminal and GUI integration tests.
+  standalone library, `document-graphics`; keep its API and resource checks covered
+  by both terminal and GUI integration tests. Its first release is pending:
+  resolve the registry package and update Cargo.lock after publication, replacing
+  the local dependency override described in the README.
 - Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
   version against the locked dependencies.

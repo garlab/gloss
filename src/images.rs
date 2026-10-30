@@ -14,7 +14,7 @@ use std::{
 use image::{ImageDecoder, ImageFormat, ImageReader};
 
 use crate::raster::Raster;
-use native_preview::svg::MAX_SOURCE as SVG_BYTES;
+use document_graphics::svg::MAX_SOURCE as SVG_BYTES;
 
 const FILE_BYTES: usize = 8 * 1024 * 1024;
 const SOURCE_PIXELS: u64 = 4_000_000;
@@ -181,12 +181,12 @@ impl Loader {
 
     fn svg(&mut self, bytes: &[u8], bounds: (u32, u32)) -> Result<Raster, Error> {
         let source = std::str::from_utf8(bytes).map_err(|_| Error::Invalid)?;
-        native_preview::svg::rasterize(source, native_preview::RasterOptions::fit(bounds))
+        document_graphics::svg::rasterize(source, document_graphics::RasterOptions::fit(bounds))
             .map(Into::into)
             .map_err(|error| match error {
-                native_preview::svg::Error::Invalid => Error::Invalid,
-                native_preview::svg::Error::Unsupported => Error::Unsupported,
-                native_preview::svg::Error::Limit => Error::Limit,
+                document_graphics::svg::Error::Invalid => Error::Invalid,
+                document_graphics::svg::Error::Unsupported => Error::Unsupported,
+                document_graphics::svg::Error::Limit => Error::Limit,
             })
     }
 }
@@ -401,10 +401,13 @@ mod tests {
             "<svg><style>@import 'theme.css';</style></svg>",
             "<svg><script>anything</script></svg>",
         ] {
-            assert!(native_preview::svg::validate(source).is_err(), "{source}");
+            assert!(
+                document_graphics::svg::validate(source).is_err(),
+                "{source}"
+            );
         }
         assert!(
-            native_preview::svg::validate(&format!(
+            document_graphics::svg::validate(&format!(
                 "<svg>{}{}</svg>",
                 "<g>".repeat(40),
                 "</g>".repeat(40)
@@ -412,11 +415,11 @@ mod tests {
             .is_err()
         );
         assert!(
-            native_preview::svg::validate(&format!("<svg>{}</svg>", "<path/>".repeat(4096)))
+            document_graphics::svg::validate(&format!("<svg>{}</svg>", "<path/>".repeat(4096)))
                 .is_err()
         );
         assert!(
-            native_preview::svg::validate(&format!(
+            document_graphics::svg::validate(&format!(
                 "<svg><path d='{}'/></svg>",
                 "M0 0 ".repeat(14_000)
             ))
