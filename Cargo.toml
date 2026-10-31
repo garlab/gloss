@@ -11,7 +11,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-document-graphics = "=0.1.0"
+document-graphics = "=0.1.1"
 base64 = "0.22"
 flate2 = "1.1"
 clap = { version = "4", features = ["derive"] }

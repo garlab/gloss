@@ -436,14 +436,27 @@ class TerminalSmoke(unittest.TestCase):
         fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"
         output, error = terminal(file=fixture)
         self.assertFalse(error)
-        self.assertEqual(len(screen(output, 80)), 6)
-        self.assertIn('pie title Contents', plain(output))
+        self.assertEqual(len(screen(output, 80)), 13)
+        self.assertIn('gantt', plain(output))
         self.assertNotIn('A[Read Markdown]', plain(output))
         output, error = terminal(file=fixture, args=("--show-mermaid-source",))
         self.assertFalse(error)
-        self.assertEqual(len(screen(output, 80)), 6)
+        self.assertEqual(output.count(b"\x1b_Ga=T,"), 13)
         for text in ('A[Read Markdown]', 'Reader->>Viewer:', 'class Document', '[*] --> Reading', 'DOCUMENT ||--o{ BLOCK'):
             self.assertIn(text, plain(output))
+
+    def test_mermaid_unicode_tables_and_charts_fit_and_preserve_exports(self):
+        fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"
+        for columns in (24, 100):
+            for theme in ("dark", "light"):
+                output, error = terminal(file=fixture, columns=columns, args=("--theme", theme))
+                self.assertFalse(error)
+                self.assertEqual(len(screen(output, columns)), 13)
+        source = fixture.read_text()
+        for mode in ("off", "auto", "kitty"):
+            result = subprocess.run([str(BINARY), "--mermaid", mode, "--output", "source", str(fixture)], capture_output=True, check=True)
+            self.assertEqual(result.stdout, source.encode())
+            self.assertFalse(result.stderr)
 
     def test_mermaid_modes_quotes_and_list_markers(self):
         source = "- ```mermaid\n  flowchart LR\n  A[Start]-->B[Done]\n  ```\n\nAfter $x$.\n"
@@ -479,7 +492,7 @@ class TerminalSmoke(unittest.TestCase):
             self.assertIn("After.", plain(output))
 
     def test_mermaid_failures_and_budget_keep_complete_code(self):
-        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "pie\n\"Slice\": 1", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
+        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "gantt\nSlice: 2026-01-01, 1d", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
         source = "\n\n".join("```mermaid\n" + block + "\n```" for block in blocks)
         source += "\n\n```mermaid\nflowchart LR; A[Valid]-->B\n```\nAfter.\n"
         output, error = terminal(source)

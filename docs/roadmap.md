@@ -22,8 +22,9 @@ the fixed comparison data and reproduction tools.
 4. An initial native Mermaid subset is implemented with a lazy reusable worker,
    bounded requests/cache/output, and complete code fallback. See
    [Mermaid support](mermaid.md) for coverage and measured backend costs.
-   Broaden Unicode/font support, ER attributes, and diagram types only after
-   compatibility and resource checks. Consider an optional official-renderer
+   Latin/Greek/Cyrillic labels, ER attributes and five additional diagram families
+   are implemented in the shared library. Broader script coverage, timeline
+   sections and other families need compatibility and resource checks. Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
 Alerts, inert bounded front matter, an expanded details/summary subset, and

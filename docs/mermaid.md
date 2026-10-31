@@ -14,37 +14,30 @@ Pipes and `--output text` keep their existing source-based representation;
 diagram worker. A nonempty `NO_COLOR` disables text styling but retains selected
 graphics; `--light` changes the diagram palette.
 
-## Initial coverage
+## Coverage
 
-The implementation pins
-[`mermaid-rs-renderer` 0.3.1](https://docs.rs/mermaid-rs-renderer/0.3.1/mermaid_rs_renderer/)
-with its CLI and PNG features disabled. It accepts ASCII source for:
+The shared document-graphics library uses a narrowly patched copy of
+[`mermaid-rs-renderer` 0.3.1](https://docs.rs/mermaid-rs-renderer/0.3.1/mermaid_rs_renderer/),
+with CLI and PNG features disabled. Supported families are:
 
 - Flowcharts (`flowchart` and `graph`), including ordinary subgraphs and labels.
-- Sequence diagrams.
-- Class diagrams, including members and relationships.
-- State diagrams.
-- ER relationships without attribute tables.
+- Sequence, class and state diagrams.
+- ER relationships and attribute tables, including types, names, PK/FK/UK keys
+  and inline comments. Rows stay intact; an incomplete table retains source.
+- Pie charts, mind maps, timelines without sections, user journeys, and quadrant charts.
 
-This is a native subset, not full Mermaid.js compatibility. Diagram layout and
-syntax handling can differ from the official renderer. Other diagram types,
-non-ASCII source, configuration directives/front matter, clickable nodes,
-external resources, unavailable glyphs, and excessive diagrams retain source.
+Embedded Noto Sans fonts add Latin, Greek and Cyrillic labels, including accented
+and combining characters. KaTeX fonts preserve existing ASCII diagram appearance.
+The backend patch supplies the same embedded font database to text measurement;
+no system-font discovery or font cache is used. Missing glyphs (including CJK and
+emoji), unsupported families, timeline sections, directives/front matter,
+clickable nodes and excessive diagrams retain source. Source exports are unchanged.
 
-The coverage restriction also bounds font behavior. The backend's fast text
-metrics avoid system-font discovery for the selected ASCII paths. Non-ASCII
-metrics and ER attribute tables take other paths: the latter can omit attribute
-types when metrics for the requested bundled font are unavailable. Those cases
-remain code rather than an incomplete picture. Rasterization uses the existing
-bundled sans-serif faces. Approximate layout metrics can still affect wrapping;
-broader font support needs an explicit backend API and compatibility tests.
-
-The [upstream project](https://github.com/1jehuang/mermaid-rs-renderer) supports
-more diagram types, but they are not all enabled here. Expanding the subset
-requires checking labels, relationships, font access, and resource costs, not
-just accepting a parser header. The official
-[Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) remains a possible optional
-adapter for wider compatibility.
+This remains a native subset: layout and syntax can differ from Mermaid.js.
+The [shared backend patch](https://github.com/garlab/document-graphics/tree/main/patches)
+also preserves all ER key badges and fixes contrast and multiline axis labels in
+the added chart families. An optional official-renderer adapter remains a possible
+route to broader Mermaid.js compatibility.
 
 ## Worker, cache, and limits
 
@@ -67,6 +60,7 @@ rails, row reservation, padding, and Kitty transport as other graphics.
 | 128 nodes, 256 edges, 16 subgraphs, 512 total subgraph memberships | Check parsed structure before layout. |
 | 32 sequence participants, 16 frames/boxes, 64 notes, 128 activations | Bound additional sequence structure. |
 | 64 state notes; 1 KiB per node label | Reject excessive annotations. |
+| 64 pie slices, 128 mind-map nodes/depth 32, 64 timeline periods/128 events, 128 quadrant points; 32 journey actors with scores 1–5 | Bound additional families before layout; chart numbers must be finite and in range. |
 | 32 requests and 5 seconds cumulative request time per invocation | Later uncached diagrams retain code; cache hits remain available. |
 | 2 seconds per reply after worker startup | Kill and reap a stalled worker, then retain source. |
 | 8 MiB cache, at most 32 entries | Account for source and fitted RGBA bytes; evict least recently used entries. |
@@ -108,7 +102,8 @@ windows, light/no-color modes, cache reuse after the request budget, and failure
 followed by valid diagrams.
 
 Rendered flowchart, sequence, class, state, and grouping fixtures were inspected;
-the ER attribute issue found during inspection is now an explicit fallback.
+the initial release kept ER attributes as an explicit fallback. The expanded
+coverage described above supersedes that restriction.
 These raster/screen-model checks do not establish compatibility with a particular
 real terminal version. Use `tests/fixtures/mermaid.md` for Ghostty/Kitty checks.
 
@@ -270,3 +265,35 @@ byte-identical. The 42 PTY checks, CLI tests, shared worker tests and GUI consum
 integration passed. The review also fixed viewport bounds above the library's
 raster limit and rejection of worker replies arriving after their deadline.
 Large corpora and raw results remain outside the repository.
+
+## Expanded native coverage: resource check
+
+The Unicode/ER/chart changes were compared with the reviewed extraction build
+using release binaries, one warm-up, five alternating fresh processes per build,
+and the same PTY/corpora methodology above. These are paired local observations;
+absolute times from separate benchmark sessions are not directly comparable.
+
+| Unchanged case | Before | Expanded backend | Reported RSS before / after |
+| --- | ---: | ---: | ---: |
+| 10 MiB mixed, styled terminal | 1.248 s | 1.203 s | 58.00 / 58.28 MiB |
+| 1 MiB prose | 68.64 ms | 67.79 ms | 9.45 / 9.39 MiB |
+| 100 equations | 45.09 ms | 45.34 ms | 10.36 / 10.31 MiB |
+| 10 MiB plain export | 97.78 ms | 97.59 ms | 54.72 / 54.62 MiB |
+| ASCII SVG with text | 4.24 ms | 4.19 ms | 5.56 / 5.56 MiB |
+| One flowchart | 13.09 ms | 13.13 ms | 10.22 / 10.30 MiB |
+| One sequence diagram | 13.06 ms | 12.91 ms | 9.17 / 9.36 MiB |
+| 100 repeated flowchart placements | 24.96 ms | 25.79 ms | 10.23 / 10.34 MiB |
+
+The release binary grows from **15.10 to 15.79 MiB** (+0.69 MiB, 4.6%), mostly
+the two bundled Noto Sans faces. Existing paths show no material latency or RSS
+regression; repeated placements remain cached. The older mixed Mermaid fixture
+now renders eight diagrams instead of six, so it is not an equal-work latency
+comparison. Input, worker, pixel, cache and output budgets are unchanged.
+
+All twelve original diagram/theme RGBA results are byte-identical. Expanded
+coverage is checked through 26 shared-worker renders, the corresponding GUI
+consumer integration, and 43 CLI PTY tests including narrow/light layouts and
+exact source exports. Visual review covers both palettes and complete ER columns.
+Formatting, Clippy for maintained code, Rust 1.90, and both package archives are
+checked. The backend's inherited lint warnings are excluded with `--no-deps`;
+its source delta and license are recorded in document-graphics.

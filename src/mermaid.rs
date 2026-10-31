@@ -111,9 +111,9 @@ mod tests {
     fn unsupported_input_never_starts_worker_or_spends_terminal_budget() {
         let mut engine = Engine::default();
         for source in [
-            "pie\n\"A\":1",
+            "gantt\nTask: 2025-01-01, 1d",
             "%%{init: {}}%%\nflowchart LR; A-->B",
-            "flowchart LR; A[中文]-->B",
+            "flowchart LR; A\x1b[2J-->B",
         ] {
             assert!(engine.render(source, (500, 300), false).is_none());
         }

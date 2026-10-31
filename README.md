@@ -10,9 +10,10 @@ with text fallbacks; interactive paging and resize handling are planned.
 ## Build and run
 
 A Rust 1.90 or newer toolchain is required. Math uses the published
-[`katex-native`](https://crates.io/crates/katex-native) crate, and diagram and SVG
-rendering the published [`document-graphics`](https://crates.io/crates/document-graphics)
-crate.
+[`katex-native`](https://crates.io/crates/katex-native) crate. Diagram and SVG
+rendering uses the versioned [`document-graphics`](https://crates.io/crates/document-graphics)
+library. If the pinned development version has not been published yet, use the
+local override below.
 
 To work on document-graphics alongside mdviewer, place its checkout beside
 mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
@@ -89,10 +90,11 @@ with unavailable glyphs fall back to the reference. No network requests, system
 font scans, or helper processes are used. See [local images](docs/images.md) for
 the supported subset and resource limits.
 
-Mermaid fences render natively for an initial ASCII subset: flowcharts, sequence,
-class and state diagrams, and ER relationships without attribute tables.
+Mermaid fences render flowcharts, sequence, class and state diagrams, ER tables,
+pie charts, mind maps, timelines, user journeys and quadrant charts. Embedded fonts
+cover Latin (including accents), Greek and Cyrillic labels.
 `--show-mermaid-source` keeps selectable code beneath the diagram;
-`--mermaid off` keeps the code alone. Unsupported syntax, non-ASCII source,
+`--mermaid off` keeps the code alone. Unsupported syntax, unavailable glyphs,
 missing glyphs, errors, and limits retain the complete code panel. The native
 backend uses one lazy worker from the same executable, with no additional
 installation. It does not provide full Mermaid.js compatibility. See
