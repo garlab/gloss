@@ -16,6 +16,12 @@ use mdviewer::{document::Document, export, render, terminal::Terminal};
 struct Args {
     /// Markdown file; omit or use '-' to read stdin.
     file: Option<PathBuf>,
+    /// Open an interactive pager; ignored for pipes and text/source exports.
+    #[arg(short = 'p', long)]
+    pager: bool,
+    /// Reload a named file when it changes; implies --pager and requires a terminal.
+    #[arg(long)]
+    watch: bool,
     /// Auto styles terminal text; pipes always receive clean text. Source is exact Markdown.
     #[arg(long, value_enum, default_value_t = Output::Auto)]
     output: Output,
@@ -123,22 +129,37 @@ fn run() -> Result<(), Box<dyn Error>> {
         mdviewer::mermaid::worker_main()?;
         return Ok(());
     }
+    let named_file = args
+        .file
+        .as_deref()
+        .filter(|path| *path != std::path::Path::new("-"));
+    let terminal = Terminal::detect();
+    let interactive = terminal.interactive
+        && args.output == Output::Auto
+        && std::env::var("TERM").as_deref() != Ok("dumb");
+    if args.watch && (named_file.is_none() || !interactive) {
+        return Err(
+            "--watch requires a named file, --output auto, and an interactive terminal".into(),
+        );
+    }
     if args.file.is_none() && io::stdin().is_terminal() {
         Args::command().print_help()?;
         println!();
         return Ok(());
     }
-    let mut source = String::new();
-    match args.file.as_deref() {
-        Some(path) if path != std::path::Path::new("-") => source = std::fs::read_to_string(path)?,
-        _ => {
-            io::stdin().read_to_string(&mut source)?;
-        }
-    }
-    let mut terminal = Terminal::detect();
-    if let Some((width, height)) = args.cell_size {
-        terminal.geometry.cell_width = width;
-        terminal.geometry.cell_height = height;
+    let paging = (args.pager || args.watch) && interactive;
+    let source = read_source(&args, paging)?;
+    if paging {
+        #[cfg(unix)]
+        return mdviewer::pager::run(
+            source,
+            named_file.map(std::path::Path::to_path_buf),
+            args.watch,
+            || args.render_options(Terminal::detect()),
+        )
+        .map_err(Into::into);
+        #[cfg(not(unix))]
+        return Err("the interactive pager currently requires a Unix terminal".into());
     }
     let mut out = io::BufWriter::new(io::stdout().lock());
     if args.output == Output::Source {
@@ -149,65 +170,12 @@ fn run() -> Result<(), Box<dyn Error>> {
         if args.output == Output::Text || !terminal.interactive {
             export::write(&mut out, &document)?;
         } else {
-            let kitty = terminal.graphics_allowed
-                && match args.math {
-                    Math::Auto => terminal.kitty_hint,
-                    Math::Kitty => true,
-                    Math::Tex => false,
-                };
             if args.math == Math::Kitty && terminal.multiplexer {
                 eprintln!(
                     "mdviewer: multiplexer graphics passthrough is not implemented; showing TeX"
                 );
             }
-            let options = render::Options {
-                styled: terminal.styled,
-                links: terminal.links_allowed
-                    && match args.links {
-                        Links::Auto => terminal.kitty_hint,
-                        Links::Off => false,
-                        Links::Always => true,
-                    },
-                highlight: !args.no_highlight,
-                kitty: kitty.then_some(terminal.geometry),
-                terminal: Some(terminal.geometry),
-                width: args.width,
-                margin: args.margin,
-                font_size: args.font_size.map_or_else(
-                    || (f64::from(terminal.geometry.cell_height) * 0.9).clamp(4., 256.),
-                    f64::from,
-                ),
-                light_background: args.light
-                    || match args.theme {
-                        Theme::Auto => terminal.light_background,
-                        Theme::Dark => false,
-                        Theme::Light => true,
-                    },
-                show_math_source: args.show_math_source,
-                mermaid: terminal.graphics_allowed
-                    && match args.mermaid {
-                        Images::Auto => terminal.kitty_hint,
-                        Images::Off => false,
-                        Images::Kitty => true,
-                    },
-                show_mermaid_source: args.show_mermaid_source,
-                image_base: (terminal.graphics_allowed
-                    && match args.images {
-                        Images::Auto => terminal.kitty_hint,
-                        Images::Off => false,
-                        Images::Kitty => true,
-                    })
-                .then(|| {
-                    args.base_dir.clone().unwrap_or_else(|| {
-                        args.file
-                            .as_deref()
-                            .filter(|path| *path != std::path::Path::new("-"))
-                            .and_then(std::path::Path::parent)
-                            .unwrap_or(std::path::Path::new("."))
-                            .to_path_buf()
-                    })
-                }),
-            };
+            let options = args.render_options(terminal);
             let warnings = render::write_document(&mut out, &document, &options)?;
             out.flush()?;
             for warning in warnings {
@@ -217,4 +185,91 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     out.flush()?;
     Ok(())
+}
+
+fn read_source(args: &Args, paging: bool) -> io::Result<String> {
+    let path = args
+        .file
+        .as_deref()
+        .filter(|path| *path != std::path::Path::new("-"));
+    #[cfg(unix)]
+    if paging {
+        return match path {
+            Some(path) => mdviewer::pager::read_file(path),
+            None => mdviewer::pager::read(io::stdin().lock()),
+        };
+    }
+    #[cfg(not(unix))]
+    let _ = paging;
+    match path {
+        Some(path) => std::fs::read_to_string(path),
+        None => {
+            let mut source = String::new();
+            io::stdin().read_to_string(&mut source)?;
+            Ok(source)
+        }
+    }
+}
+
+impl Args {
+    fn render_options(&self, mut terminal: Terminal) -> render::Options {
+        if let Some((width, height)) = self.cell_size {
+            terminal.geometry.cell_width = width;
+            terminal.geometry.cell_height = height;
+        }
+        let kitty = terminal.graphics_allowed
+            && match self.math {
+                Math::Auto => terminal.kitty_hint,
+                Math::Kitty => true,
+                Math::Tex => false,
+            };
+        render::Options {
+            styled: terminal.styled,
+            links: terminal.links_allowed
+                && match self.links {
+                    Links::Auto => terminal.kitty_hint,
+                    Links::Off => false,
+                    Links::Always => true,
+                },
+            highlight: !self.no_highlight,
+            kitty: kitty.then_some(terminal.geometry),
+            terminal: Some(terminal.geometry),
+            width: self.width,
+            margin: self.margin,
+            font_size: self.font_size.map_or_else(
+                || (f64::from(terminal.geometry.cell_height) * 0.9).clamp(4., 256.),
+                f64::from,
+            ),
+            light_background: self.light
+                || match self.theme {
+                    Theme::Auto => terminal.light_background,
+                    Theme::Dark => false,
+                    Theme::Light => true,
+                },
+            show_math_source: self.show_math_source,
+            mermaid: terminal.graphics_allowed
+                && match self.mermaid {
+                    Images::Auto => terminal.kitty_hint,
+                    Images::Off => false,
+                    Images::Kitty => true,
+                },
+            show_mermaid_source: self.show_mermaid_source,
+            image_base: (terminal.graphics_allowed
+                && match self.images {
+                    Images::Auto => terminal.kitty_hint,
+                    Images::Off => false,
+                    Images::Kitty => true,
+                })
+            .then(|| {
+                self.base_dir.clone().unwrap_or_else(|| {
+                    self.file
+                        .as_deref()
+                        .filter(|path| *path != std::path::Path::new("-"))
+                        .and_then(std::path::Path::parent)
+                        .unwrap_or(std::path::Path::new("."))
+                        .to_path_buf()
+                })
+            }),
+        }
+    }
 }

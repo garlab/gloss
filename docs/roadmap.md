@@ -41,6 +41,15 @@ parser/layout memory beyond the CLI's completed-block streaming path. Bounded
 math-raster caching and compressed graphics transport are implemented; evaluate
 terminal-side image reuse separately. Current measurements are not resource ceilings.
 
+## Deferred: native ABC music notation
+
+ABC engraving is parked and does not block the initial release. Keep `abc`
+fences as source. [Native ABC design](abc-native-design.md) records native parser
+and renderer candidates, a possible standalone library, conformance fixtures,
+and performance/resource requirements. Resume with a bounded native-library
+evaluation and licensed reference corpus before selecting or forking a backend.
+JavaScript is not part of the runtime plan.
+
 ## Reproducible builds and distribution
 
 - `katex-native` and `document-graphics` come from crates.io. Shared native
@@ -84,9 +93,10 @@ configuration before distribution is enabled.
 
 ## Interactive viewing and copying
 
-- Introduce an optional pager with navigation, resize-driven reflow, and explicit
-  image lifecycle management. Add search and heading navigation; evaluate file
-  watching separately. Keep direct output and pipe behavior available.
+- The optional Unix pager implements navigation, literal search, resize reflow,
+  bounded image reuse, and debounced file watching. See [pager implementation](pager.md).
+  Add heading navigation and evaluate Windows terminal support separately.
+  Keep direct output and pipe behavior available.
 - Add an in-view source toggle and copying of Markdown or TeX from the document
   model. Refine source mappings where decoded entities prevent exact selection.
 - Evaluate improvements to native mouse selection in Ghostty without making

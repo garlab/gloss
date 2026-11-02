@@ -66,6 +66,26 @@ fn source_pipe_preserves_exact_utf8_crlf_and_final_newline_state() {
 }
 
 #[test]
+fn pager_does_not_change_exports_and_watch_rejects_pipes() {
+    for mode in ["auto", "text", "source"] {
+        let direct = cli(&["--output", mode, "-"], FIXTURE);
+        let pager = cli(&["--pager", "--output", mode, "-"], FIXTURE);
+        assert!(pager.status.success());
+        assert_eq!(pager.stdout, direct.stdout);
+        assert_eq!(pager.stderr, direct.stderr);
+    }
+    for args in [
+        &["--watch", "-"][..],
+        &["--watch", "tests/fixtures/math.md"][..],
+    ] {
+        let result = cli(args, "");
+        assert!(!result.status.success());
+        assert!(result.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&result.stderr).contains("--watch requires"));
+    }
+}
+
+#[test]
 fn redirected_output_ignores_graphics_theme_width_and_margins() {
     let output = cli(
         &[

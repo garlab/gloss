@@ -23,6 +23,7 @@ use crate::{
 use theme::Theme;
 use viewport::Viewport;
 
+#[derive(Clone)]
 pub struct Options {
     pub styled: bool,
     pub links: bool,
@@ -112,6 +113,17 @@ pub fn write_document(
     document: &Document,
     options: &Options,
 ) -> io::Result<Vec<String>> {
+    write_document_with(out, document, options, |_, _| Ok(()))
+}
+
+/// A recording backend can associate rendered rows with their original block.
+/// The ordinary streaming path supplies a no-op observer.
+pub(crate) fn write_document_with<W: Write>(
+    out: &mut W,
+    document: &Document,
+    options: &Options,
+    mut before_block: impl FnMut(&mut W, &Block) -> io::Result<()>,
+) -> io::Result<Vec<String>> {
     let mut renderer = Renderer::new(out, document, options);
     let mut pending = None;
     let mut previous = 0;
@@ -122,6 +134,7 @@ pub fn write_document(
         options.links,
         |next| {
             if let Some(block) = pending.take() {
+                before_block(renderer.out, &block)?;
                 renderer.block(&block, (previous, quote(Some(&next), true)))?;
                 previous = quote(Some(&block), false);
             }
@@ -130,6 +143,7 @@ pub fn write_document(
         },
     )?;
     if let Some(block) = pending {
+        before_block(renderer.out, &block)?;
         renderer.block(&block, (previous, 0))?;
     }
     Ok(renderer.warnings)

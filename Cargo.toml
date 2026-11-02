@@ -33,6 +33,8 @@ unicode-width = "0.2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+signal-hook = { version = "0.4", default-features = false }
+tempfile = "3"
 
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

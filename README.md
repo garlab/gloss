@@ -4,8 +4,9 @@ A terminal Markdown viewer with native inline and display equations. Math is lai
 out by `katex-native`; surrounding prose stays selectable terminal text. No
 browser, Node.js, or external TeX installation is needed at runtime.
 
-mdviewer prints into terminal scrollback and exits. It supports Kitty graphics
-with text fallbacks; interactive paging and resize handling are planned.
+mdviewer prints into terminal scrollback and exits by default. Use `--pager` for
+interactive reading or `--watch` for live file updates. Kitty graphics have text
+fallbacks on other terminals.
 
 ## Build and run
 
@@ -146,6 +147,49 @@ Theme hints are estimates and can be overridden. A nonempty `NO_COLOR` disables
 text styling without disabling images or hyperlinks. See
 [terminal discovery](docs/terminal-detection.md) for precedence and limitations.
 
+## Pager and live updates
+
+```sh
+mdviewer --pager notes.md
+mdviewer --watch notes.md
+cat notes.md | mdviewer --pager -
+```
+
+`-p` / `--pager` opens an alternate screen on Unix terminals (including macOS).
+Text reflows when the window changes size; equations, images, and diagrams scroll
+with it. The previous terminal screen is restored on exit. Keyboard input uses
+the controlling terminal, so piped Markdown remains usable.
+
+| Key | Action |
+| --- | --- |
+| `j` / `k`, arrows, Enter | Scroll down/up one row; Enter scrolls down. |
+| Space / `b`, Page Down / Page Up | Move a page, keeping one row of overlap. |
+| `d` / `u`, Ctrl-D / Ctrl-U | Move half a page. |
+| `g` / `G`, Home / End | Go to the beginning/end. |
+| `/` / `?`, Enter | Search forward/backward for literal, case-sensitive rendered text. |
+| `n` / `N` | Repeat/reverse the last search, wrapping through the document. |
+| `r` | Reload the file and its local images; rerender piped input. |
+| `w` / `h` | Cycle rendering warnings / show key hints. |
+| `q`, Escape, Ctrl-C | Quit; Escape first cancels an open search prompt. |
+| Ctrl-Z | Restore the terminal and suspend; `fg` resumes. |
+
+`--watch` implies the pager and requires a named regular file and interactive
+stdout. It detects in-place and atomic saves after a short debounce, retains the
+last good page through temporary read/render errors, and preserves the current
+source block when possible. Staying at the end follows newly appended content.
+Only the Markdown file is watched; press `r` after changing an image alone.
+
+Mouse tracking is disabled, preserving native text selection in Ghostty. Copying
+uses the same source options described below. Search covers terminal text, not
+letters inside rasterized equations or diagrams. Bracketed paste is ignored to
+avoid treating pasted text as commands.
+
+`--pager` is ignored for redirected output, `--output text`, `--output source`,
+and `TERM=dumb`. `--watch` rejects those modes. Ordinary scrollback output is
+unchanged. The pager has a 64 MiB input limit and bounded temporary storage;
+oversized inputs receive an error instead of being truncated. See
+[pager implementation](docs/pager.md) for resource limits and validation.
+
 ## Copying and pipes
 
 Normal terminal selection copies prose. Selecting an equation image alone does
@@ -200,11 +244,14 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo build --locked
 python3 tests/terminal_smoke.py target/debug/mdviewer  # Unix, Python 3
+python3 tests/pager_smoke.py target/debug/mdviewer
 ```
 
 Rust tests cover parsing, source preservation, wrapping, math, and output
 contracts. Pseudo-terminal tests cover graphics selection, fallbacks, narrow
-windows, Unicode, reading width, themes, and image/text placement. Visual checks
+windows, Unicode, reading width, themes, and image/text placement. Pager tests
+also cover input, search, image cropping/reuse, resize, atomic saves, and terminal
+restoration. Visual checks
 in real terminals are still needed to assess font alignment, scrolling, and
 selection behavior.
 

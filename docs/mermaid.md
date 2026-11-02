@@ -16,9 +16,10 @@ graphics; `--light` changes the diagram palette.
 
 ## Coverage
 
-The shared document-graphics library uses a narrowly patched copy of
-[`mermaid-rs-renderer` 0.3.1](https://docs.rs/mermaid-rs-renderer/0.3.1/mermaid_rs_renderer/),
-with CLI and PNG features disabled. Supported families are:
+The shared document-graphics library uses the published
+[`document-graphics-mermaid` 0.1.1](https://crates.io/crates/document-graphics-mermaid/0.1.1)
+crate, a maintained fork of `mermaid-rs-renderer`, with CLI and PNG features
+disabled. Supported families are:
 
 - Flowcharts (`flowchart` and `graph`), including ordinary subgraphs and labels.
 - Sequence, class and state diagrams.
@@ -34,7 +35,7 @@ emoji), unsupported families, timeline sections, directives/front matter,
 clickable nodes and excessive diagrams retain source. Source exports are unchanged.
 
 This remains a native subset: layout and syntax can differ from Mermaid.js.
-The [shared backend patch](https://github.com/garlab/document-graphics/tree/main/patches)
+The [backend fork](https://github.com/garlab/mermaid-rs-renderer/tree/fork-release)
 also preserves all ER key badges and fixes contrast and multiline axis labels in
 the added chart families. An optional official-renderer adapter remains a possible
 route to broader Mermaid.js compatibility.

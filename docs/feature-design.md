@@ -17,8 +17,10 @@ planned unless the [README](../README.md) says otherwise. The
 Task lists, strikethrough, basic footnotes, and native TeX math already work.
 GitHub alerts, inert front matter, an expanded details subset, validated terminal
 links, and backslash math delimiters are implemented; see
-[Markdown extensions](markdown-extensions.md) for current coverage. Interactive paging,
-search, heading navigation, resize reflow, and watch mode follow separately.
+[Markdown extensions](markdown-extensions.md) for current coverage. Opt-in paging,
+literal text search, resize reflow, and file watching are implemented separately
+from direct output; see [pager design and limits](pager.md). Heading navigation
+remains a follow-up.
 
 Every step must retain fast ordinary-document rendering, readable output on
 terminals without graphics, and source-based copying and export. The core viewer
@@ -142,6 +144,15 @@ helper process tree's memory alongside process-reported RSS. The benchmark
 runner's optional `--process-tree` sampler records concurrent descendant RSS;
 run timing separately because process sampling adds overhead and can miss brief
 allocation peaks.
+
+## ABC music notation (deferred)
+
+Native engraving of `abc` fences is a future feature, independent of the initial
+release. [Native ABC design](abc-native-design.md) records the parser/layout
+reuse candidates, standalone library boundaries, reference-suite strategy, and
+resource gates. Evaluate existing Rust rendering before choosing a parser fork
+and new engraver. ABC remains ordinary fenced source until that work resumes;
+the runtime design excludes JavaScript.
 
 ## Other Markdown extensions
 

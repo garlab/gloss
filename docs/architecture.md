@@ -63,6 +63,11 @@ The full source and parser working storage still scale with input.
 | `src/render/theme.rs` | Map semantic styles to dark/light terminal palettes and equation ink. |
 | `src/render/viewport.rs` | Bound the reading width and adapt margins to terminal geometry. |
 | `src/render/kitty.rs` | Pad images, compress beneficial payloads, and base64-encode fixed-size graphics chunks. |
+| `src/pager/record.rs` | Record the renderer's own styled rows, source anchors, and image payloads in bounded anonymous temporary files. |
+| `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
+| `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
+| `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation. |
+| `src/pager/watch.rs` | Bounded regular-file reads and debounced metadata polling, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
 `document-graphics` is a separate library repository with `mermaid`, `svg` and
@@ -123,8 +128,24 @@ inline/display mode, font size, color, bounds, and equation-numbering state.
 Shared pixels avoid cache-hit copies; numbering is advanced exactly as on a miss.
 Kitty transport applies fast zlib compression when it saves bytes, then encodes
 3,072-byte chunks into a 4,096-byte stack buffer. Transmissions still use
-terminal-allocated IDs, preserving earlier scrollback. Terminal-side image reuse
-and its lifecycle are separate follow-up work.
+terminal-allocated IDs, preserving earlier scrollback. The optional pager
+records that transport before it reaches stdout. It uploads visible images by
+image number, retains them while visible, crops partial rows in source pixels,
+and frees only its own images on eviction, reload, suspension, and exit.
+
+The pager records only the internal renderer's escape vocabulary, after input
+filtering. It is not a terminal emulator for arbitrary ANSI input. Completed rows
+and encoded image payloads spill to anonymous temporary files; only row indexes,
+image metadata, and a small editable row window stay resident. An optional block
+observer associates rows with original source offsets. Reflow uses the same
+layout and renderer as direct output; exports never read back this representation.
+
+Rendering runs off the input thread. Requests coalesce into one pending slot,
+and a cancelled render is discarded before publication. The last complete page
+remains usable while a watched replacement renders. The terminal guard unwinds
+before joining the render worker, including on errors. Idle watch mode polls file
+metadata rather than rereading content or retaining renderer processes.
+[Pager implementation](pager.md) defines the limits and interaction contract.
 
 The [feature design](feature-design.md) describes additional rendering features
 and math-library extraction boundaries.
@@ -169,7 +190,9 @@ estimated, which requires visual validation across terminals and fonts.
 control-character filtering, formula fallbacks, numbering, and graphics payloads.
 Unit tests cover line measurements, wrapping, and terminal hints.
 `tests/terminal_smoke.py` exercises the CLI through Unix pseudo-terminals and
-checks image/text placement. Neither suite establishes visual compatibility with
+checks image/text placement. `tests/pager_smoke.py` uses a controlling PTY to test
+navigation, reflow, image ownership/cropping, watch recovery, and signal cleanup.
+These suites do not establish visual compatibility with
 a particular terminal version.
 
 Theme colors and decorative prefixes are applied only during terminal rendering.

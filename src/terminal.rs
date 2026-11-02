@@ -4,7 +4,7 @@
 
 use std::io::{self, IsTerminal};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Geometry {
     pub columns: u16,
     pub rows: u16,
