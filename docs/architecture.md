@@ -110,6 +110,12 @@ and rasterizes through `document-graphics` with bundled fonts. Only that generat
 SVG path admits bounded, nonrecursive arrow markers; local SVG restrictions
 remain unchanged. The parent validates returned dimensions and byte counts,
 fits the usual reading column, and shares the local-image output budget.
+Tall diagrams retain width-based fitting within the shared raster caps. The
+picture painter reserves at most `terminal rows - 2` rows per band (minimum one),
+preserving pixels, contiguous placement, quote rails, and a single list marker.
+It charges the complete cell-padded picture before emitting any band, and only
+the top of the whole picture receives vertical cell padding. The pager records
+and crops these ordinary image placements through its existing bounded spool.
 Timeouts/crashes disable further worker requests, while cached images and all
 remaining document text remain available. [Mermaid support](mermaid.md) defines
 coverage, cache identity, limits, worker cleanup, and measurements.

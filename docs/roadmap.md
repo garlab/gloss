@@ -43,8 +43,11 @@ terminal-side image reuse separately. Current measurements are not resource ceil
 
 ASCII wrapping and the benchmark's empty-selector timing fix are implemented;
 see [text performance](text-performance.md) for measurements and validation.
-Next graphics investigations are dense chained Mermaid routing, readable sizing
-of tall diagrams, and avoiding transparent math padding without changing placement.
+Tall Mermaid diagrams now use readable width-based fitting and contiguous bands;
+see [Mermaid support](mermaid.md). Routing optimizations are validated in the
+backend fork and await its next release, followed by a `document-graphics`
+dependency update. The next graphics investigation is avoiding transparent math
+padding without changing direct-output or pager placement.
 
 ## Deferred: native ABC music notation
 

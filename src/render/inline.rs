@@ -376,6 +376,8 @@ pub(super) fn write_cell(
 }
 
 /// Use the same reserved rows, quote rails, padding, and transport as equations.
+/// Tall pictures are emitted in contiguous bands so cursor movement stays on
+/// screen. Charge the complete padded image before writing any of its bands.
 pub(super) fn write_picture(
     out: &mut impl Write,
     image: Arc<crate::raster::Raster>,
@@ -386,10 +388,19 @@ pub(super) fn write_picture(
     let geometry = options.geometry();
     let cell_width = u32::from(geometry.cell_width.max(1));
     let cell_height = u32::from(geometry.cell_height.max(1));
+    if image.width == 0
+        || image.height == 0
+        || u64::from(image.width) * u64::from(image.height) > 8_000_000
+        || u64::from(image.width) * u64::from(image.height) * 4 != image.rgba.len() as u64
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid picture",
+        ));
+    }
     let columns = image.width.div_ceil(cell_width) as usize;
     let inset = frame.width.saturating_sub(columns) / 2;
-    let baseline = image.height as f64 - (cell_height as f64 - (cell_height as f64 * 0.78).floor());
-    let line = Line {
+    let line = |image: Arc<crate::raster::Raster>| Line {
         columns: inset + columns,
         parts: vec![
             Part::Text {
@@ -398,20 +409,48 @@ pub(super) fn write_picture(
                 style: frame.style,
             },
             Part::Image {
+                baseline: image.height as f64
+                    - (cell_height as f64 - (cell_height as f64 * 0.78).floor()),
                 image,
-                baseline,
                 columns,
                 source: None,
             },
         ],
     };
-    let rows = line.metrics(geometry).rows;
+    let rows = image.height.div_ceil(cell_height);
     if !loader.reserve_output(
         columns as u64 * u64::from(cell_width) * u64::from(rows) * u64::from(cell_height),
     ) {
         return Ok(false);
     }
-    write_line(out, &line, frame, true, options)?;
+    let band_rows = u32::from(geometry.rows.saturating_sub(2).max(1));
+    if rows <= band_rows {
+        write_line(out, &line(image), frame, true, options)?;
+    } else {
+        let height = rows * cell_height;
+        let top_padding = height - image.height;
+        let stride = image.width as usize * 4;
+        let band_height = band_rows * cell_height;
+        for top in (0..height).step_by(band_height as usize) {
+            let bottom = (top + band_height).min(height);
+            let mut rgba = vec![0; stride * (bottom - top) as usize];
+            // Pad only the top of the whole picture, never a band boundary.
+            let start = top.max(top_padding);
+            if start < bottom {
+                let source = (start - top_padding) as usize * stride;
+                let destination = (start - top) as usize * stride;
+                let length = (bottom - start) as usize * stride;
+                rgba[destination..destination + length]
+                    .copy_from_slice(&image.rgba[source..source + length]);
+            }
+            let band = Arc::new(crate::raster::Raster {
+                width: image.width,
+                height: bottom - top,
+                rgba,
+            });
+            write_line(out, &line(band), frame, top == 0, options)?;
+        }
+    }
     Ok(true)
 }
 
@@ -615,6 +654,94 @@ fn paint_vertical_borders(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use std::io::Read;
+
+    #[test]
+    fn picture_bands_preserve_every_pixel_and_only_pad_outer_edges() {
+        let image = Arc::new(crate::raster::Raster {
+            width: 13,
+            height: 157,
+            rgba: (0..13 * 157 * 4).map(|i| (i % 251) as u8).collect(),
+        });
+        let expected = kitty::pad(&image, 20, 160, 0, 3).unwrap();
+        for rows in [3, 5, 24] {
+            let options = Options {
+                kitty: Some(crate::terminal::Geometry {
+                    rows,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let frame = Frame::for_block(&[], Style::default(), &options);
+            let mut output = Vec::new();
+            assert!(
+                write_picture(
+                    &mut output,
+                    image.clone(),
+                    &frame,
+                    &options,
+                    &mut crate::images::Loader::default()
+                )
+                .unwrap()
+            );
+            let mut pixels = Vec::new();
+            let mut payload = String::new();
+            let mut compressed = false;
+            for command in std::str::from_utf8(&output)
+                .unwrap()
+                .split("\x1b_G")
+                .skip(1)
+            {
+                let (control, data) = command.split_once(';').unwrap();
+                if control.starts_with("a=T,") {
+                    compressed = control.contains(",o=z,");
+                    let band_rows: u16 = control
+                        .split(',')
+                        .find_map(|field| field.strip_prefix("r="))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    assert!(band_rows <= rows - 2);
+                }
+                payload.push_str(data.split_once("\x1b\\").unwrap().0);
+                if control.ends_with("m=0") {
+                    let bytes = STANDARD.decode(&payload).unwrap();
+                    if compressed {
+                        flate2::read::ZlibDecoder::new(bytes.as_slice())
+                            .read_to_end(&mut pixels)
+                            .unwrap();
+                    } else {
+                        pixels.extend(bytes);
+                    }
+                    payload.clear();
+                }
+            }
+            assert!(payload.is_empty());
+            assert_eq!(pixels, expected.rgba);
+        }
+    }
+
+    #[test]
+    fn picture_budget_failure_writes_no_partial_bands() {
+        let options = Options {
+            kitty: Some(Default::default()),
+            ..Default::default()
+        };
+        let frame = Frame::for_block(&[], Style::default(), &options);
+        let mut loader = crate::images::Loader::default();
+        assert!(loader.reserve_output(8_000_000));
+        assert!(loader.reserve_output(8_000_000));
+        assert!(loader.reserve_output(64 * 1024 * 1024 / 4 - 16_000_001));
+        let image = Arc::new(crate::raster::Raster {
+            width: 1,
+            height: 1000,
+            rgba: vec![255; 4000],
+        });
+        let mut output = Vec::new();
+        assert!(!write_picture(&mut output, image, &frame, &options, &mut loader).unwrap());
+        assert!(output.is_empty());
+    }
 
     #[test]
     fn exhausted_image_budget_keeps_source_without_initializing_math() {

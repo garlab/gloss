@@ -50,6 +50,8 @@ parser.add_argument("--mermaid-mode", choices=["auto", "off", "legacy"], default
 parser.add_argument("--no-links", action="store_true", help="Disable OSC 8 links in a binary that supports --links")
 parser.add_argument("--process-tree", action="store_true",
                     help="Sample descendant RSS with ps; measure timing separately without this overhead")
+parser.add_argument("--diagram-tiles", action="append", default=[], metavar="CORPUS=COUNT",
+                    help="Override the total expected Mermaid image bands for a corpus; repeat per corpus")
 args = parser.parse_args()
 PROJECT = Path(__file__).resolve().parent.parent
 ROOT = args.work_dir.expanduser().resolve()
@@ -61,6 +63,12 @@ if args.samples < 1 or args.warmups < 0 or args.timeout <= 0:
 if not BINARY.is_file() or not os.access(BINARY, os.X_OK):
     parser.error("--binary must name an executable")
 CORPORA = json.loads((ROOT / "corpora.json").read_text(encoding="utf-8"))
+DIAGRAM_TILES = {}
+for override in args.diagram_tiles:
+    name, separator, count = override.rpartition("=")
+    if not separator or name not in CORPORA or not count.isdecimal():
+        parser.error("--diagram-tiles requires a known corpus filename and a nonnegative integer")
+    DIAGRAM_TILES[name] = int(count)
 MARKER = b"\x1b_Ga=T,"
 ENV = dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty", COLORTERM="truecolor")
 for key in ("NO_COLOR", "TMUX", "STY", "ZELLIJ", "GLOW_STYLE", "GLOW_WIDTH", "COLORFGBG"):
@@ -293,6 +301,7 @@ results = {
         "image_rendering": args.image_mode,
         "mermaid_rendering": args.mermaid_mode,
         "process_tree_sampling": args.process_tree,
+        "diagram_tiles": DIAGRAM_TILES,
         "hyperlinks": "disabled" if args.no_links else "default",
         "glow_version": read_command(["glow", "--version"]),
         "profile": args.profile,
@@ -316,7 +325,7 @@ for renderer, name in cases:
     if args.image_mode == "auto" and renderer.startswith("mdviewer/terminal"):
         expected_images += CORPORA[name].get("images", 0)
     if args.mermaid_mode == "auto" and renderer.startswith("mdviewer/terminal"):
-        expected_images += CORPORA[name].get("diagrams", 0)
+        expected_images += DIAGRAM_TILES.get(name, CORPORA[name].get("diagrams", 0))
 
     def valid_sample(sample):
         return (not sample["timed_out"] and sample["exit_code"] == 0

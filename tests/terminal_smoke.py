@@ -436,12 +436,12 @@ class TerminalSmoke(unittest.TestCase):
         fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"
         output, error = terminal(file=fixture)
         self.assertFalse(error)
-        self.assertEqual(len(screen(output, 80)), 13)
+        self.assertEqual(len(screen(output, 80)), 15)  # 13 diagrams; two need a second band.
         self.assertIn('gantt', plain(output))
         self.assertNotIn('A[Read Markdown]', plain(output))
         output, error = terminal(file=fixture, args=("--show-mermaid-source",))
         self.assertFalse(error)
-        self.assertEqual(output.count(b"\x1b_Ga=T,"), 13)
+        self.assertEqual(output.count(b"\x1b_Ga=T,"), 15)
         for text in ('A[Read Markdown]', 'Reader->>Viewer:', 'class Document', '[*] --> Reading', 'DOCUMENT ||--o{ BLOCK'):
             self.assertIn(text, plain(output))
 
@@ -451,7 +451,7 @@ class TerminalSmoke(unittest.TestCase):
             for theme in ("dark", "light"):
                 output, error = terminal(file=fixture, columns=columns, args=("--theme", theme))
                 self.assertFalse(error)
-                self.assertEqual(len(screen(output, columns)), 13)
+                self.assertEqual(len(screen(output, columns)), 13 if columns == 24 else 15)
         source = fixture.read_text()
         for mode in ("off", "auto", "kitty"):
             result = subprocess.run([str(BINARY), "--mermaid", mode, "--output", "source", str(fixture)], capture_output=True, check=True)
@@ -489,6 +489,27 @@ class TerminalSmoke(unittest.TestCase):
             for x in rails:
                 self.assertLess(x, left)
                 for y in range(top, top + height): self.assertEqual(cells.get((x, y)), "│")
+            self.assertIn("After.", plain(output))
+
+    def test_tall_mermaid_bands_keep_readable_pixels_rails_and_one_bullet(self):
+        diagram = "flowchart TD\n" + "\n".join(f"N{i}[Step {i}] --> N{i+1}[Step {i+1}]" for i in range(12))
+        for prefix, continuation in [("", ""), ("> ", "> "), ("- ", "  ")]:
+            source = prefix + "```mermaid\n" + "".join(continuation + line + "\n" for line in diagram.splitlines())
+            source += continuation + "```\n\nAfter.\n"
+            output, error = terminal(source, rows=12, variables={"NO_COLOR": "1"})
+            self.assertFalse(error)
+            images, cells = screen(output, 80, return_cells=True)
+            self.assertGreater(len(images), 2)
+            for left, top, width, height in images:
+                self.assertLessEqual(height, 10)
+                self.assertGreaterEqual(width, 10)
+                if prefix == "> ":
+                    for y in range(top, top + height):
+                        self.assertEqual(cells.get((2, y)), "│")
+            for previous, current in zip(images, images[1:]):
+                self.assertEqual(previous[0], current[0])
+                self.assertEqual(previous[1] + previous[3], current[1])
+            self.assertEqual(plain(output).count("•"), int(prefix == "- "))
             self.assertIn("After.", plain(output))
 
     def test_mermaid_failures_and_budget_keep_complete_code(self):

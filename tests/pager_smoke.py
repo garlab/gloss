@@ -275,6 +275,25 @@ class PagerSmoke(unittest.TestCase):
         self.assertGreater(p.screen.uploads, uploaded)
         p.close()
 
+    def test_tall_mermaid_scrolls_across_bands_and_reflows(self):
+        diagram = "flowchart TD\n" + "\n".join(f"N{i} --> N{i+1}" for i in range(12))
+        p = self.pager("Before\n\n```mermaid\n" + diagram + "\n```\n\nAfter\n", rows=12)
+        p.ready("Before")
+        self.assertGreater(p.screen.uploads, 0)
+        uploads = p.screen.uploads
+        for _ in range(15):
+            p.keys("j")
+        self.assertGreater(p.screen.uploads, uploads)
+        self.assertTrue(p.screen.cropped)
+        self.assertTrue(p.screen.placements)
+        p.keys("G", "After")
+        self.assertTrue(p.screen.placements)
+        p.resize(60, 16)
+        p.until(lambda: "rendering" not in p.screen.text() and p.screen.row == 15)
+        p.keys("g", "Before")
+        self.assertTrue(p.screen.placements)
+        p.close()
+
     def test_resize_reflows_without_losing_position(self):
         p = self.pager("\n\n".join(f"Section {i:03}: " + "words " * 15 for i in range(40)), columns=90)
         p.ready("Section 000")

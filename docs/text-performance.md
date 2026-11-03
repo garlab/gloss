@@ -98,13 +98,10 @@ python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
 
 ## Remaining graphics work
 
-- **Dense chained Mermaid flowcharts:** the routing policy still selects its
-  expensive exact-search tier at up to 64 edges; `mermaid-complex.md` has 60.
-  Profile that case before changing routing tiers or search caps, and compare
-  edge quality as well as time. Separately, `src/render/diagram.rs` fits the whole
-  diagram to one screen's available height. Evaluate readable width-based sizing
-  and bounded image tiling or scrolling rather than shrinking every tall diagram
-  to a narrow strip. Preserve raster, output, worker and pager budgets.
+- **Dense chained Mermaid flowcharts and tall sizing:** subsequent work adds
+  contiguous image bands and optimizes routing comparisons without changing the
+  search tiers or generated SVG. See [Mermaid support](mermaid.md) for current
+  behavior, measurements, and the backend release dependency.
 - **Math padding:** images are rasterized before transparent cell padding is
   added. Omitting that padding could reduce allocation/copying, compression and
   transport work; it does not remove the original equation-layout/rasterization

@@ -17,7 +17,7 @@ graphics; `--light` changes the diagram palette.
 ## Coverage
 
 The shared document-graphics library uses the published
-[`document-graphics-mermaid` 0.1.1](https://crates.io/crates/document-graphics-mermaid/0.1.1)
+[`document-graphics-mermaid` 0.1.2](https://crates.io/crates/document-graphics-mermaid/0.1.2)
 crate, a maintained fork of `mermaid-rs-renderer`, with CLI and PNG features
 disabled. Supported families are:
 
@@ -55,19 +55,31 @@ limits on marker count/size and no recursive paint/marker references. Local SVG
 files retain their previous restrictions. Images use the same margins, quote
 rails, row reservation, padding, and Kitty transport as other graphics.
 
+Diagrams fit the reading-column width without enlargement, subject to the
+one-million-pixel and 8,192-pixel edge caps. Height is independent of the terminal
+viewport. Tall images use contiguous, cell-aligned bands of at most
+`terminal rows - 2` rows (minimum one), keeping cursor movement on screen. This
+preserves native-size labels when the full raster fits the existing limits;
+very large diagrams still shrink. The pager can crop, scroll and discard bands
+independently. A full picture's padded pixels are charged before any band is
+written, so output-budget exhaustion keeps complete source without partial art.
+Temporary copies and encoding are limited to one band at a time; small diagrams
+keep their existing placement path. More readable pixels can increase transport and
+terminal scrollback storage, within the same raster and output budgets.
+
 | Limit | Behavior |
 | --- | --- |
-| 16 KiB source; 256 lines/semicolons; 64 ampersands; lexical nesting depth 32 | Reject before starting a worker or native parser. |
-| 128 nodes, 256 edges, 16 subgraphs, 512 total subgraph memberships | Check parsed structure before layout. |
+| 16 KiB source; 1,024 lines/semicolons; 64 ampersands; lexical nesting depth 32 | Reject before starting a worker or native parser. |
+| 512 nodes, 1,024 edges, 16 subgraphs, 512 total subgraph memberships | Check parsed structure before layout. |
 | 32 sequence participants, 16 frames/boxes, 64 notes, 128 activations | Bound additional sequence structure. |
 | 64 state notes; 1 KiB per node label | Reject excessive annotations. |
 | 64 pie slices, 128 mind-map nodes/depth 32, 64 timeline periods/128 events, 128 quadrant points; 32 journey actors with scores 1–5 | Bound additional families before layout; chart numbers must be finite and in range. |
 | 32 requests and 5 seconds cumulative request time per invocation | Later uncached diagrams retain code; cache hits remain available. |
 | 2 seconds per reply after worker startup | Kill and reap a stalled worker, then retain source. |
 | 8 MiB cache, at most 32 entries | Account for source and fitted RGBA bytes; evict least recently used entries. |
-| Existing SVG limits: 256 KiB, 4,096 XML nodes, bounded depth/geometry/text | Validate generated SVG before rasterization. |
+| Generated SVG: 1 MiB, 16,384 XML nodes, 32,768 logical pixels per edge, 64 million logical pixels of area, bounded depth/text | Validate generated SVG before rasterization; local SVG limits remain tighter. |
 | 16 simple arrow markers; at most 8 XML descendants and 2 KiB per marker | Reject recursive marker/paint references. |
-| 1,000,000 fitted pixels; viewport and reading-column bounds | Validate returned pixels before storing or displaying them. |
+| 1,000,000 fitted pixels; 8,192 pixels per edge and reading-column width | Validate returned pixels before storing or displaying them. |
 | 64 MiB of cell-padded RGBA placements | Shared with local Markdown images, including cache hits. |
 
 On macOS, the shared worker denies file-data reads, writes, networking and child
@@ -101,6 +113,9 @@ exports. Pseudo-terminal checks cover graphics detection, modes
 independent of math/images, selectable source, list bullets, quote rails, narrow
 windows, light/no-color modes, cache reuse after the request budget, and failures
 followed by valid diagrams.
+Tall-image checks reassemble decoded bands and compare every padded RGBA byte,
+check all-or-nothing output budgeting, and exercise contiguous quote/list
+placement, pager scrolling, cropping and resize reflow.
 
 Rendered flowchart, sequence, class, state, and grouping fixtures were inspected;
 the initial release kept ER attributes as an explicit fallback. The expanded
@@ -110,6 +125,80 @@ real terminal version. Use `tests/fixtures/mermaid.md` for Ghostty/Kitty checks.
 
 External comparisons also preserve all 37 plain/source exports and unchanged
 text, styles, cursor operations, and graphics across 26 control cases.
+
+## Tall diagrams and routing measurements
+
+The viewer now pins published `document-graphics` 0.1.2. This also adopts that
+release's larger source/graph limits shown above. Width-based sizing and bands
+work with its published backend. The routing optimization measured below is a
+separate, unreleased patch in the backend fork; it requires a backend release
+and then a `document-graphics` dependency update before registry builds receive
+that speedup. Tracked manifests and lockfiles use published registry dependencies;
+local patches use ignored Cargo configuration.
+
+The patch rejects distant segment pairs before exact intersection/proximity
+calculations, preserving endpoint tolerances, and removes temporary node-ID
+allocations during path cleanup. Search tiers, candidates, scoring and pass
+counts are unchanged. A native probe of the 32-node/60-edge chained flowchart
+reduces median layout time from **368.4 to 221.0 ms**, with byte-identical SVG.
+All 61 backend benchmark fixtures also retain identical SVGs. The chain retains
+19 crossings, 95 bends and zero endpoint/node violations; this improves cost,
+not route quality.
+
+Measured on Apple M2 Pro / 16 GiB, macOS 26.4.1, Rust 1.99.0. The following
+end-to-end figures use release builds with thin LTO and one codegen unit,
+`bench/run.py` harness version 2, a drained 100×40 PTY with 10×20-pixel cells,
+80 content columns and two-cell margins. Medians use seven fresh processes after
+one warm-up, alternating binary order. The input is generated
+`mermaid-complex.md`. Raw samples and images remain outside the repository.
+
+| Build | Wall | CPU | Reported process RSS | Padded pixels | Image bands | Output |
+| --- | ---: | ---: | ---: | --- | ---: | ---: |
+| `26f5b20`, graphics 0.1.1 | 412.5 ms | 409.8 ms | 12.14 MiB | 80×760 | 1 | 23,766 B |
+| Width-based sizing, graphics 0.1.2 | 422.5 ms | 419.5 ms | 19.33 MiB | 320×3,060 | 5 | 135,558 B |
+| Same sizing, local routing patch | 262.0 ms | 258.9 ms | 19.63 MiB | 320×3,060 | 5 | 135,558 B |
+
+The larger image keeps readable labels and stays below the existing pixel cap.
+It costs more raster memory and transport. A separate five-run, 20 ms process-tree
+sampling pass observed median peaks of **14.25 MiB before and 28.95 MiB with the
+local patch**, with two processes. Sampling can miss short peaks; these are
+observations, not resource ceilings. The unsampled `wait4` RSS column is not
+aggregate process-tree memory. Emulator decoding, GPU memory, scrolling and
+image retention are outside both measurements. Executable sizes stay effectively
+unchanged: 16,978,560 bytes before, 16,978,576 with published dependencies, and
+16,978,496 with the local patch.
+
+Seven-sample controls with the local patch versus `26f5b20` remain stable:
+1 MiB prose **52.6 → 52.4 ms**, 10 MiB mixed Markdown **964.2 → 960.5 ms**,
+plain-pipe mixed output **94.4 → 93.5 ms**, the 13-diagram fixture
+**46.6 → 46.1 ms**, and 100 repeated diagrams **24.4 → 24.7 ms**.
+Control output byte counts are unchanged; process RSS differs by less than
+0.3 MiB. Small differences are sensitive to scheduling and PTY draining.
+
+Validation passes with both registry and patched builds: 62 viewer Rust tests,
+44 direct-output PTY tests, and 11 pager PTY tests. The locked registry build also
+passes the Rust 1.90 minimum-version check. The backend patch passes
+541 unit/integration tests with CLI enabled, formatting and Clippy. Shared-library
+and GUI-consumer worker checks cover 13 fixture families in both themes. Decoded
+raster inspection confirms readable labels across band boundaries; this does
+not replace testing scrollback in actual Ghostty and Kitty versions.
+
+Generate fresh corpora with `bench/generate.py`; it now records the expanded
+13-diagram fixture and uses 513 nodes for the oversized-graph fallback. Existing
+corpora metadata may reflect older supported subsets. Bands count as individual
+Kitty image transmissions, so explicitly declare the expected total per corpus
+when comparing this renderer with an older binary:
+
+```sh
+python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
+  --renderer mdviewer/terminal-mermaid --corpus mermaid-complex.md \
+  --samples 7 --warmups 1 --diagram-tiles mermaid-complex.md=5
+```
+
+Omit the override for the old single-image build. The runner records overrides
+in its metadata and still requires an exact image count, successful exit and
+empty diagnostics. Run `--process-tree` separately from timing measurements.
+The fixed initial performance baseline remains unchanged.
 
 ## Backend comparison
 

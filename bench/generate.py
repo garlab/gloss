@@ -224,7 +224,7 @@ sequence = "sequenceDiagram\n Reader->>Viewer: Open file\n Viewer-->>Reader: Sho
 def fence(source):
     return "```mermaid\n" + source + "\n```\n\n"
 mermaid_cases = {
-    "mermaid-basic.md": ((PROJECT / "tests/fixtures/mermaid.md").read_text(), 6),
+    "mermaid-basic.md": ((PROJECT / "tests/fixtures/mermaid.md").read_text(), 13),
     "mermaid-flow.md": (fence(flow), 1),
     "mermaid-sequence.md": (fence(sequence), 1),
     "mermaid-repeated-100.md": (fence(flow) * 100, 100),
@@ -235,8 +235,8 @@ mermaid_cases = {
         + fence("pie\n\"A\":1") + fence("flowchart LR; A[中文]-->B")
         + fence("flowchart LR; A[Broken") + fence("%%{init: {}}%%\nflowchart LR; A-->B")
         + fence("erDiagram\n A {\n string name\n }")
-        + fence("flowchart LR\n" + "".join(f"N{i}[Node {i}]\n" for i in range(129)))
-        + fence(flow), 1),
+        + fence("flowchart LR\n" + "".join(f"N{i}[Node {i}]\n" for i in range(513)))
+        + fence(flow), 3),
 }
 for name, (content, diagrams) in mermaid_cases.items():
     (CORPORA / name).write_text(content, encoding="utf-8")

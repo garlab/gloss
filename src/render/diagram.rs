@@ -40,7 +40,7 @@ pub(super) fn write(
     let geometry = options.geometry();
     let bounds = (
         frame.width() as u32 * u32::from(geometry.cell_width.max(1)),
-        u32::from(geometry.rows.saturating_sub(2).max(1)) * u32::from(geometry.cell_height.max(1)),
+        document_graphics::MAX_EDGE,
     );
     let Some(pixels) = engine.get_or_insert_with(Engine::default).render(
         &source,
