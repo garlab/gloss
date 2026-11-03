@@ -66,11 +66,10 @@ JavaScript is not part of the runtime plan.
 
 ## Reproducible builds and distribution
 
-- `katex-native` comes from crates.io; the shared-image integration temporarily
-  uses local `document-graphics` 0.1.5 until publication. Remove its override and
-  update the registry lockfile after release. Shared native
-  rendering is a single standalone library, `document-graphics`; keep its API and
-  resource checks covered by both terminal and GUI integration tests.
+- `katex-native` and `document-graphics` 0.1.5 come from crates.io; normal builds
+  need no local overrides. Shared native rendering lives in the standalone
+  `document-graphics` library; keep its API and resource checks covered by both
+  terminal and GUI integration tests.
 - Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
   version against the locked dependencies.

@@ -13,9 +13,8 @@ fallbacks on other terminals.
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library. The current shared-image integration pins unreleased 0.1.5 with only
-its `images` feature; use the local override below until publication. It adds no
-native codec framework or image worker to mdviewer.
+library. Both dependencies come from crates.io. mdviewer pins `document-graphics`
+0.1.5 with only its `images` feature; native codecs and image workers stay disabled.
 
 To work on document-graphics alongside mdviewer, place its checkout beside
 mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
@@ -26,10 +25,10 @@ existing settings):
 document-graphics = { path = "../document-graphics" }
 ```
 
-Run Cargo from the mdviewer root. This development lockfile temporarily resolves
-the local 0.1.5 checkout. After publication, remove the override, run
-`cargo update -p document-graphics --precise 0.1.5`, and commit the registry
-source/checksum.
+Run Cargo from the mdviewer root when using a local override. Normal builds use
+the published dependencies and need no sibling checkout. Before validating a
+release, remove the override and run `cargo check` to restore the registry source
+and checksum in `Cargo.lock` using the version pinned in `Cargo.toml`.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.

@@ -208,4 +208,4 @@ Before/after release binaries produced identical output for image, inline-math
 and Mermaid fixtures at 24 and 100 columns. Alternating measurements showed no
 meaningful timing change; the binary grew by 48 bytes. See the
 [shared extraction report](https://github.com/garlab/document-graphics/blob/main/docs/image-extraction.md)
-for methodology, platform limits and the publication follow-up.
+for methodology, platform limits and release validation.
