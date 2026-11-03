@@ -210,3 +210,5 @@ peak RSS, and output volume. The feature design defines regression review
 triggers and the additional measurements needed for images and helper processes.
 The [rendering optimization report](performance-optimizations.md) records the
 current allocation and output improvements against the initial highlighter.
+[Text wrapping measurements](text-performance.md) cover the ASCII fast path and
+the version 2 benchmark runner's correction to short-process wall timing.

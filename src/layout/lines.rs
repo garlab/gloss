@@ -149,37 +149,11 @@ pub fn wrap(parts: Vec<Part>, width: usize) -> Vec<Line> {
                 style,
                 target,
             } => {
-                let mut start = 0;
-                let mut columns = 0;
-                for (offset, grapheme) in text.grapheme_indices(true) {
-                    let whitespace =
-                        grapheme.chars().all(char::is_whitespace) && grapheme != "\u{a0}";
-                    if !whitespace {
-                        columns += UnicodeWidthStr::width(grapheme);
-                        continue;
-                    }
-                    builder.fragment(&text[start..offset], *style, columns, target);
-                    start = offset + grapheme.len();
-                    columns = 0;
-                    match grapheme {
-                        "\n" | "\r\n" => {
-                            builder.word();
-                            builder.line();
-                        }
-                        "\t" => {
-                            builder.word();
-                            let spaces = 4 - builder.current.columns % 4;
-                            for _ in 0..spaces {
-                                builder.space(" ", *style, 1, target);
-                            }
-                        }
-                        value => {
-                            builder.word();
-                            builder.space(value, *style, UnicodeWidthStr::width(value), target);
-                        }
-                    }
+                if text.is_ascii() {
+                    builder.ascii_text(text, *style, target);
+                } else {
+                    builder.unicode_text(text, *style, target);
                 }
-                builder.fragment(&text[start..], *style, columns, target);
             }
         }
     }
@@ -210,6 +184,63 @@ struct Wrapper<'a> {
 }
 
 impl<'a> Wrapper<'a> {
+    fn ascii_text(&mut self, text: &'a str, style: Style, target: &'a Option<Arc<String>>) {
+        // ASCII words have one cell per byte. Keep CRLF as one break and include
+        // vertical tab, which char::is_whitespace accepts but u8's version does not.
+        let bytes = text.as_bytes();
+        let mut start = 0;
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let byte = bytes[offset];
+            if !matches!(byte, b' ' | b'\t'..=b'\r') {
+                offset += 1;
+                continue;
+            }
+            self.fragment(&text[start..offset], style, offset - start, target);
+            let end = offset
+                + if byte == b'\r' && bytes.get(offset + 1) == Some(&b'\n') {
+                    2
+                } else {
+                    1
+                };
+            self.whitespace(&text[offset..end], style, target);
+            offset = end;
+            start = end;
+        }
+        self.fragment(&text[start..], style, text.len() - start, target);
+    }
+
+    fn unicode_text(&mut self, text: &'a str, style: Style, target: &'a Option<Arc<String>>) {
+        let mut start = 0;
+        let mut columns = 0;
+        for (offset, grapheme) in text.grapheme_indices(true) {
+            let whitespace = grapheme.chars().all(char::is_whitespace) && grapheme != "\u{a0}";
+            if !whitespace {
+                columns += UnicodeWidthStr::width(grapheme);
+                continue;
+            }
+            self.fragment(&text[start..offset], style, columns, target);
+            start = offset + grapheme.len();
+            columns = 0;
+            self.whitespace(grapheme, style, target);
+        }
+        self.fragment(&text[start..], style, columns, target);
+    }
+
+    fn whitespace(&mut self, value: &str, style: Style, target: &Option<Arc<String>>) {
+        self.word();
+        match value {
+            "\n" | "\r\n" => self.line(),
+            "\t" => {
+                let spaces = 4 - self.current.columns % 4;
+                for _ in 0..spaces {
+                    self.space(" ", style, 1, target);
+                }
+            }
+            value => self.space(value, style, UnicodeWidthStr::width(value), target),
+        }
+    }
+
     fn fragment(
         &mut self,
         text: &'a str,
@@ -265,6 +296,26 @@ impl<'a> Wrapper<'a> {
     }
 
     fn split_text(&mut self, text: &str, style: Style, target: &Option<Arc<String>>) {
+        if text.is_ascii() {
+            // Word fragments contain no CRLF or other whitespace, so byte
+            // boundaries are also grapheme and cell boundaries here.
+            let mut remaining = text;
+            while !remaining.is_empty() {
+                let available = self.width.saturating_sub(self.current.columns);
+                if available == 0 {
+                    self.line();
+                    continue;
+                }
+                let count = remaining.len().min(available);
+                self.current
+                    .push_text(&remaining[..count], style, count, target);
+                remaining = &remaining[count..];
+                if !remaining.is_empty() {
+                    self.line();
+                }
+            }
+            return;
+        }
         let mut start = 0;
         let mut columns = 0;
         for (offset, grapheme) in text.grapheme_indices(true) {
@@ -375,6 +426,71 @@ mod tests {
             lines.iter().map(displayed).collect::<Vec<_>>(),
             ["Title", "", "    let x = 1;"]
         );
+    }
+
+    #[test]
+    fn ascii_scanning_matches_unicode_scanning_for_whitespace_styles_and_links() {
+        let ascii: String = (0..=127).map(char::from).collect();
+        let linked = Some(Arc::new("https://example.com".to_owned()));
+        let inputs = [
+            ("alpha ", Style::default(), None),
+            (
+                "longword\ttext\r\n\nnext\r last\u{b}end\u{c}",
+                Style {
+                    bold: true,
+                    ..Default::default()
+                },
+                linked,
+            ),
+            (ascii.as_str(), Style::default(), None),
+        ];
+        for width in [1, 2, 3, 4, 7, 20, 80] {
+            let parts = inputs
+                .iter()
+                .map(|(text, style, target)| Part::Text {
+                    text: (*text).to_owned(),
+                    style: *style,
+                    target: target.clone(),
+                })
+                .collect();
+            let actual = wrap(parts, width);
+            let mut reference = Wrapper {
+                width,
+                ..Default::default()
+            };
+            for (text, style, target) in &inputs {
+                reference.unicode_text(text, *style, target);
+            }
+            reference.word();
+            if !reference.current.parts.is_empty() {
+                reference.line();
+            }
+            let snapshot = |lines: &[Line]| {
+                lines
+                    .iter()
+                    .map(|line| {
+                        let parts: Vec<_> = line
+                            .parts
+                            .iter()
+                            .map(|part| match part {
+                                Part::Text {
+                                    text,
+                                    style,
+                                    target,
+                                } => (text.clone(), *style, target.clone()),
+                                Part::Image { .. } => unreachable!(),
+                            })
+                            .collect();
+                        (line.columns, parts)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                snapshot(&actual),
+                snapshot(&reference.lines),
+                "width {width}"
+            );
+        }
     }
 
     #[test]

@@ -4,6 +4,8 @@ Terminal cases use a 100x40 pseudo-terminal (14x40 for terminal-narrow), with
 10x20-pixel cells, drained without screen painting. Times include startup,
 parsing, layout, encoding, and PTY I/O,
 but exclude a real emulator's image decoding, GPU work, and scrollback storage.
+Harness version 2 avoids a 10 ms empty-selector wait after output streams close;
+older short-case wall times can include that delay. CPU and RSS are unaffected.
 Defaults: one warm-up, three measured processes per case, warm filesystem caches.
 """
 
@@ -146,6 +148,16 @@ def run(renderer, name):
                 timed_out = True
             if timed_out and elapsed > args.timeout + 1:
                 break
+            if not selector.get_map():
+                # Output is closed, but the process may still be exiting. An
+                # empty select(0.01) adds up to 10 ms to short-case wall times.
+                pid, status, candidate = os.wait4(process.pid, os.WNOHANG)
+                if pid:
+                    process.returncode = os.waitstatus_to_exitcode(status)
+                    usage = candidate
+                else:
+                    time.sleep(0.0002)
+                continue
             for key, _ in selector.select(0.01):
                 try:
                     data = os.read(key.fd, 262144)
@@ -271,7 +283,7 @@ del data
 
 results = {
     "metadata": {
-        "harness_version": 1,
+        "harness_version": 2,
         "mdviewer_commit": args.binary_revision,
         "source_checkout": checkout(PROJECT),
         "katex_native_checkout": checkout(PROJECT.parent / "katex-native"),

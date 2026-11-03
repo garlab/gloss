@@ -41,6 +41,11 @@ parser/layout memory beyond the CLI's completed-block streaming path. Bounded
 math-raster caching and compressed graphics transport are implemented; evaluate
 terminal-side image reuse separately. Current measurements are not resource ceilings.
 
+ASCII wrapping and the benchmark's empty-selector timing fix are implemented;
+see [text performance](text-performance.md) for measurements and validation.
+Next graphics investigations are dense chained Mermaid routing, readable sizing
+of tall diagrams, and avoiding transparent math padding without changing placement.
+
 ## Deferred: native ABC music notation
 
 ABC engraving is parked and does not block the initial release. Keep `abc`
