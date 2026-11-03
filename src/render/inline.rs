@@ -480,6 +480,15 @@ fn span(out: &mut impl Write, value: &str, style: Style, options: &Options) -> i
     text::write_span(out, value, style, options.styled, options.theme())
 }
 
+fn move_rows(out: &mut impl Write, from: u32, to: u32) -> io::Result<()> {
+    if to > from {
+        write!(out, "\x1b[{}B", to - from)?;
+    } else if from > to {
+        write!(out, "\x1b[{}A", from - to)?;
+    }
+    Ok(())
+}
+
 pub(super) fn write_line(
     out: &mut impl Write,
     line: &Line,
@@ -539,19 +548,24 @@ pub(super) fn write_line(
                 image,
                 columns,
                 baseline,
-                ..
+                source,
             } => {
                 painter.finish(out)?;
-                let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
                 let y = (metrics.baseline - baseline).ceil().max(0.) as u32;
-                let image = kitty::pad(image, width, height, 0, y)?;
-                if metrics.text_row > 0 {
-                    write!(out, "\x1b[{}A", metrics.text_row)?;
+                // Only equations carry TeX source. Ordinary images keep their
+                // cell-aligned band transport and shared output accounting.
+                let native = source.is_some();
+                let cell_height = u32::from(geometry.cell_height.max(1));
+                let image_row = if native { y / cell_height } else { 0 };
+                move_rows(out, metrics.text_row, image_row)?;
+                if native {
+                    kitty::transmit_native(out, image, y % cell_height)?;
+                } else {
+                    let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
+                    let image = kitty::pad(image, width, height, 0, y)?;
+                    kitty::transmit(out, &image, *columns as u32, metrics.rows)?;
                 }
-                kitty::transmit(out, &image, *columns as u32, metrics.rows)?;
-                if metrics.text_row > 0 {
-                    write!(out, "\x1b[{}B", metrics.text_row)?;
-                }
+                move_rows(out, image_row, metrics.text_row)?;
                 write!(out, "\x1b[{columns}C")?;
             }
         }

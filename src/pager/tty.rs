@@ -3,7 +3,7 @@ use signal_hook::{SigId, consts::signal::*};
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufWriter, Read, Write},
-    os::fd::AsRawFd,
+    os::fd::{AsRawFd, RawFd},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -214,28 +214,31 @@ impl Session {
         self.decoder = Decoder::default();
         self.enter()
     }
-    pub fn key(&mut self, timeout_ms: i32) -> io::Result<Option<Key>> {
+    pub fn key(&mut self, timeout_ms: i32, wakeup: RawFd) -> io::Result<Option<Key>> {
         if let Some(key) = self.decoder.next() {
             return Ok(Some(key));
         }
         let fd = self.input.as_raw_fd();
-        if fd < 0 || fd as usize >= libc::FD_SETSIZE {
-            return Err(io::Error::other(
-                "terminal descriptor exceeds select capacity",
-            ));
+        if [fd, wakeup]
+            .iter()
+            .any(|&fd| fd < 0 || fd as usize >= libc::FD_SETSIZE)
+        {
+            return Err(io::Error::other("pager descriptor exceeds select capacity"));
         }
         let mut set = std::mem::MaybeUninit::<libc::fd_set>::uninit();
         let mut timeout = libc::timeval {
             tv_sec: 0,
             tv_usec: (timeout_ms * 1000) as _,
         };
-        // SAFETY: FD_ZERO initializes the set, fd is within FD_SETSIZE, and select
-        // borrows valid storage. Unlike poll, select supports /dev/tty on macOS.
+        // SAFETY: FD_ZERO initializes the set, both descriptors are within
+        // FD_SETSIZE, and select borrows valid storage. Unlike poll, select
+        // supports /dev/tty on macOS.
         let ready = unsafe {
             libc::FD_ZERO(set.as_mut_ptr());
             libc::FD_SET(fd, set.as_mut_ptr());
+            libc::FD_SET(wakeup, set.as_mut_ptr());
             libc::select(
-                fd + 1,
+                fd.max(wakeup) + 1,
                 set.as_mut_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -249,7 +252,9 @@ impl Session {
             }
             return Err(error);
         }
-        if ready > 0 {
+        // SAFETY: select initialized the set and fd was checked above. A render
+        // notification alone must not cause a blocking read from the terminal.
+        if ready > 0 && unsafe { libc::FD_ISSET(fd, set.as_ptr()) } {
             let mut bytes = [0; 1024];
             let count = match self.input.read(&mut bytes) {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => return Ok(None),

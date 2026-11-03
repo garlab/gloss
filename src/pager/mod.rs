@@ -146,6 +146,23 @@ impl Graphics {
                 self.next
             };
             let p = &page.pictures[index];
+            if p.native {
+                let cell_height = usize::from(page.geometry.cell_height);
+                let start = p.row * cell_height + p.offset_y as usize;
+                let first = start.max(top * cell_height);
+                let end = (start + p.height as usize).min((top + height) * cell_height);
+                let y = first - start;
+                let h = end - first;
+                write!(
+                    out,
+                    "\x1b[{};{}H\x1b_Ga=p,I={number},x=0,y={y},w={},h={h},Y={},C=1,q=2;\x1b\\",
+                    first / cell_height - top + 1,
+                    p.column + 1,
+                    p.width,
+                    first % cell_height
+                )?;
+                continue;
+            }
             let first = p.row.max(top);
             let rows = (p.row + p.rows as usize).min(top + height) - first;
             let y = (first - p.row) * usize::from(page.geometry.cell_height);
@@ -482,7 +499,10 @@ pub fn run(
             view.draw(&current_options, &mut tty)?;
             dirty = false;
         }
-        if let Some(key) = tty.key(if view.search.is_some() { 0 } else { 50 })? {
+        if let Some(key) = tty.key(
+            if view.search.is_some() { 0 } else { 50 },
+            worker.wakeup_fd(),
+        )? {
             if key == Key::Char('\x1a') {
                 view.graphics.clear(tty.out())?;
                 tty.suspend()?;

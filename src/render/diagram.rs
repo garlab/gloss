@@ -1,4 +1,7 @@
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    sync::atomic::AtomicBool,
+};
 
 use super::{Options, inline};
 use crate::{
@@ -13,6 +16,7 @@ pub(super) fn write(
     engine: &mut Option<Engine>,
     images: &mut Option<Loader>,
     options: &Options,
+    cancel: &AtomicBool,
 ) -> io::Result<bool> {
     let code = || runs.iter().filter(|run| run.style.role == Role::CodeBlock);
     let Some(length) = code().try_fold(0usize, |n, run| n.checked_add(run.text.len())) else {
@@ -46,7 +50,9 @@ pub(super) fn write(
         &source,
         bounds,
         options.light_background,
-    ) else {
+        cancel,
+    )?
+    else {
         return Ok(false);
     };
     let images = images.get_or_insert_with(Loader::default);

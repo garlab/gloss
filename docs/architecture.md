@@ -54,7 +54,7 @@ The full source and parser working storage still scale with input.
 | `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
-| `src/render/mod.rs` | Coordinate rendering and per-formula fallbacks. |
+| `src/render/mod.rs` | Coordinate rendering, bounded reusable graphics caches, cancellation, and per-formula fallbacks. |
 | `src/render/text.rs` | Emit ANSI attribute changes, reset line styles, and filter input control characters. |
 | `src/render/code.rs` | Highlight one code block before line wrapping, preserving source spans and uncolored fallbacks. |
 | `src/render/diagram.rs` | Offer Mermaid fences to the worker before code rendering; retain source fallback and optional selectable code. |
@@ -62,7 +62,7 @@ The full source and parser working storage still scale with input.
 | `src/render/inline.rs` | Format logical lines, preserve list/quote prefixes, and arrange text and images within reserved rows. |
 | `src/render/theme.rs` | Map semantic styles to dark/light terminal palettes and equation ink. |
 | `src/render/viewport.rs` | Bound the reading width and adapt margins to terminal geometry. |
-| `src/render/kitty.rs` | Pad images, compress beneficial payloads, and base64-encode fixed-size graphics chunks. |
+| `src/render/kitty.rs` | Place native math pixels or cell-aligned image bands, compress payloads, and base64-encode fixed-size chunks. |
 | `src/pager/record.rs` | Record the renderer's own styled rows, source anchors, and image payloads in bounded anonymous temporary files. |
 | `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
 | `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
@@ -129,9 +129,18 @@ each painted span. Source, optional projections, parser working storage, large
 individual blocks, and very long logical lines can still scale with input; this
 is not a constant-memory document reader.
 
-Math rasters use an invocation-local 8 MiB/64-entry LRU cache. Keys include TeX,
-inline/display mode, font size, color, bounds, and equation-numbering state.
-Shared pixels avoid cache-hit copies; numbering is advanced exactly as on a miss.
+Math rasters use an 8 MiB/64-entry LRU cache. Keys include TeX, inline/display
+mode, font size, color, bounds, and equation-numbering state. Shared pixels avoid
+cache-hit copies; numbering is advanced exactly as on a miss. The pager retains
+this cache and the bounded Mermaid cache between renders, but resets equation
+numbering and all per-document work/output budgets. File-image loaders remain
+fresh so manual reloads still reread changed assets.
+
+Equations retain their layout dimensions and baselines, but transport their
+original rasters without adding transparent cell padding. Cursor movement and
+Kitty's within-cell vertical offset position native pixels; omitting the target
+cell rectangle prevents scaling. The pager records that offset and clips against
+viewport pixel boundaries. Ordinary image/diagram bands remain cell-aligned.
 Kitty transport applies fast zlib compression when it saves bytes, then encodes
 3,072-byte chunks into a 4,096-byte stack buffer. Transmissions still use
 terminal-allocated IDs, preserving earlier scrollback. The optional pager
@@ -146,8 +155,11 @@ image metadata, and a small editable row window stay resident. An optional block
 observer associates rows with original source offsets. Reflow uses the same
 layout and renderer as direct output; exports never read back this representation.
 
-Rendering runs off the input thread. Requests coalesce into one pending slot,
-and a cancelled render is discarded before publication. The last complete page
+Rendering runs off the input thread. Completion wakes the terminal input wait
+through a nonblocking socket pair. Requests coalesce into one pending slot,
+and a cancelled render is discarded before publication. Cancellation reaches the
+Mermaid supervisor, which kills and reaps an in-flight helper; every completed
+render also releases its helper while retaining bounded cache entries. The last complete page
 remains usable while a watched replacement renders. The terminal guard unwinds
 before joining the render worker, including on errors. Idle watch mode polls file
 metadata rather than rereading content or retaining renderer processes.
@@ -175,8 +187,8 @@ and math-library extraction boundaries.
 - **Layout respects terminal cells.** Wrapping preserves graphemes and keeps
   images whole. Text and equations share the same width and margins, including
   when graphics are disabled. Inline layout reserves rows above and below the
-  baseline. Images are padded to cell dimensions to avoid stretching, and space
-  is reserved before drawing near the bottom of the terminal.
+  baseline. Equation pixels use native-size placements; image bands use padded
+  cell rectangles. Space is reserved before drawing near the bottom of the terminal.
 - **Terminal discovery does not consume document input.** Current discovery uses
   environment hints, geometry, and explicit overrides only; see
   [terminal discovery](terminal-detection.md). Any future query handling must

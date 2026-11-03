@@ -13,12 +13,14 @@ The renderer writes into a recorder that understands only its own ANSI and Kitty
 vocabulary. Text is already sanitized. Completed styled rows and base64 graphics
 payloads go into anonymous temporary files, with lightweight row and image
 indexes in memory. A small rolling row window handles the renderer's reserved
-space and cursor rewinds. It does not retain every raster or the full ANSI output
-in RAM. Temporary files are removed automatically when their descriptors close.
+space and cursor rewinds. Bounded math and Mermaid raster caches can survive
+reloads; the pager does not retain every raster or the full ANSI output in RAM. Temporary files are removed automatically when their descriptors close.
 
 Only visible rows are replayed. Kitty image numbers identify uploads owned by
 this view; adjacent scroll positions reuse visible image data. Cropping happens
-in source pixels so partial equations and diagrams retain their scale. Leaving
+in source pixels so partial equations and diagrams retain their scale. Native
+math placements preserve their within-cell pixel offsets when clipped at either
+viewport edge. Leaving
 the viewport frees an image's terminal data. Reload, resize, suspension, and exit
 clear owned uploads. No global image-delete command is sent. Text rows are erased
 individually because a full display erase would also evict Kitty graphics.
@@ -60,12 +62,22 @@ previous screen on quit, errors, and unwinding. SIGINT, SIGTERM, SIGHUP and SIGQ
 request cleanup. Ctrl-Z/SIGTSTP restore the screen before suspending; resumption
 reenters and redraws. Uncatchable termination cannot execute application cleanup.
 Cancelling rendering uses a nonretryable I/O error: `Write::write_all` would retry
-`Interrupted` indefinitely. Cleanup restores the terminal before waiting for the
-active renderer and its bounded diagram worker to finish.
+`Interrupted` indefinitely. Cleanup restores the terminal before joining the active renderer. Its cancellation
+signal reaches the Mermaid worker supervisor, so stale requests and quit kill
+and reap an in-flight diagram instead of waiting for its reply timeout.
+
+Reload and reflow reuse the existing math and Mermaid raster caches, with the
+same byte/entry limits. Each render restarts equation numbering and request/time/
+output budgets. Cache keys include the content, fitting bounds and appearance;
+changed bounds or colors cannot reuse incorrectly fitted pixels. Local image
+loaders are fresh on every render. The Mermaid helper exits after each render,
+including errors and cancellation, so no helper remains alive while idle.
+A nonblocking socket pair wakes the input loop when a render completes, avoiding
+an extra input-poll delay without increasing the idle polling rate.
 
 ## Resource limits
 
-| Resource | Limit per page/render |
+| Resource | Limit |
 | --- | --- |
 | UTF-8 Markdown input | 64 MiB |
 | Row and graphics spools combined | 256 MiB |
@@ -78,6 +90,8 @@ active renderer and its bounded diagram worker to finish.
 | Search query | 256 UTF-8 bytes |
 | Search work between input checks | Up to 512 rows or 5 ms |
 | Background rendering | One active request and one replaceable pending request |
+| Math cache retained between renders | 8 MiB / 64 entries |
+| Mermaid cache retained between renders | 8 MiB / 32 entries |
 
 The existing math, image, code, table, and Mermaid budgets apply too. Full source,
 syntax projections, parser storage, and large individual blocks still scale with
@@ -146,3 +160,57 @@ python3 bench/pager.py --binary target/release/mdviewer \
 The script reports readiness, individual navigation latencies, quit time,
 process-reported RSS, CPU, output bytes, and idle helper count as JSON. Use
 `bench/run.py` for direct-output comparisons and separate process-tree sampling.
+
+## Reload and reflow performance
+
+A later comparison against `885be54` measures retained graphics caches and
+completion wake-ups together, using published `document-graphics` 0.1.3 and
+`katex-native` 0.1.0. Hardware/profile/PTY geometry are as above. Each binary had
+one warm-up and five alternating fresh measured sessions. Each session performed
+eight manual reloads and three 100→60→100-column resize cycles. Reload figures
+are medians of per-session medians; warmed resize figures exclude the first
+cycle. They include page construction, upload and status output to the drained
+PTY, but exclude terminal drawing. The 200 ms geometry check and 250–500 ms
+watch debounce remain separate from cache rendering time.
+
+| Input / operation | Before | After |
+| --- | ---: | ---: |
+| 32 distinct inline fractions: first complete page | 59.4 ms | 11.7 ms |
+| 32 fractions: manual reload | 55.3 ms | 1.29 ms |
+| 32 fractions: warmed resize | 209 ms | 211 ms |
+| 32-node / 60-edge flowchart: first complete page | 278 ms | 265 ms |
+| Flowchart: manual reload | 271 ms | 2.96 ms |
+| Flowchart: warmed resize | 425 ms | 215 ms |
+
+The input loop previously waited up to 50 ms to discover a completed render.
+The completion notification removes that floor without faster idle polling.
+Cache reuse avoids layout/rasterization on hits; encoding and page recording
+still run. Documents exceeding the existing cache capacity can evict entries
+and will not receive the same gains.
+
+Separate stress sessions performed 100 reloads and 50 resize cycles per input.
+Viewer RSS settled at about 8.4 MiB for equations and 17.8 MiB for the flowchart,
+with the final 50 samples spanning 8.36–8.41 MiB / a flat 17.80 MiB.
+Peak viewer RSS was 8.44 / 19.70 MiB.
+Each final one-second idle period retained zero helpers and recorded 0.00 seconds
+of CPU at the sampling tool's hundredth-second resolution. These are viewer RSS
+figures, not concurrent process-tree or terminal memory measurements. Cache
+entries for the second fitting width account for expected warm-up growth.
+
+The executable grew by 16,720 bytes (about 0.10%), with no dependency changes.
+Direct 10 MiB styled-text rendering measured 959 / 971 ms with 57.91 / 58.17 MiB
+peak RSS; plain-pipe rendering measured 97.2 / 96.3 ms. Those small differences
+are not evidence of a meaningful direct-path change. Direct text and Mermaid
+output byte counts are unchanged. The fixed initial baseline remains untouched.
+
+The runner now records reload/resize latency and resident samples:
+
+```sh
+python3 bench/pager.py --binary target/release/mdviewer \
+  --input "$TMPDIR/mdviewer-bench/corpora/math-100.md" \
+  --reloads 8 --resize-cycles 3 --watch-seconds 1
+```
+
+Use a working set of at most 64 math entries / 32 diagram entries within the
+8 MiB budgets to measure warm-cache behavior; also measure larger working sets
+to observe eviction. Changing fitting bounds produces distinct cache entries.

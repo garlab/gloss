@@ -27,10 +27,14 @@ parser.add_argument("--input", type=Path, required=True)
 parser.add_argument("--samples", type=int, default=3)
 parser.add_argument("--warmups", type=int, default=1)
 parser.add_argument("--watch-seconds", type=float, default=0)
+parser.add_argument("--reloads", type=int, default=0, help="manual reloads after the first page")
+parser.add_argument("--resize-cycles", type=int, default=0, help="reflow from 100 to 60 columns and back")
 parser.add_argument("--timeout", type=float, default=60)
 args = parser.parse_args()
 if args.samples < 1 or args.warmups < 0 or not 0 <= args.watch_seconds < args.timeout:
     parser.error("positive samples and timeout required; idle duration must be smaller than timeout")
+if args.reloads < 0 or args.resize_cycles < 0:
+    parser.error("reload and resize counts must not be negative")
 binary, source = args.binary.resolve(), args.input.resolve()
 project = Path(__file__).resolve().parent.parent
 if project in source.parents:
@@ -74,9 +78,10 @@ def run():
     tail, diagnostics = bytearray(), bytearray()
     total = frames = 0
     first = ready = usage = None
+    last_status = b""
     try:
         def pump():
-            nonlocal tail, first, ready, total, frames, usage
+            nonlocal tail, first, ready, total, frames, usage, last_status
             if time.perf_counter() - start > args.timeout:
                 raise TimeoutError("pager timed out")
             for fd in select.select([master, process.stderr.fileno()], [], [], 0.01)[0]:
@@ -96,6 +101,7 @@ def run():
                 last = 0
                 for match in footer.finditer(tail):
                     frames += 1
+                    last_status = match[1]
                     if ready is None and re.match(rb"\d+-\d+/\d+", match[1]) and b" rendering" not in match[1]:
                         ready = time.perf_counter() - start
                     last = match.end()
@@ -120,6 +126,27 @@ def run():
             while frames == previous:
                 pump()
             scroll.append(time.perf_counter() - sent)
+        reloads, resizes, resident = [], [], []
+
+        def refreshed(previous):
+            while frames <= previous or b" rendering" in last_status:
+                pump()
+                if usage is not None:
+                    raise RuntimeError("pager exited during refresh")
+            completed = time.perf_counter()
+            rss = subprocess.check_output(["ps", "-p", str(process.pid), "-o", "rss="], text=True)
+            resident.append(int(rss.strip()) / 1024)
+            return completed
+
+        for _ in range(args.reloads):
+            previous, sent = frames, time.perf_counter()
+            os.write(master, b"r")
+            reloads.append((refreshed(previous) - sent) * 1000)
+        for _ in range(args.resize_cycles):
+            for columns in (60, 100):
+                previous, sent = frames, time.perf_counter()
+                fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 40, columns, columns * 10, 800))
+                resizes.append((refreshed(previous) - sent) * 1000)
         idle_cpu = idle_output = idle_helpers = None
         if args.watch_seconds:
             before_cpu, before_bytes = cpu_seconds(process.pid), total
@@ -137,7 +164,8 @@ def run():
                     peak_rss_mib=usage.ru_maxrss / (1024 * 1024 if sys.platform == "darwin" else 1024),
                     user_cpu_s=usage.ru_utime, system_cpu_s=usage.ru_stime,
                     output_bytes=total, idle_cpu_s=idle_cpu, idle_output_bytes=idle_output,
-                    idle_helper_processes=idle_helpers)
+                    idle_helper_processes=idle_helpers, reload_ms=reloads, resize_ms=resizes,
+                    refresh_resident_mib=resident)
     finally:
         os.close(master)
         if process.returncode is None:
@@ -152,6 +180,7 @@ samples = [run() for _ in range(args.samples)]
 print(json.dumps(dict(input=source.name, input_bytes=source.stat().st_size,
                       input_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                       binary_bytes=binary.stat().st_size, watch_seconds=args.watch_seconds,
+                      reloads=args.reloads, resize_cycles=args.resize_cycles,
                       ready_median_ms=statistics.median(s["ready_ms"] for s in samples),
                       peak_rss_median_mib=statistics.median(s["peak_rss_mib"] for s in samples),
                       samples=samples), indent=2))

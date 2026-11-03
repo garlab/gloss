@@ -46,8 +46,12 @@ see [text performance](text-performance.md) for measurements and validation.
 Tall Mermaid diagrams now use readable width-based fitting and contiguous bands;
 see [Mermaid support](mermaid.md). Routing optimizations ship through published
 `document-graphics` 0.1.3 and its Mermaid backend 0.1.3.
-The next graphics investigation is avoiding transparent math
-padding without changing direct-output or pager placement.
+Math transport now avoids added transparent cell padding while retaining native
+pixels, baselines, and pager clipping. Pager reloads reuse bounded math/Mermaid
+caches, and cancellation reaches the diagram worker; see [pager details](pager.md).
+Further experiments include direct display-list rasterization in `katex-native`
+and reducing repeated geometry work in dense flowchart routing. Validate live
+Ghostty/Kitty placement alongside the protocol and pixel-equivalence checks.
 
 ## Deferred: native ABC music notation
 

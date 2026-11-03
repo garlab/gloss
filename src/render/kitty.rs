@@ -21,17 +21,13 @@ pub fn write_display(
     let rows = raster
         .height
         .div_ceil(u32::from(geometry.cell_height.max(1)));
-    let width = columns * u32::from(geometry.cell_width.max(1));
     let height = rows * u32::from(geometry.cell_height.max(1));
-    // Padding to the exact cell rectangle prevents the terminal from stretching
-    // tightly cropped glyphs to fill whole rows, changing the font size.
-    let padded = pad(raster, width, height, 0, (height - raster.height) / 2)?;
     reserve(out, rows)?;
     let margin = left as u32 + (content_width as u32).saturating_sub(columns) / 2;
     if margin > 0 {
         write!(out, "\x1b[{margin}C")?;
     }
-    transmit(out, &padded, columns, rows)?;
+    transmit_native(out, raster, (height - raster.height) / 2)?;
     write!(out, "\x1b[{rows}B\r\n")
 }
 
@@ -52,11 +48,25 @@ pub(crate) fn transmit(
     columns: u32,
     rows: u32,
 ) -> io::Result<()> {
+    transmit_placement(out, raster, Some((columns, rows)), 0)
+}
+
+/// Display native pixels without cell scaling. The caller moves to the starting
+/// cell and supplies a vertical offset smaller than that cell's height.
+pub(crate) fn transmit_native(out: &mut impl Write, raster: &Raster, y: u32) -> io::Result<()> {
+    transmit_placement(out, raster, None, y)
+}
+
+fn transmit_placement(
+    out: &mut impl Write,
+    raster: &Raster,
+    cells: Option<(u32, u32)>,
+    y: u32,
+) -> io::Result<()> {
     let expected = u64::from(raster.width) * u64::from(raster.height) * 4;
     if raster.width == 0
         || raster.height == 0
-        || columns == 0
-        || rows == 0
+        || cells.is_some_and(|(columns, rows)| columns == 0 || rows == 0)
         || expected != raster.rgba.len() as u64
     {
         return Err(io::Error::new(
@@ -85,9 +95,17 @@ pub(crate) fn transmit(
             // Terminal-allocated IDs preserve output from previous invocations.
             write!(
                 out,
-                "\x1b_Ga=T,t=d,f=32,s={},v={},c={columns},r={rows},C=1,q=2{compression},m={more};",
+                "\x1b_Ga=T,t=d,f=32,s={},v={}",
                 raster.width, raster.height
             )?;
+            if let Some((columns, rows)) = cells {
+                write!(out, ",c={columns},r={rows}")?;
+            } else {
+                // Omitting c/r preserves native size; offsets never stretch ink
+                // to fill the surrounding text's reserved cell rectangle.
+                write!(out, ",Y={y}")?;
+            }
+            write!(out, ",C=1,q=2{compression},m={more};")?;
             first = false;
         } else {
             write!(out, "\x1b_Gq=2,m={more};")?;

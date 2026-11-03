@@ -31,6 +31,10 @@ CSI = re.compile(rb"\x1b\[([0-9;]*)([A-Za-z])")
 
 def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None, file=None, cwd=None):
     master, slave = pty.openpty()
+    # Capture renderer bytes without platform-dependent newline conversion.
+    settings = termios.tcgetattr(slave)
+    settings[1] &= ~termios.OPOST
+    termios.tcsetattr(slave, termios.TCSANOW, settings)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, columns * 10, rows * 20))
     env = dict(os.environ, TERM="xterm-ghostty", TERM_PROGRAM="ghostty")
     for name in ("TMUX", "STY", "ZELLIJ", "NO_COLOR", "COLORFGBG"):
@@ -138,9 +142,15 @@ def screen(output, columns, return_cells=False, cell_width=10, cell_height=20):
                 if header.get(b"o") == b"z":
                     rgba = zlib.decompress(rgba)
                 width, height = int(header[b"s"]), int(header[b"v"])
-                image_columns, image_rows = int(header[b"c"]), int(header[b"r"])
                 assert len(rgba) == width * height * 4
-                assert width == image_columns * cell_width and height == image_rows * cell_height
+                if b"c" in header or b"r" in header:
+                    image_columns, image_rows = int(header[b"c"]), int(header[b"r"])
+                    assert width == image_columns * cell_width and height == image_rows * cell_height
+                else:
+                    y = int(header[b"Y"])
+                    assert 0 <= y < cell_height
+                    image_columns = (width + cell_width - 1) // cell_width
+                    image_rows = (y + height + cell_height - 1) // cell_height
                 assert header[b"C"] == b"1" and header[b"q"] == b"2"
                 assert 0 <= column and column + image_columns < columns
                 assert any(rgba[index] for index in range(3, len(rgba), 4))
@@ -168,7 +178,9 @@ def screen(output, columns, return_cells=False, cell_width=10, cell_height=20):
         if byte == 13:
             column = 0
         elif byte == 10:
+            # terminal() captures raw bytes; model the terminal's usual ONLCR.
             row += 1
+            column = 0
         else:
             if byte >= 128:
                 character = output[offset:offset + 3].decode()

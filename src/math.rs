@@ -77,6 +77,11 @@ impl Default for MathEngine {
 }
 
 impl MathEngine {
+    /// Keep bounded fitted rasters across pager renders, but restart numbering.
+    pub(crate) fn begin_document(&mut self) {
+        self.next_number = 1;
+    }
+
     /// Rasterize an inline formula without advancing display equation numbering.
     pub fn render_inline(
         &mut self,
@@ -259,6 +264,12 @@ mod tests {
             .unwrap();
         assert_ne!(numbered.rgba, second.rgba);
         assert_eq!(engine.next_number, 3);
+        engine.begin_document();
+        let restarted = engine
+            .render_display(formula, 24., color, 800, 400)
+            .unwrap();
+        assert!(Arc::ptr_eq(&numbered.pixels, &restarted.pixels));
+        assert_eq!(engine.next_number, 2);
         for index in 0..80 {
             engine
                 .render_inline(&format!("x+{index}"), 24., color, 800, 400)

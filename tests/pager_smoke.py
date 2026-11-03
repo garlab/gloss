@@ -64,9 +64,15 @@ class Screen:
         elif action == b"p":
             number = int(fields[b"I"])
             width, height = self.images[number]
-            y, h, w, columns, rows = (int(fields[key]) for key in (b"y", b"h", b"w", b"c", b"r"))
+            y, h, w = (int(fields[key]) for key in (b"y", b"h", b"w"))
             assert 0 <= y < height and 0 < h <= height - y
-            assert w == width == columns * 10 and h == rows * 20
+            if b"c" in fields or b"r" in fields:
+                columns, rows = int(fields[b"c"]), int(fields[b"r"])
+                assert w == width == columns * 10 and h == rows * 20
+            else:
+                offset = int(fields[b"Y"])
+                assert 0 <= offset < 20 and w == width
+                columns, rows = (w + 9) // 10, (offset + h + 19) // 20
             assert 0 <= self.row and self.row + rows <= self.rows - 1, "image covers footer"
             assert 0 <= self.column and self.column + columns < self.columns
             self.cropped |= y > 0 or h < height

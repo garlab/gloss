@@ -12,6 +12,7 @@ mod viewport;
 
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{
     document::Document,
@@ -83,6 +84,31 @@ impl Options {
     }
 }
 
+/// Bounded math/diagram caches survive pager reloads; file-image loaders and
+/// per-document work/output budgets are deliberately fresh on every render.
+#[derive(Default)]
+pub(crate) struct RenderCache {
+    math: Option<MathEngine>,
+    mermaid: Option<crate::mermaid::Engine>,
+}
+
+impl RenderCache {
+    fn begin_document(&mut self) {
+        if let Some(math) = &mut self.math {
+            math.begin_document();
+        }
+        if let Some(mermaid) = &mut self.mermaid {
+            mermaid.begin_document();
+        }
+    }
+
+    fn finish_document(&mut self) {
+        if let Some(mermaid) = &mut self.mermaid {
+            mermaid.finish_document();
+        }
+    }
+}
+
 /// Render a retained layout, returning non-fatal math warnings.
 pub fn write(
     out: &mut impl Write,
@@ -90,7 +116,9 @@ pub fn write(
     layout: &Layout,
     options: &Options,
 ) -> io::Result<Vec<String>> {
-    let mut renderer = Renderer::new(out, document, options);
+    let mut cache = RenderCache::default();
+    let cancel = AtomicBool::new(false);
+    let mut renderer = Renderer::new(out, document, options, &mut cache, &cancel);
     for (index, block) in layout.blocks.iter().enumerate() {
         let before = index
             .checked_sub(1)
@@ -113,7 +141,14 @@ pub fn write_document(
     document: &Document,
     options: &Options,
 ) -> io::Result<Vec<String>> {
-    write_document_with(out, document, options, |_, _| Ok(()))
+    write_document_with(
+        out,
+        document,
+        options,
+        &mut RenderCache::default(),
+        &AtomicBool::new(false),
+        |_, _| Ok(()),
+    )
 }
 
 /// A recording backend can associate rendered rows with their original block.
@@ -122,31 +157,38 @@ pub(crate) fn write_document_with<W: Write>(
     out: &mut W,
     document: &Document,
     options: &Options,
+    cache: &mut RenderCache,
+    cancel: &AtomicBool,
     mut before_block: impl FnMut(&mut W, &Block) -> io::Result<()>,
 ) -> io::Result<Vec<String>> {
-    let mut renderer = Renderer::new(out, document, options);
-    let mut pending = None;
-    let mut previous = 0;
-    crate::layout::visit(
-        document,
-        true,
-        options.image_base.is_some(),
-        options.links,
-        |next| {
-            if let Some(block) = pending.take() {
-                before_block(renderer.out, &block)?;
-                renderer.block(&block, (previous, quote(Some(&next), true)))?;
-                previous = quote(Some(&block), false);
-            }
-            pending = Some(next);
-            Ok::<_, io::Error>(())
-        },
-    )?;
-    if let Some(block) = pending {
-        before_block(renderer.out, &block)?;
-        renderer.block(&block, (previous, 0))?;
-    }
-    Ok(renderer.warnings)
+    cache.begin_document();
+    let result = (|| {
+        let mut renderer = Renderer::new(out, document, options, cache, cancel);
+        let mut pending = None;
+        let mut previous = 0;
+        crate::layout::visit(
+            document,
+            true,
+            options.image_base.is_some(),
+            options.links,
+            |next| {
+                if let Some(block) = pending.take() {
+                    before_block(renderer.out, &block)?;
+                    renderer.block(&block, (previous, quote(Some(&next), true)))?;
+                    previous = quote(Some(&block), false);
+                }
+                pending = Some(next);
+                Ok::<_, io::Error>(())
+            },
+        )?;
+        if let Some(block) = pending {
+            before_block(renderer.out, &block)?;
+            renderer.block(&block, (previous, 0))?;
+        }
+        Ok(renderer.warnings)
+    })();
+    cache.finish_document();
+    result
 }
 
 fn quote(block: Option<&Block>, first: bool) -> usize {
@@ -174,37 +216,46 @@ struct Renderer<'a, W> {
     out: &'a mut W,
     document: &'a Document,
     options: &'a Options,
-    engine: Option<MathEngine>,
+    cache: &'a mut RenderCache,
+    cancel: &'a AtomicBool,
     highlighter: Option<crate::highlight::Highlighter>,
     images: Option<crate::images::Loader>,
-    mermaid: Option<crate::mermaid::Engine>,
     warnings: Vec<String>,
     started: bool,
 }
 
 impl<'a, W: Write> Renderer<'a, W> {
-    fn new(out: &'a mut W, document: &'a Document, options: &'a Options) -> Self {
+    fn new(
+        out: &'a mut W,
+        document: &'a Document,
+        options: &'a Options,
+        cache: &'a mut RenderCache,
+        cancel: &'a AtomicBool,
+    ) -> Self {
         Self {
             out,
             document,
             options,
-            engine: None,
+            cache,
+            cancel,
             highlighter: None,
             images: None,
-            mermaid: None,
             warnings: Vec::new(),
             started: false,
         }
     }
 
     fn block(&mut self, block: &Block, edges: (usize, usize)) -> io::Result<()> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(io::ErrorKind::ConnectionAborted.into());
+        }
         let options = self.options;
         let document = self.document;
         let out = &mut self.out;
-        let engine = &mut self.engine;
+        let engine = &mut self.cache.math;
         let highlighter = &mut self.highlighter;
         let images = &mut self.images;
-        let mermaid = &mut self.mermaid;
+        let mermaid = &mut self.cache.mermaid;
         let warnings = &mut self.warnings;
         let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
         let geometry = options.geometry();
@@ -230,7 +281,7 @@ impl<'a, W: Write> Renderer<'a, W> {
                         && language
                             .as_deref()
                             .is_some_and(|label| label.eq_ignore_ascii_case("mermaid"))
-                        && diagram::write(out, runs, mermaid, images, options)?
+                        && diagram::write(out, runs, mermaid, images, options, self.cancel)?
                     {
                         return Ok(());
                     }
@@ -347,5 +398,47 @@ impl<'a, W: Write> Renderer<'a, W> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn cached_reloads_match_fresh_rendering_after_edits_and_reflow() {
+        let mut cache = RenderCache::default();
+        let equation = "$$\\begin{equation}x=1\\end{equation}$$\n\n";
+        let sources = [
+            format!("Before $x^2$.\n\n{equation}{equation}"),
+            format!("Changed $x^2$.\n\n{equation}"),
+            format!("{equation}After $x^2$.\n\n{equation}"),
+        ];
+        for (width, light) in [(80, false), (40, false), (40, true), (80, false)] {
+            let options = Options {
+                kitty: Some(Geometry::default()),
+                styled: true,
+                width,
+                light_background: light,
+                ..Default::default()
+            };
+            for source in &sources {
+                let document = Document::parse(source.clone());
+                let mut cached = Vec::new();
+                let mut fresh = Vec::new();
+                let warnings = write_document_with(
+                    &mut cached,
+                    &document,
+                    &options,
+                    &mut cache,
+                    &AtomicBool::new(false),
+                    |_, _| Ok(()),
+                )
+                .unwrap();
+                assert!(warnings.is_empty());
+                write_document(&mut fresh, &document, &options).unwrap();
+                assert_eq!(cached, fresh);
+            }
+        }
     }
 }

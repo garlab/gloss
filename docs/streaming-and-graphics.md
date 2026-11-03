@@ -143,3 +143,36 @@ renderer when comparing these two viewer builds. Use `--corpus 'extensions-*'` t
 isolate the added cases and `--no-links` for a hyperlink-disabled control.
 Preserve each local `results.json` before running another comparison. Do not
 commit generated corpora, raw results, or captured terminal output.
+
+## Native-pixel equation transport
+
+Equations now retain their original raster dimensions during transport. Layout
+still reserves the same cell rows and columns; the writer moves to the starting
+cell and uses a within-cell vertical offset instead of allocating a transparent
+cell-sized copy. It omits Kitty's target `c`/`r` rectangle to preserve native
+pixel size. The pager records offsets and clips in source pixels, including
+partial first/last rows. Ordinary image and diagram bands keep their existing
+transport and output accounting. See the
+[Kitty placement protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/#controlling-displayed-image-layout).
+
+On the same hardware and release profile described in [pager measurements](pager.md#reload-and-reflow-performance),
+one warm-up and five alternating fresh processes compared `885be54` with this
+change using the generated 1,000-equation corpus:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Transmitted decoded pixels | 6,691,600 | 4,657,521 |
+| PTY output bytes | 2,810,510 | 2,702,517 |
+| Median wall time | 393 ms | 389 ms |
+| Median CPU time | 377 ms | 374 ms |
+| Median peak viewer RSS | 11.92 MiB | 11.67 MiB |
+
+This removes 30.4% of decoded pixels and 3.8% of transmitted bytes. Elapsed time
+is effectively unchanged: the original equation is already rasterized before
+cell padding is added, and transparent pixels compress cheaply. Terminal GPU
+cost and scrollback memory were not measured.
+
+Decoded equation ink, absolute pixel coordinates and text positions matched the
+previous build across 24 fixture/width/cell-size/theme combinations. Pager tests
+cover native offsets and clipping at both viewport edges. Live Ghostty/Kitty
+visual validation remains separate from these protocol/pixel checks.

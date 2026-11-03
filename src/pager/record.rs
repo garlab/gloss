@@ -42,6 +42,8 @@ pub(super) struct Picture {
     pub rows: u32,
     pub width: u32,
     pub height: u32,
+    pub offset_y: u32,
+    pub native: bool,
     compressed: bool,
 }
 pub(super) struct Page {
@@ -416,22 +418,51 @@ impl Recorder {
             {
                 return Err(limit());
             }
+            let width = number("s")?;
+            let height = number("v")?;
+            let native = !fields.contains_key("c") && !fields.contains_key("r");
+            let offset_y = if native { number("Y")? } else { 0 };
+            let cell_width = u32::from(self.geometry.cell_width);
+            let cell_height = u32::from(self.geometry.cell_height);
+            if width == 0
+                || height == 0
+                || offset_y >= cell_height
+                || u64::from(width) * u64::from(height) > 8_000_000
+            {
+                return Err(invalid("invalid recorded image dimensions"));
+            }
+            let columns = if native {
+                width.div_ceil(cell_width)
+            } else {
+                number("c")?
+            };
+            let rows = if native {
+                height
+                    .checked_add(offset_y)
+                    .ok_or_else(limit)?
+                    .div_ceil(cell_height)
+            } else {
+                number("r")?
+            };
             let p = Picture {
                 offset: self.pixel_bytes,
                 length: 0,
                 row: self.row,
                 column: self.column,
-                columns: number("c")?,
-                rows: number("r")?,
-                width: number("s")?,
-                height: number("v")?,
+                columns,
+                rows,
+                width,
+                height,
+                offset_y,
+                native,
                 compressed: fields.get("o") == Some(&"z"),
             };
             if p.rows == 0
                 || p.columns == 0
                 || p.rows as usize >= self.keep
-                || p.width != p.columns * u32::from(self.geometry.cell_width)
-                || p.height != p.rows * u32::from(self.geometry.cell_height)
+                || p.columns > u32::from(self.geometry.columns)
+                || (!native
+                    && (p.width != p.columns * cell_width || p.height != p.rows * cell_height))
             {
                 return Err(invalid("invalid recorded image rectangle"));
             }
@@ -544,20 +575,81 @@ pub(super) fn build(
     source: &str,
     options: &render::Options,
     cancel: Arc<AtomicBool>,
+    cache: &mut render::RenderCache,
 ) -> io::Result<Page> {
     if cancel.load(Ordering::Relaxed) {
         return Err(io::ErrorKind::ConnectionAborted.into());
     }
     let document = Document::parse(source.to_owned());
-    let mut recorder = Recorder::new(options.terminal.unwrap_or_default(), cancel)?;
-    let warnings =
-        render::write_document_with(&mut recorder, &document, options, Recorder::anchor)?;
+    let mut recorder = Recorder::new(options.terminal.unwrap_or_default(), Arc::clone(&cancel))?;
+    let warnings = render::write_document_with(
+        &mut recorder,
+        &document,
+        options,
+        cache,
+        &cancel,
+        Recorder::anchor,
+    )?;
     recorder.finish(warnings)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_image_offsets_and_partial_rows_survive_recording_and_scrolling() {
+        let mut recorder = Recorder::new(Geometry::default(), Arc::default()).unwrap();
+        crate::render::kitty::reserve(&mut recorder, 4).unwrap();
+        let image = crate::raster::Raster {
+            width: 3,
+            height: 47,
+            rgba: vec![255; 3 * 47 * 4],
+        };
+        crate::render::kitty::transmit_native(&mut recorder, &image, 7).unwrap();
+        recorder.write_all(b"\x1b[4B\r").unwrap();
+        let mut page = recorder.finish(vec![]).unwrap();
+        assert_eq!(page.pictures[0].rows, 3);
+        assert_eq!(page.pictures[0].offset_y, 7);
+        for (top, height, expected) in [
+            (0, 1, ",x=0,y=0,w=3,h=13,Y=7,"),
+            (1, 1, ",x=0,y=13,w=3,h=20,Y=0,"),
+            (2, 1, ",x=0,y=33,w=3,h=14,Y=0,"),
+            (0, 4, ",x=0,y=0,w=3,h=47,Y=7,"),
+        ] {
+            let mut graphics = super::super::Graphics::new();
+            let mut output = Vec::new();
+            graphics.paint(&mut page, top, height, &mut output).unwrap();
+            let output = String::from_utf8(output).unwrap();
+            assert!(output.contains(expected), "{output}");
+            assert!(output.contains("s=3,v=47,"));
+            assert!(!output.contains(",c=") && !output.contains(",r="));
+        }
+        let mut output = Vec::new();
+        super::super::Graphics::new()
+            .paint(&mut page, 3, 1, &mut output)
+            .unwrap();
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn invalid_native_offsets_and_dimensions_are_rejected() {
+        for header in [
+            "s=3,v=47,Y=20",
+            "s=0,v=47,Y=0",
+            "s=3,v=0,Y=0",
+            "s=4294967295,v=47,Y=0",
+        ] {
+            let mut recorder = Recorder::new(Geometry::default(), Arc::default()).unwrap();
+            assert!(
+                write!(
+                    recorder,
+                    "\x1b_Ga=T,t=d,f=32,{header},C=1,q=2,m=0;AAAA\x1b\\"
+                )
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn long_documents_spool_rows_and_preserve_anchors() {
@@ -568,7 +660,13 @@ mod tests {
             terminal: Some(Geometry::default()),
             ..Default::default()
         };
-        let mut page = build(&source, &options, Arc::default()).unwrap();
+        let mut page = build(
+            &source,
+            &options,
+            Arc::default(),
+            &mut render::RenderCache::default(),
+        )
+        .unwrap();
         assert!(page.rows.len() >= 10_000);
         assert!((0..4).any(|i| page.row(i).unwrap().1.contains("Paragraph 00000")));
         assert!(

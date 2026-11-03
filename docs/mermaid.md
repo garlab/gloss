@@ -43,7 +43,9 @@ route to broader Mermaid.js compatibility.
 ## Worker, cache, and limits
 
 The parent starts one child of the same executable on the first eligible cache
-miss and reuses it within the invocation. The child receives only diagram source,
+miss and reuses it within one document render. The pager retains bounded cache
+entries across reloads/reflow, resets the per-render budgets, and releases the
+helper after every render. Cancellation kills and reaps in-flight work. The child receives only diagram source,
 fitting bounds, and theme over private pipes. A versioned protocol bounds request
 lengths and validates response dimensions and RGBA byte counts before allocation.
 One I/O thread keeps blocked writes and partial replies within the timeout.
@@ -74,7 +76,7 @@ terminal scrollback storage, within the same raster and output budgets.
 | 32 sequence participants, 16 frames/boxes, 64 notes, 128 activations | Bound additional sequence structure. |
 | 64 state notes; 1 KiB per node label | Reject excessive annotations. |
 | 64 pie slices, 128 mind-map nodes/depth 32, 64 timeline periods/128 events, 128 quadrant points; 32 journey actors with scores 1–5 | Bound additional families before layout; chart numbers must be finite and in range. |
-| 32 requests and 5 seconds cumulative request time per invocation | Later uncached diagrams retain code; cache hits remain available. |
+| 32 requests and 5 seconds cumulative request time per document render | Later uncached diagrams retain code; cache hits remain available. |
 | 2 seconds per reply after worker startup | Kill and reap a stalled worker, then retain source. |
 | 8 MiB cache, at most 32 entries | Account for source and fitted RGBA bytes; evict least recently used entries. |
 | Generated SVG: 1 MiB, 16,384 XML nodes, 32,768 logical pixels per edge, 64 million logical pixels of area, bounded depth/text | Validate generated SVG before rasterization; local SVG limits remain tighter. |
