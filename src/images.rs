@@ -5,20 +5,21 @@ use std::{
     collections::{VecDeque, hash_map::DefaultHasher},
     fs::OpenOptions,
     hash::Hasher,
-    io::{Cursor, Read},
+    io::Read,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use image::{ImageDecoder, ImageFormat, ImageReader};
+use document_graphics::images::{self as decoder, Format as ImageFormat};
+#[cfg(test)]
+use std::io::Cursor;
+use std::sync::atomic::AtomicBool;
 
 use crate::raster::Raster;
 use document_graphics::svg::MAX_SOURCE as SVG_BYTES;
 
 const FILE_BYTES: usize = 8 * 1024 * 1024;
-const SOURCE_PIXELS: u64 = 4_000_000;
-const OUTPUT_PIXELS: u64 = 1_000_000;
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
 const READ_BYTES: usize = 64 * 1024 * 1024;
 const OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
@@ -226,56 +227,18 @@ fn local_path(base: &Path, target: &str) -> Result<PathBuf, Error> {
     Ok(base.join(decoded))
 }
 
-fn validate_source((width, height): (u32, u32)) -> Result<(), Error> {
-    if width == 0
-        || height == 0
-        || width > 8192
-        || height > 8192
-        || u64::from(width) * u64::from(height) > SOURCE_PIXELS
-    {
-        Err(Error::Limit)
-    } else {
-        Ok(())
-    }
-}
-
-fn fit((width, height): (u32, u32), bounds: (u32, u32)) -> (u32, u32) {
-    let scale = (bounds.0 as f64 / width as f64)
-        .min(bounds.1 as f64 / height as f64)
-        .min(1.)
-        .min((OUTPUT_PIXELS as f64 / (width as f64 * height as f64)).sqrt());
-    (
-        (width as f64 * scale).floor().max(1.) as u32,
-        (height as f64 * scale).floor().max(1.) as u32,
-    )
-}
-
 fn bitmap(bytes: &[u8], format: ImageFormat, bounds: (u32, u32)) -> Result<Raster, Error> {
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(32 * 1024 * 1024);
-    let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
-    reader.limits(limits);
-    let mut decoder = reader.into_decoder().map_err(|_| Error::Invalid)?;
-    validate_source(decoder.dimensions())?;
-    if decoder.total_bytes() > 32 * 1024 * 1024 {
-        return Err(Error::Limit);
-    }
-    let orientation = decoder.orientation().map_err(|_| Error::Invalid)?;
-    let mut image = image::DynamicImage::from_decoder(decoder).map_err(|_| Error::Invalid)?;
-    image.apply_orientation(orientation);
-    let original = (image.width(), image.height());
-    let size = fit(original, bounds);
-    let image = if size != original {
-        image.thumbnail_exact(size.0, size.1)
-    } else {
-        image
-    };
-    Ok(Raster {
-        width: image.width(),
-        height: image.height(),
-        rgba: image.into_rgba8().into_raw(),
+    decoder::decode(
+        bytes,
+        format,
+        bounds,
+        decoder::Limits::default(),
+        &AtomicBool::new(false),
+    )
+    .map(Into::into)
+    .map_err(|e| match e {
+        decoder::Error::Limit => Error::Limit,
+        _ => Error::Invalid,
     })
 }
 
@@ -309,7 +272,7 @@ mod tests {
     fn png(width: u32, height: u32, color: [u8; 4]) -> Vec<u8> {
         let mut bytes = Cursor::new(Vec::new());
         image::RgbaImage::from_pixel(width, height, image::Rgba(color))
-            .write_to(&mut bytes, ImageFormat::Png)
+            .write_to(&mut bytes, image::ImageFormat::Png)
             .unwrap();
         bytes.into_inner()
     }
@@ -353,7 +316,7 @@ mod tests {
         let dir = Temp::new();
         let mut jpeg = Cursor::new(Vec::new());
         image::RgbImage::from_pixel(6, 3, image::Rgb([200, 100, 50]))
-            .write_to(&mut jpeg, ImageFormat::Jpeg)
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
             .unwrap();
         let exif = b"Exif\0\0II\x2a\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0\x06\0\0\0\0\0\0\0";
         let mut oriented = vec![0xff, 0xd8, 0xff, 0xe1];
@@ -467,7 +430,5 @@ mod tests {
         assert!(loader.reserve_output(8_000_000));
         assert!(loader.reserve_output(8_000_000));
         assert!(!loader.reserve_output(8_000_000));
-        let fitted = fit((2000, 2000), (8000, 8000));
-        assert!(u64::from(fitted.0) * u64::from(fitted.1) <= OUTPUT_PIXELS);
     }
 }

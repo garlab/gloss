@@ -34,9 +34,11 @@ copying.
 ## Decoding and limits
 
 The loader is created only when an enabled image block is encountered. PNG/JPEG
-decoding uses `image` with only those codecs enabled. SVG uses the existing
-`resvg`/`usvg` stack and XML parsing dependencies already used by native math.
-There are no helper processes or persistent caches.
+decoding uses the optional `images` API in `document-graphics`, backed by
+`image` with only those codecs enabled. SVG uses its strict document renderer
+with bundled fonts. mdviewer does not enable native codecs or the broader image
+worker. Image decoding adds no helper process or persistent cache. File-access
+policy, invocation budgets, fitting bounds and cache eviction stay in mdviewer.
 
 | Limit | Behavior |
 | --- | --- |
@@ -50,7 +52,7 @@ There are no helper processes or persistent caches.
 | 64 MiB total cell-padded RGBA output | Count every placement, including cache hits; later images retain captions. |
 
 File reads use fixed-size buffers and reject growth beyond the observed size.
-Unix opens are nonblocking and reject nonregular files. Native codecs and SVG
+Unix opens are nonblocking and reject nonregular files. PNG/JPEG codecs and SVG
 rasterization run in-process: the cumulative time budget cannot interrupt a
 single decode and is not a hard deadline. Source input, layout, temporary decoder
 storage, cached pixels, padding, and compression have separate allocations.
@@ -197,3 +199,13 @@ Compare `--image-mode auto` with `--image-mode off`; use `--image-mode legacy`
 for older binaries that predate the `--images` flag. The runner checks asset and
 document hashes as well as expected image counts. Include `mdviewer/plain-pipe`
 to check export costs.
+
+## Shared decoder extraction
+
+The 0.1.5 integration moves PNG/JPEG decoding into the optional `images` API in
+`document-graphics`. Existing image bounds and strict SVG policy remain intact.
+Before/after release binaries produced identical output for image, inline-math
+and Mermaid fixtures at 24 and 100 columns. Alternating measurements showed no
+meaningful timing change; the binary grew by 48 bytes. See the
+[shared extraction report](https://github.com/garlab/document-graphics/blob/main/docs/image-extraction.md)
+for methodology, platform limits and the publication follow-up.

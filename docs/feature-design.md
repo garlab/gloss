@@ -90,7 +90,7 @@ its table representation with tests before changing current output.
 ## Shared images
 
 The initial implementation uses `src/raster.rs` for dimensions and straight RGBA
-pixels, `src/images.rs` for bounded local decoding, and the existing line painter
+pixels, `src/images.rs` for local-file policy and caches over shared bounded decoding, and the existing line painter
 and Kitty transport for placement. Math retains its baseline and equation
 metadata separately. [Local images](images.md) records the supported SVG subset,
 resource limits, cache behavior, and measurements.

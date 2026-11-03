@@ -50,7 +50,7 @@ The full source and parser working storage still scale with input.
 | `src/layout/lines.rs` | Wrap borrowed word fragments at grapheme boundaries and measure inline baselines, independently of escape sequences. |
 | `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache fitted rasters within a byte budget. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
-| `src/images.rs` | Resolve local references, bound file/decode work, and cache fitted rasters by content. |
+| `src/images.rs` | Resolve local references, enforce invocation budgets, and cache fitted shared-library rasters by content. |
 | `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
@@ -70,9 +70,13 @@ The full source and parser working storage still scale with input.
 | `src/pager/watch.rs` | Bounded regular-file reads and debounced metadata polling, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
-`document-graphics` is a separate library repository with `mermaid`, `svg` and
-`worker` modules. It owns shared Mermaid validation/layout, bounded SVG/font
-rasterization, worker protocol, cancellation and process supervision.
+`document-graphics` is a separate library repository. Its optional `images`
+module owns bounded PNG/JPEG thumbnail decoding; mdviewer does not enable its
+native image codecs or image worker. The strict `svg` entry point retains
+bundled fonts and rejects external resources. The library also owns Mermaid
+validation/layout, bounded SVG/font rasterization, worker protocol, cancellation
+and process supervision.
+File resolution, allowed URI schemes and invocation limits remain here.
 It returns owned RGBA buffers and logical sizes; consumers move those buffers into
 their image types. Terminal caches, total time/output budgets and fitting remain
 in mdviewer. The shared crate contains no global queue or application lifecycle.

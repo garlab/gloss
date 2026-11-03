@@ -18,6 +18,8 @@ the fixed comparison data and reproduction tools.
 3. Local PNG/JPEG/SVG images are implemented through shared raster placement and
    transport, with selectable captions, bounded decoding/cache/output, and text
    fallback. See [local images](images.md) for the SVG subset and measurements.
+   PNG/JPEG decoding now shares `document-graphics` through its optional `images`
+   feature; native codecs and the broader SVG worker are not enabled.
    Broader SVG/font support and images inside tables remain follow-up work.
 4. An initial native Mermaid subset is implemented with a lazy reusable worker,
    bounded requests/cache/output, and complete code fallback. See
@@ -64,7 +66,9 @@ JavaScript is not part of the runtime plan.
 
 ## Reproducible builds and distribution
 
-- `katex-native` and `document-graphics` come from crates.io. Shared native
+- `katex-native` comes from crates.io; the shared-image integration temporarily
+  uses local `document-graphics` 0.1.5 until publication. Remove its override and
+  update the registry lockfile after release. Shared native
   rendering is a single standalone library, `document-graphics`; keep its API and
   resource checks covered by both terminal and GUI integration tests.
 - Add clean-checkout CI for formatting, Clippy,
