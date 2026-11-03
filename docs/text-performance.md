@@ -101,7 +101,7 @@ python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
 - **Dense chained Mermaid flowcharts and tall sizing:** subsequent work adds
   contiguous image bands and optimizes routing comparisons without changing the
   search tiers or generated SVG. See [Mermaid support](mermaid.md) for current
-  behavior, measurements, and the backend release dependency.
+  behavior, measurements, and the published backend versions.
 - **Math padding:** images are rasterized before transparent cell padding is
   added. Omitting that padding could reduce allocation/copying, compression and
   transport work; it does not remove the original equation-layout/rasterization

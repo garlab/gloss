@@ -17,7 +17,7 @@ graphics; `--light` changes the diagram palette.
 ## Coverage
 
 The shared document-graphics library uses the published
-[`document-graphics-mermaid` 0.1.2](https://crates.io/crates/document-graphics-mermaid/0.1.2)
+[`document-graphics-mermaid` 0.1.3](https://crates.io/crates/document-graphics-mermaid/0.1.3)
 crate, a maintained fork of `mermaid-rs-renderer`, with CLI and PNG features
 disabled. Supported families are:
 
@@ -128,13 +128,16 @@ text, styles, cursor operations, and graphics across 26 control cases.
 
 ## Tall diagrams and routing measurements
 
-The viewer now pins published `document-graphics` 0.1.2. This also adopts that
-release's larger source/graph limits shown above. Width-based sizing and bands
-work with its published backend. The routing optimization measured below is a
-separate, unreleased patch in the backend fork; it requires a backend release
-and then a `document-graphics` dependency update before registry builds receive
-that speedup. Tracked manifests and lockfiles use published registry dependencies;
-local patches use ignored Cargo configuration.
+The viewer pins published `document-graphics` 0.1.3, which uses published
+`document-graphics-mermaid` 0.1.3. Registry builds include the routing optimization
+measured below and the quadrant-axis text color fix. The source/graph, raster,
+worker and output limits above remain unchanged. Normal builds resolve both
+graphics crates from crates.io; optional development overrides belong in ignored
+Cargo configuration.
+
+The measurements below were recorded before those releases, comparing the
+previous registry versions with a local development build. They retain those
+original build labels and results as the performance record.
 
 The patch rejects distant segment pairs before exact intersection/proximity
 calculations, preserving endpoint tolerances, and removes temporary node-ID
@@ -182,6 +185,12 @@ passes the Rust 1.90 minimum-version check. The backend patch passes
 and GUI-consumer worker checks cover 13 fixture families in both themes. Decoded
 raster inspection confirms readable labels across band boundaries; this does
 not replace testing scrollback in actual Ghostty and Kitty versions.
+
+Integration with the published 0.1.3 graphics crates passes those viewer checks
+without local Cargo overrides. Eighteen terminal/export comparisons match the
+validated development build byte for byte, including Mermaid at 24 and 100
+columns in both themes, ordinary Markdown, math, tables, local images, and exact
+source exports. The release binary uses registry dependencies throughout.
 
 Generate fresh corpora with `bench/generate.py`; it now records the expanded
 13-diagram fixture and uses 513 nodes for the oversized-graph fallback. Existing
