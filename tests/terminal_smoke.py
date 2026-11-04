@@ -19,6 +19,7 @@ import termios
 import tempfile
 import time
 import unittest
+import unicodedata
 import zlib
 
 
@@ -133,7 +134,7 @@ def attributes_at(output, needle=None):
 
 
 def screen(output, columns, return_cells=False, cell_width=10, cell_height=20):
-    """Interpret the emitted ASCII test text and cursor/graphics subset.
+    """Interpret single-cell test text and the emitted cursor/graphics subset.
 
     Rows are absolute scrollback rows. This checks that all image rectangles fit
     the viewport width and that no ordinary text cell is covered by an image.
@@ -203,9 +204,11 @@ def screen(output, columns, return_cells=False, cell_width=10, cell_height=20):
             column = 0
         else:
             if byte >= 128:
-                character = output[offset:offset + 3].decode()
-                assert character in "│─┼•", "screen fixtures use ASCII and single-cell borders"
-                offset += 2
+                size = 2 if byte < 0xe0 else 3 if byte < 0xf0 else 4
+                character = output[offset:offset + size].decode()
+                assert unicodedata.category(character) not in ('Cc', 'Mn', 'Me')
+                assert unicodedata.east_asian_width(character) not in ('W', 'F'), 'screen fixtures use single-cell text'
+                offset += size - 1
             else:
                 assert 32 <= byte < 127, "unexpected control character"
                 character = chr(byte)
@@ -509,6 +512,109 @@ class TerminalSmoke(unittest.TestCase):
             # Retina cells need twice the physical pixels, including label ink.
             self.assertLessEqual(abs(sizes[1][0] - 2 * sizes[0][0]), 20)
             self.assertLessEqual(abs(sizes[1][1] - 2 * sizes[0][1]), 40)
+
+    def test_standalone_mermaid_matches_fenced_diagrams_and_explicit_stdin(self):
+        source = 'flowchart LR\n A[Read] --> B[Show]\n'
+        expected, error = terminal(f'```mermaid\n{source}```\n', columns=100)
+        self.assertFalse(error)
+        expected = list(decoded_graphics(expected))
+        self.assertEqual(len(expected), 1)
+        with tempfile.TemporaryDirectory() as root:
+            for suffix in ('.mmd', '.MERMAID'):
+                file = Path(root) / ('diagram' + suffix)
+                file.write_text(source)
+                output, error = terminal(file=file, columns=100)
+                self.assertFalse(error)
+                self.assertEqual(list(decoded_graphics(output)), expected)
+                output, error = terminal(file=file, args=('--input-format', 'markdown'))
+                self.assertFalse(error)
+                self.assertFalse(list(decoded_graphics(output)))
+        output, error = terminal(source, columns=100, args=('--input-format', 'mermaid'))
+        self.assertFalse(error)
+        self.assertEqual(list(decoded_graphics(output)), expected)
+
+    def test_standalone_images_use_native_paths_and_the_existing_decoder(self):
+        assets = Path(__file__).parent / 'fixtures/assets'
+        with tempfile.TemporaryDirectory() as root:
+            for name in ('color-grid.png', 'gradient.jpg', 'diagram.svg'):
+                target = Path(root) / ('café [100%] #?:' + Path(name).suffix)
+                target.write_bytes((assets / name).read_bytes())
+                output, error = terminal(file=target)
+                self.assertFalse(error)
+                self.assertEqual(len(screen(output, 80)), 1)
+                self.assertEqual(len(list(decoded_graphics(output))), 1)
+                self.assertIn(target.name, plain(output))
+                disabled, error = terminal(file=target, args=('--images', 'off'))
+                self.assertFalse(error)
+                self.assertFalse(list(decoded_graphics(disabled)))
+                self.assertIn('[image:', plain(disabled))
+            target = Path(root) / 'image-without-extension'
+            target.write_bytes((assets / 'color-grid.png').read_bytes())
+            output, error = terminal(file=target, args=('--input-format', 'image'))
+            self.assertFalse(error)
+            self.assertEqual(len(list(decoded_graphics(output))), 1)
+
+    def test_sgf_selection_fallbacks_and_standalone_equivalence(self):
+        source = '(;FF[4]GM[1]SZ[9];B[cc](;W[];B[dd])(;W[ee]))(;GM[1]SZ[9];B[ff])'
+        for theme in ('dark', 'light'):
+            outputs = []
+            for attrs, expected in [('', 'game 1/2 · move 3'), (' move=1', 'game 1/2 · move 1'),
+                                    (' move=0', 'game 1/2 · move 0'), (' game=2', 'game 2/2 · move 1')]:
+                out, error = terminal(f'```sgf{attrs}\n{source}\n```\nAfter.\n', args=('--theme', theme))
+                self.assertFalse(error)
+                self.assertEqual(len(screen(out, 80)), 1)
+                self.assertIn(expected, plain(out))
+                self.assertIn('After.', plain(out))
+                outputs.append(list(decoded_graphics(out)))
+            self.assertNotEqual(outputs[0], outputs[1])
+            raw, error = terminal(source, args=('--input-format', 'sgf', '--theme', theme))
+            self.assertFalse(error)
+            self.assertEqual(list(decoded_graphics(raw)), outputs[0])
+            selected, error = terminal(source, args=('--input-format', 'sgf', '--theme', theme, '--sgf-move', '1'))
+            self.assertFalse(error)
+            self.assertEqual(list(decoded_graphics(selected)), outputs[1])
+        for attrs in (' move=99', ' game=3', ' move=-1', ' game=0', ' unknown=1', ' move=1 move=2'):
+            out, error = terminal(f'```sgf{attrs}\n{source}\n```\nAfter.\n')
+            self.assertFalse(error)
+            self.assertFalse(list(decoded_graphics(out)))
+            self.assertIn(source, plain(out).replace('\n', '').replace(' ', ''))
+            self.assertIn('After.', plain(out))
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / 'record.sgf'
+            file.write_text(source)
+            out, error = terminal(file=file, args=('--sgf-game', '2'))
+            self.assertFalse(error)
+            self.assertIn('game 2/2 · move 1', plain(out))
+            self.assertEqual(len(list(decoded_graphics(out))), 1)
+
+    def test_sgf_modes_containers_and_limits_keep_readable_source(self):
+        source = '(;FF[4]GM[1]SZ[9];B[cc];W[dd])'
+        markdown = f'- ```sgf\n  {source}\n  ```\n\nAfter.\n'
+        out, error = terminal(markdown, args=('--show-sgf-source', '--images', 'off', '--mermaid', 'off', '--math', 'tex'))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(out, 80)), 1)
+        self.assertIn('game 1/1 · move 2', plain(out))
+        self.assertIn(source, plain(out))
+        self.assertEqual(plain(out).count('•'), 1)
+        for args, variables in [(('--sgf', 'off'), None), ((), {'TERM_PROGRAM': '', 'TERM': 'xterm-256color'})]:
+            out, error = terminal(markdown, args=args, variables=variables)
+            self.assertFalse(error)
+            self.assertFalse(list(decoded_graphics(out)))
+            self.assertIn(source, plain(out))
+        for columns in (18, 80):
+            out, error = terminal(f'> ```sgf\n> {source}\n> ```\n\nAfter.\n', columns=columns)
+            self.assertFalse(error)
+            self.assertEqual(len(screen(out, columns)), 1)
+        repeated = (f'```sgf\n{source}\n```\n\n' * 100) + 'After.\n'
+        out, error = terminal(repeated)
+        self.assertFalse(error)
+        self.assertEqual(len(list(decoded_graphics(out))), 100)
+        self.assertIn('After.', plain(out))
+        too_large = '(;GM[1]SZ[9]C[' + ('x' * (256 * 1024)) + '])'
+        out, error = terminal(f'```sgf\n{too_large}\n```\n```sgf\n{source}\n```\nAfter.\n')
+        self.assertFalse(error)
+        self.assertEqual(len(list(decoded_graphics(out))), 1)
+        self.assertIn('After.', plain(out))
 
     def test_mermaid_modes_quotes_and_list_markers(self):
         source = "- ```mermaid\n  flowchart LR\n  A[Start]-->B[Done]\n  ```\n\nAfter $x$.\n"

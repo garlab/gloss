@@ -73,17 +73,42 @@ impl Loader {
         height: u32,
     ) -> Result<Arc<Raster>, Error> {
         let path = local_path(base, target)?;
-        let format = match path
+        let format = Self::format(&path).ok_or(Error::Unsupported)?;
+        self.load_file(&path, Some(format), width, height)
+    }
+
+    /// Explicit CLI paths are not URLs. Preserve spaces, percent signs and native
+    /// path characters; unknown extensions may be sniffed within the same limits.
+    pub(crate) fn load_path(
+        &mut self,
+        path: &Path,
+        width: u32,
+        height: u32,
+    ) -> Result<Arc<Raster>, Error> {
+        self.load_file(path, Self::format(path), width, height)
+    }
+
+    fn format(path: &Path) -> Option<Format> {
+        match path
             .extension()
             .and_then(|value| value.to_str())
             .map(str::to_ascii_lowercase)
             .as_deref()
         {
-            Some("png") => Format::Png,
-            Some("jpg" | "jpeg") => Format::Jpeg,
-            Some("svg") => Format::Svg,
-            _ => return Err(Error::Unsupported),
-        };
+            Some("png") => Some(Format::Png),
+            Some("jpg" | "jpeg") => Some(Format::Jpeg),
+            Some("svg") => Some(Format::Svg),
+            _ => None,
+        }
+    }
+
+    fn load_file(
+        &mut self,
+        path: &Path,
+        format: Option<Format>,
+        width: u32,
+        height: u32,
+    ) -> Result<Arc<Raster>, Error> {
         if self.loads >= 4096 || width == 0 || height == 0 {
             return Err(Error::Limit);
         }
@@ -97,7 +122,7 @@ impl Loader {
         }
         let mut file = open.open(path).map_err(|_| Error::Io)?;
         let metadata = file.metadata().map_err(|_| Error::Io)?;
-        let limit = if format == Format::Svg {
+        let limit = if format == Some(Format::Svg) {
             SVG_BYTES
         } else {
             FILE_BYTES
@@ -123,6 +148,18 @@ impl Loader {
             return Err(Error::Limit);
         }
         bytes.truncate(length);
+        let format = format.unwrap_or_else(|| {
+            if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                Format::Png
+            } else if bytes.starts_with(b"\xff\xd8\xff") {
+                Format::Jpeg
+            } else {
+                Format::Svg
+            } // The bounded SVG validator rejects other data.
+        });
+        if format == Format::Svg && bytes.len() > SVG_BYTES {
+            return Err(Error::Limit);
+        }
         let mut hasher = DefaultHasher::new();
         hasher.write(&bytes);
         let hash = hasher.finish();

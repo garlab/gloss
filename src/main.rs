@@ -1,12 +1,17 @@
 use std::{
     error::Error,
-    io::{self, IsTerminal, Read, Write},
+    io::{self, IsTerminal, Write},
     path::PathBuf,
     process::ExitCode,
 };
 
 use clap::{CommandFactory, Parser, ValueEnum};
-use mdviewer::{document::Document, export, render, terminal::Terminal};
+use mdviewer::{
+    export,
+    input::{Format, Input},
+    render,
+    terminal::Terminal,
+};
 
 #[derive(Parser)]
 #[command(
@@ -14,15 +19,18 @@ use mdviewer::{document::Document, export, render, terminal::Terminal};
     about = "A terminal Markdown viewer with native inline and display equations"
 )]
 struct Args {
-    /// Markdown file; omit or use '-' to read stdin.
+    /// Markdown, Mermaid, SGF or image file; omit or use '-' for text stdin.
     file: Option<PathBuf>,
+    /// Auto detects named-file extensions; stdin defaults to Markdown.
+    #[arg(long, value_enum, default_value_t = Format::Auto)]
+    input_format: Format,
     /// Open an interactive pager; ignored for pipes and text/source exports.
     #[arg(short = 'p', long)]
     pager: bool,
     /// Reload a named file when it changes; implies --pager and requires a terminal.
     #[arg(long)]
     watch: bool,
-    /// Auto styles terminal text; pipes always receive clean text. Source is exact Markdown.
+    /// Auto styles terminal text; pipes receive clean text. Source preserves original text.
     #[arg(long, value_enum, default_value_t = Output::Auto)]
     output: Output,
     /// Auto enables graphics for known Ghostty/Kitty sessions. Pipes always use TeX.
@@ -37,6 +45,18 @@ struct Args {
     /// Print selectable Mermaid source beneath rendered diagrams.
     #[arg(long)]
     show_mermaid_source: bool,
+    /// SGF Go diagrams: auto uses known Kitty graphics sessions; off keeps code.
+    #[arg(long, value_enum, default_value_t = Images::Auto)]
+    sgf: Images,
+    /// One-based game to preview in an SGF collection; fences can override it.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    sgf_game: u32,
+    /// Main-line move to preview (passes count); 0 selects the root, default is last.
+    #[arg(long)]
+    sgf_move: Option<u32>,
+    /// Print selectable SGF source below rendered boards.
+    #[arg(long)]
+    show_sgf_source: bool,
     #[arg(long, hide = true)]
     mermaid_worker: bool,
     /// Base directory for image paths; defaults to the document directory or cwd for stdin.
@@ -129,10 +149,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         mdviewer::mermaid::worker_main()?;
         return Ok(());
     }
-    let named_file = args
-        .file
-        .as_deref()
-        .filter(|path| *path != std::path::Path::new("-"));
+    let input = Input::new(args.file.clone(), args.input_format)?;
+    let named_file = input.path.as_deref();
+    if input.format == Format::Image && args.output == Output::Source {
+        return Err(
+            "--output source is for text inputs; use the original image file for binary copying"
+                .into(),
+        );
+    }
     let terminal = Terminal::detect();
     let interactive = terminal.interactive
         && args.output == Output::Auto
@@ -148,15 +172,12 @@ fn run() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let paging = (args.pager || args.watch) && interactive;
-    let source = read_source(&args, paging)?;
+    let source = input.read(paging)?;
     if paging {
         #[cfg(unix)]
-        return mdviewer::pager::run(
-            source,
-            named_file.map(std::path::Path::to_path_buf),
-            args.watch,
-            || args.render_options(Terminal::detect()),
-        )
+        return mdviewer::pager::run(source, input, args.watch, || {
+            args.render_options(Terminal::detect())
+        })
         .map_err(Into::into);
         #[cfg(not(unix))]
         return Err("the interactive pager currently requires a Unix terminal".into());
@@ -166,7 +187,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         // Bypass parsing altogether: preserve CRLF, spacing, and final-newline state.
         out.write_all(source.as_bytes())?;
     } else {
-        let document = Document::parse(source);
+        let document = input.document(source);
         if args.output == Output::Text || !terminal.interactive {
             export::write(&mut out, &document)?;
         } else {
@@ -185,30 +206,6 @@ fn run() -> Result<(), Box<dyn Error>> {
     }
     out.flush()?;
     Ok(())
-}
-
-fn read_source(args: &Args, paging: bool) -> io::Result<String> {
-    let path = args
-        .file
-        .as_deref()
-        .filter(|path| *path != std::path::Path::new("-"));
-    #[cfg(unix)]
-    if paging {
-        return match path {
-            Some(path) => mdviewer::pager::read_file(path),
-            None => mdviewer::pager::read(io::stdin().lock()),
-        };
-    }
-    #[cfg(not(unix))]
-    let _ = paging;
-    match path {
-        Some(path) => std::fs::read_to_string(path),
-        None => {
-            let mut source = String::new();
-            io::stdin().read_to_string(&mut source)?;
-            Ok(source)
-        }
-    }
 }
 
 impl Args {
@@ -254,6 +251,17 @@ impl Args {
                     Images::Kitty => true,
                 },
             show_mermaid_source: self.show_mermaid_source,
+            sgf: terminal.graphics_allowed
+                && match self.sgf {
+                    Images::Auto => terminal.kitty_hint,
+                    Images::Off => false,
+                    Images::Kitty => true,
+                },
+            sgf_selection: mdviewer::sgf::Selection {
+                game: self.sgf_game as usize,
+                at_move: self.sgf_move.map(|n| n as usize),
+            },
+            show_sgf_source: self.show_sgf_source,
             image_base: (terminal.graphics_allowed
                 && match self.images {
                     Images::Auto => terminal.kitty_hint,

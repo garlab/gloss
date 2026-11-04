@@ -11,6 +11,13 @@ subject to the existing pipe, multiplexer, dumb-terminal, and geometry rules.
 These options are independent of `--math`. A nonempty `NO_COLOR` affects text
 styling, not image pixels.
 
+Named PNG/JPEG/SVG files also work directly, including with `--pager` and
+`--watch`. They use native paths without URL decoding, so literal spaces,
+percent signs and punctuation stay intact. `--input-format image` handles files
+without a recognized extension using bounded content detection. Binary stdin
+and image `--output source` are not supported. Standalone text output checks
+file metadata and prints a reference without reading or decoding its contents.
+
 Paths resolve relative to the Markdown file, or the working directory for stdin.
 `--base-dir` overrides that base. Percent-encoded UTF-8 paths are accepted.
 Only regular local files with `.png`, `.jpg`, `.jpeg`, or `.svg` extensions are
@@ -52,6 +59,9 @@ policy, invocation budgets, fitting bounds and cache eviction stay in mdviewer.
 | 64 MiB total cell-padded RGBA output | Count every placement, including cache hits; later images retain captions. |
 
 File reads use fixed-size buffers and reject growth beyond the observed size.
+For explicit standalone image input with an unrecognized extension, format
+detection follows the bounded read (at most 8 MiB); the narrower SVG limit is
+then enforced before parsing. Extension-identified SVG keeps its 256 KiB read cap.
 Unix opens are nonblocking and reject nonregular files. PNG/JPEG codecs and SVG
 rasterization run in-process: the cumulative time budget cannot interrupt a
 single decode and is not a hard deadline. Source input, layout, temporary decoder
@@ -69,8 +79,8 @@ placement. Transport now compresses beneficial payloads before base64 encoding;
 terminal-side image reuse remains follow-up work. See the
 [streaming and graphics measurements](streaming-and-graphics.md).
 
-The output budget is now shared by local Markdown images and
-[native Mermaid diagrams](mermaid.md); existing math output has its own
+The output budget is shared by local images, [native Mermaid diagrams](mermaid.md)
+and [SGF boards](sgf.md); existing math output has its own
 fitting/row limits. Base64 expands the pixel payload by roughly one third,
 and captions/protocol commands add bytes. The budget does not bound emulator
 scrollback or GPU memory.

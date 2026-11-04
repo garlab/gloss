@@ -20,6 +20,12 @@ UTF-8 Markdown
 The CLI chooses an output mode before rendering. Non-terminal stdout always uses
 text export unless exact source output was requested. Math is laid out only when
 graphics are selected.
+Input format is resolved once from an explicit option or the named-file extension;
+stdin defaults to Markdown. Standalone Mermaid/SGF retain their exact UTF-8 source
+and yield literal code events without synthetic Markdown fences. Standalone
+images yield image events from a native path, without loading image bytes into
+the text source model. They export a reference; binary source output is rejected.
+Markdown still uses its original parser and syntax projections.
 Local image blocks are built only when image graphics are enabled. Disabled or
 unsupported graphics retain the existing flat image references and never open
 image files. Text and exact source exports bypass all image decoding.
@@ -41,6 +47,7 @@ The full source and parser working storage still scale with input.
 | Module | Responsibility |
 | --- | --- |
 | `src/main.rs` | Arguments, input, output policy, errors, and diagnostics. |
+| `src/input.rs` | Resolve input formats, build standalone documents, and read bounded regular text files for diagrams and reloads. |
 | `src/document.rs` | CommonMark events, original Markdown, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
@@ -52,12 +59,13 @@ The full source and parser working storage still scale with input.
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, enforce invocation budgets, and cache fitted shared-library rasters by content. |
 | `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
+| `src/sgf.rs` | Select a collection game/main-line position and cache bounded native Go previews. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |
 | `src/render/mod.rs` | Coordinate rendering, bounded reusable graphics caches, cancellation, and per-formula fallbacks. |
 | `src/render/text.rs` | Emit ANSI attribute changes, reset line styles, and filter input control characters. |
 | `src/render/code.rs` | Highlight one code block before line wrapping, preserving source spans and uncolored fallbacks. |
-| `src/render/diagram.rs` | Offer Mermaid fences to the worker before code rendering; retain source fallback and optional selectable code. |
+| `src/render/diagram.rs` | Place Mermaid/SGF previews before code rendering, with source fallback, optional code and SGF captions. |
 | `src/render/table.rs` | Estimate bounded column widths and render one row at a time, with numbered-cell fallback. |
 | `src/render/inline.rs` | Format logical lines, preserve list/quote prefixes, and arrange text and images within reserved rows. |
 | `src/render/theme.rs` | Map semantic styles to dark/light terminal palettes and equation ink. |
@@ -67,7 +75,7 @@ The full source and parser working storage still scale with input.
 | `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
 | `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
 | `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation. |
-| `src/pager/watch.rs` | Bounded regular-file reads and debounced metadata polling, including atomic replacement. |
+| `src/pager/watch.rs` | Debounced metadata polling, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
 `document-graphics` is a separate library repository. Its optional `images`
@@ -75,7 +83,9 @@ module owns bounded PNG/JPEG thumbnail decoding; mdviewer does not enable its
 native image codecs or image worker. The strict `svg` entry point retains
 bundled fonts and rejects external resources. The library also owns Mermaid
 validation/layout, bounded SVG/font rasterization, worker protocol, cancellation
-and process supervision.
+and process supervision. Its optional `sgf` module owns parsing, Go position
+reconstruction and board rasterization. mdviewer selects the displayed position
+and retains its own cache and invocation budgets.
 File resolution, allowed URI schemes and invocation limits remain here.
 It returns owned RGBA buffers and logical sizes; consumers move those buffers into
 their image types. Terminal caches, total time/output budgets and fitting remain
@@ -83,8 +93,8 @@ in mdviewer. The shared crate contains no global queue or application lifecycle.
 Terminal-specific behavior belongs here. Additional graphics protocols should
 reuse the document model and layout rather than introduce separate parsers.
 
-Code blocks retain their language label, original source span, and decoded text
-runs. Terminal rendering highlights one block at a time, retaining multiline
+Code blocks retain their language label, optional fence attributes, original source
+span, and decoded text runs. Terminal rendering highlights one block at a time, retaining multiline
 syntax state without storing token runs for the whole document. Plain/source
 export, disabled highlighting, and disabled color bypass the highlighter.
 
@@ -124,6 +134,13 @@ Timeouts/crashes disable further worker requests, while cached images and all
 remaining document text remain available. [Mermaid support](mermaid.md) defines
 coverage, cache identity, limits, worker cleanup, and measurements.
 
+SGF uses the same code-block and picture-placement path. CLI defaults and optional
+`game`/`move` fence attributes select one main-line position. Parsing, replay and
+rasterization call the shared library in-process, off the input thread in pager
+mode. A separate bounded source/pixel cache survives reloads, with per-document
+work budgets and cooperative cancellation. [SGF support](sgf.md) defines position
+semantics and limits. No board or raster is retained for every game node.
+
 Text rendering consumes logical lines with one-line lookahead for quote context.
 Wrapping borrows word fragments and allocates text for the resulting physical
 lines, rather than allocating every grapheme. The writer shares ANSI state
@@ -136,7 +153,7 @@ is not a constant-memory document reader.
 Math rasters use an 8 MiB/64-entry LRU cache. Keys include TeX, inline/display
 mode, font size, color, bounds, and equation-numbering state. Shared pixels avoid
 cache-hit copies; numbering is advanced exactly as on a miss. The pager retains
-this cache and the bounded Mermaid cache between renders, but resets equation
+this cache and the bounded Mermaid/SGF caches between renders, but resets equation
 numbering and all per-document work/output budgets. File-image loaders remain
 fresh so manual reloads still reread changed assets.
 
@@ -167,6 +184,10 @@ render also releases its helper while retaining bounded cache entries. The last 
 remains usable while a watched replacement renders. The terminal guard unwinds
 before joining the render worker, including on errors. Idle watch mode polls file
 metadata rather than rereading content or retaining renderer processes.
+Reload requests retain the resolved input format across atomic saves. Text
+reloads compare content; standalone image reloads rebuild after a metadata change
+even though the source-model path is unchanged. Native image paths bypass URL
+decoding while reusing the existing bounded file loader and codecs.
 [Pager implementation](pager.md) defines the limits and interaction contract.
 
 The [feature design](feature-design.md) describes additional rendering features

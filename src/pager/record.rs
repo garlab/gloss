@@ -572,7 +572,7 @@ impl Write for Recorder {
 }
 
 pub(super) fn build(
-    source: &str,
+    document: &Document,
     options: &render::Options,
     cancel: Arc<AtomicBool>,
     cache: &mut render::RenderCache,
@@ -580,11 +580,10 @@ pub(super) fn build(
     if cancel.load(Ordering::Relaxed) {
         return Err(io::ErrorKind::ConnectionAborted.into());
     }
-    let document = Document::parse(source.to_owned());
     let mut recorder = Recorder::new(options.terminal.unwrap_or_default(), Arc::clone(&cancel))?;
     let warnings = render::write_document_with(
         &mut recorder,
-        &document,
+        document,
         options,
         cache,
         &cancel,
@@ -661,7 +660,7 @@ mod tests {
             ..Default::default()
         };
         let mut page = build(
-            &source,
+            &Document::parse(source),
             &options,
             Arc::default(),
             &mut render::RenderCache::default(),

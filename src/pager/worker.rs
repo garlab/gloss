@@ -1,16 +1,15 @@
 //! One active render and one replaceable pending request, independent of input.
-use super::{
-    record::{self, Page},
-    watch,
+use super::record::{self, Page};
+use crate::{
+    input::{Format, Input},
+    render,
 };
-use crate::render;
 use std::{
     io::{self, Read, Write},
     os::{
         fd::{AsRawFd, RawFd},
         unix::net::UnixStream,
     },
-    path::PathBuf,
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -20,7 +19,7 @@ use std::{
 
 pub(super) struct Request {
     pub source: Arc<String>,
-    pub path: Option<PathBuf>,
+    pub input: Input,
     pub options: render::Options,
     pub force: bool,
 }
@@ -70,14 +69,18 @@ impl Worker {
                         if cancel.load(Ordering::Relaxed) {
                             return Err(io::ErrorKind::Interrupted.into());
                         }
-                        if let Some(path) = request.path {
-                            let updated = watch::read_file(&path)?;
-                            if !request.force && updated == *source {
+                        if request.input.path.is_some() {
+                            let updated = request.input.read(true)?;
+                            if !request.force
+                                && request.input.format != Format::Image
+                                && updated == *source
+                            {
                                 return Ok(None);
                             }
                             source = Arc::new(updated);
                         }
-                        record::build(&source, &request.options, Arc::clone(&cancel), &mut cache)
+                        let document = request.input.document(source.as_ref().clone());
+                        record::build(&document, &request.options, Arc::clone(&cancel), &mut cache)
                             .map(Some)
                     }))
                     .unwrap_or_else(|_| {
@@ -154,7 +157,7 @@ mod tests {
             .unwrap();
         worker.submit(Request {
             source: Arc::new("Ready.\n".into()),
-            path: None,
+            input: Input::new(None, Format::Auto).unwrap(),
             force: true,
             options: render::Options {
                 terminal: Some(crate::terminal::Geometry::default()),

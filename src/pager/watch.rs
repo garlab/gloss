@@ -1,46 +1,10 @@
 use std::{
-    fs::{self, File},
-    io::{self, Read},
-    os::unix::fs::{MetadataExt, OpenOptionsExt},
+    fs,
+    os::unix::fs::MetadataExt,
     path::Path,
     time::{Duration, Instant},
 };
 
-pub const MAX_SOURCE: u64 = 64 * 1024 * 1024;
-pub fn read(mut input: impl Read) -> io::Result<String> {
-    let mut source = String::new();
-    (&mut input)
-        .take(MAX_SOURCE + 1)
-        .read_to_string(&mut source)?;
-    if source.len() as u64 > MAX_SOURCE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "pager input exceeds 64 MiB; use direct output or a smaller document",
-        ));
-    }
-    Ok(source)
-}
-pub fn read_file(path: &Path) -> io::Result<String> {
-    // Nonblocking open prevents a replaced path becoming a FIFO from hanging the UI.
-    let file = File::options()
-        .read(true)
-        .custom_flags(libc::O_NONBLOCK)
-        .open(path)?;
-    let metadata = file.metadata()?;
-    if !metadata.is_file() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "pager requires a regular file",
-        ));
-    }
-    if metadata.len() > MAX_SOURCE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "pager input exceeds 64 MiB; use direct output or a smaller document",
-        ));
-    }
-    read(file)
-}
 #[derive(Clone, PartialEq, Eq)]
 struct Stamp {
     device: u64,

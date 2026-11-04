@@ -40,6 +40,7 @@ class Screen:
         self.row = self.column = 0
         self.pending = bytearray()
         self.images, self.placements = {}, {}
+        self.image_checksums = {}
         self.header, self.payload = None, bytearray()
         self.uploads = self.frames = 0
         self.alt = False
@@ -61,6 +62,7 @@ class Screen:
             self.placements.pop(number, None)
             if fields[b"d"] == b"N":
                 self.images.pop(number, None)
+                self.image_checksums.pop(number, None)
         elif action == b"p":
             number = int(fields[b"I"])
             width, height = self.images[number]
@@ -91,6 +93,7 @@ class Screen:
                 width, height = int(header[b"s"]), int(header[b"v"])
                 assert len(rgba) == width * height * 4
                 self.images[int(header[b"I"])] = (width, height)
+                self.image_checksums[int(header[b"I"])] = zlib.crc32(rgba)
                 self.uploads += 1
                 self.header, self.payload = None, bytearray()
 
@@ -340,6 +343,65 @@ class PagerSmoke(unittest.TestCase):
             p.keys("r", "New text")
             self.assertEqual(p.screen.uploads, 0)
             self.assertNotIn(b"38;5;", p.output)
+            p.close()
+
+    def test_standalone_mermaid_watch_preserves_format_after_atomic_save(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / 'diagram.mmd'
+            file.write_text('flowchart LR; A[Original]-->B[Done]\n')
+            p = self.pager(file=file, args=['--watch', '--show-mermaid-source'], rows=20)
+            p.ready('Original')
+            self.assertGreater(p.screen.uploads, 0)
+            uploaded = p.screen.uploads
+            replacement = file.with_suffix('.new')
+            replacement.write_text('flowchart LR; A[Updated]-->B[Done]\n')
+            replacement.replace(file)
+            p.ready('Updated')
+            self.assertGreater(p.screen.uploads, uploaded)
+            p.resize(40, 16)
+            p.until(lambda: p.screen.row == 15 and 'rendering' not in p.screen.text())
+            self.assertTrue(p.screen.placements)
+            p.close()
+
+    def test_standalone_image_watch_rereads_pixels_and_recovers_from_missing_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / 'drawing [100%].svg'
+            def content(color):
+                return f'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="{color}"/></svg>'
+            file.write_text(content('red'))
+            p = self.pager(file=file, args=['--watch'])
+            p.ready('[image:')
+            self.assertTrue(p.screen.placements)
+            original = set(p.screen.image_checksums.values())
+            replacement = file.with_suffix('.new')
+            replacement.write_text(content('blue'))
+            replacement.replace(file)
+            p.until(lambda: bool(p.screen.image_checksums) and set(p.screen.image_checksums.values()) != original
+                    and 'rendering' not in p.screen.text())
+            file.unlink()
+            p.until(lambda: 'Reload failed' in p.screen.text())
+            self.assertTrue(p.screen.placements)
+            file.write_text(content('green'))
+            p.until(lambda: 'Reload failed' not in p.screen.text() and 'rendering' not in p.screen.text())
+            self.assertTrue(p.screen.placements)
+            p.close()
+
+    def test_sgf_boards_use_pager_graphics_and_reload_selected_moves(self):
+        source = '(;FF[4]GM[1]SZ[9];B[cc];W[dd])'
+        p = self.pager(f'Before\n\n```sgf move=1\n{source}\n```\n\nAfter.\n', rows=20)
+        p.ready('Before')
+        self.assertTrue(p.screen.placements)
+        self.assertIn('move 1', p.screen.text())
+        p.close()
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / 'record.sgf'
+            file.write_text(source)
+            p = self.pager(file=file, args=['--watch'], rows=20)
+            p.ready('move 2')
+            self.assertTrue(p.screen.placements)
+            file.write_text('(;FF[4]GM[1]SZ[9];B[cc];W[dd];B[ee])')
+            p.ready('move 3')
+            self.assertTrue(p.screen.placements)
             p.close()
 
     def test_signal_and_ctrl_c_restore_the_terminal(self):

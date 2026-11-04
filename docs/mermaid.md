@@ -7,10 +7,15 @@ Ghostty/Kitty hints, `--mermaid off` keeps code, and `--mermaid kitty` enables a
 compatible terminal subject to the usual graphics restrictions. Math and local
 image settings remain independent.
 
+Standalone `.mmd` / `.mermaid` files use the same renderer, fitting and source
+fallback, including in pager/watch mode. For stdin or another extension, select
+`--input-format mermaid`. Their text stays literal code and exact source export
+preserves the original file, without adding Markdown fences.
+
 `--show-mermaid-source` prints selectable code below successful diagrams.
 Unsupported cases, errors, and resource limits keep the complete code panel.
 Pipes and `--output text` keep their existing source-based representation;
-`--output source` remains exact Markdown. None of these export paths starts a
+`--output source` remains exact input text. None of these export paths starts a
 diagram worker. A nonempty `NO_COLOR` disables text styling but retains selected
 graphics; `--light` changes the diagram palette.
 

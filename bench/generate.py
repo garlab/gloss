@@ -242,6 +242,20 @@ for name, (content, diagrams) in mermaid_cases.items():
     (CORPORA / name).write_text(content, encoding="utf-8")
     metadata[name] = {"diagrams": diagrams, "description": "Mermaid native subset, cache, worker, or fallback control."}
 
+def sgf_fence(source):
+    return "```sgf\n" + source + "\n```\n\n"
+sgf_record = "(;FF[4]GM[1]SZ[9];B[cc];W[dd];B[ee])"
+sgf_cases = {
+    "sgf-basic.md": ((PROJECT / "tests/fixtures/sgf.md").read_text(), 4),
+    "sgf-repeated-100.md": (sgf_fence(sgf_record) * 100, 100),
+    "sgf-unique-40.md": ("".join(sgf_fence(f"(;GM[1]SZ[9]GN[Board {i}];B[cc])") for i in range(40)), 32),
+    "sgf-game-300.md": (sgf_fence("(;FF[4]GM[1]SZ[19]AB[dd][pd][dp]AW[pp][jj]"
+        + "".join(f";{'B' if i % 2 == 0 else 'W'}[]" for i in range(300)) + ")"), 1),
+}
+for name, (content, boards) in sgf_cases.items():
+    (CORPORA / name).write_text(content, encoding="utf-8")
+    metadata[name] = {"boards": boards, "description": "SGF selection, replay, cache and request-budget control at 10x20 cells."}
+
 extensions = (PROJECT / "tests/fixtures/extensions.md").read_text()
 extension_cases = {
     "extensions-basic.md": (extensions, 2),

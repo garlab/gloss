@@ -30,7 +30,7 @@ import time
 
 RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
              "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow",
-             "mdviewer/terminal-images", "mdviewer/terminal-mermaid"]
+             "mdviewer/terminal-images", "mdviewer/terminal-mermaid", "mdviewer/terminal-sgf"]
 
 
 def cell_size(value):
@@ -61,11 +61,13 @@ parser.add_argument("--image-mode", choices=["auto", "off", "legacy"], default="
                     help="Use legacy for binaries predating --images; off measures the disabled path")
 parser.add_argument("--mermaid-mode", choices=["auto", "off", "legacy"], default="auto",
                     help="Use legacy for binaries predating --mermaid")
+parser.add_argument("--sgf-mode", choices=["auto", "off", "legacy"], default="auto",
+                    help="Use legacy for binaries predating --sgf")
 parser.add_argument("--no-links", action="store_true", help="Disable OSC 8 links in a binary that supports --links")
 parser.add_argument("--process-tree", action="store_true",
                     help="Sample descendant RSS with ps; measure timing separately without this overhead")
 parser.add_argument("--diagram-tiles", action="append", default=[], metavar="CORPUS=COUNT",
-                    help="Override the total expected Mermaid image bands for a corpus; repeat per corpus")
+                    help="Override expected diagram image bands (Mermaid/SGF); repeat per corpus")
 args = parser.parse_args()
 PROJECT = Path(__file__).resolve().parent.parent
 ROOT = args.work_dir.expanduser().resolve()
@@ -99,13 +101,16 @@ def command(renderer, name):
         "mdviewer/terminal-math": ["--math", "kitty"],
         "mdviewer/terminal-images": ["--math", "tex"],
         "mdviewer/terminal-mermaid": ["--math", "tex"],
+        "mdviewer/terminal-sgf": ["--math", "tex"],
         "mdviewer/plain-pipe": ["--output", "text"],
     }[renderer]
     image_flags = [] if args.image_mode == "legacy" else ["--images",
         "kitty" if args.image_mode == "auto" and renderer == "mdviewer/terminal-images" else args.image_mode]
     mermaid_flags = [] if args.mermaid_mode == "legacy" else ["--mermaid",
         "kitty" if args.mermaid_mode == "auto" and renderer == "mdviewer/terminal-mermaid" else args.mermaid_mode]
-    return [str(BINARY), *flags, *image_flags, *mermaid_flags, *(["--no-highlight"] if args.no_highlight else []), *(["--links", "off"] if args.no_links else []), file]
+    sgf_flags = [] if args.sgf_mode == "legacy" else ["--sgf",
+        "kitty" if args.sgf_mode == "auto" and renderer == "mdviewer/terminal-sgf" else args.sgf_mode]
+    return [str(BINARY), *flags, *image_flags, *mermaid_flags, *sgf_flags, *(["--no-highlight"] if args.no_highlight else []), *(["--links", "off"] if args.no_links else []), file]
 
 
 def process_tree(pid):
@@ -290,6 +295,9 @@ for name in CORPORA:
     if name.startswith("mermaid-"):
         cases.append(("mdviewer/terminal-mermaid", name))
         cases.append(("mdviewer/plain-pipe", name))
+    if name.startswith("sgf-"):
+        cases.append(("mdviewer/terminal-sgf", name))
+        cases.append(("mdviewer/plain-pipe", name))
 cases = [(renderer, name) for renderer, name in cases
          if (not args.renderer or renderer in args.renderer)
          and (not args.corpus or any(fnmatch.fnmatchcase(name, pattern) for pattern in args.corpus))]
@@ -315,6 +323,7 @@ results = {
         "syntax_highlighting": "disabled" if args.no_highlight else "default",
         "image_rendering": args.image_mode,
         "mermaid_rendering": args.mermaid_mode,
+        "sgf_rendering": args.sgf_mode,
         "process_tree_sampling": args.process_tree,
         "diagram_tiles": DIAGRAM_TILES,
         "hyperlinks": "disabled" if args.no_links else "default",
@@ -339,8 +348,10 @@ for renderer, name in cases:
     expected_images = CORPORA[name].get("equations", 0) if renderer == "mdviewer/terminal-math" else 0
     if args.image_mode == "auto" and renderer.startswith("mdviewer/terminal"):
         expected_images += CORPORA[name].get("images", 0)
-    if args.mermaid_mode == "auto" and renderer.startswith("mdviewer/terminal"):
-        expected_images += DIAGRAM_TILES.get(name, CORPORA[name].get("diagrams", 0))
+    if renderer.startswith("mdviewer/terminal"):
+        diagrams = CORPORA[name].get("diagrams", 0) if args.mermaid_mode == "auto" else 0
+        diagrams += CORPORA[name].get("boards", 0) if args.sgf_mode == "auto" else 0
+        expected_images += DIAGRAM_TILES.get(name, diagrams)
 
     def valid_sample(sample):
         return (not sample["timed_out"] and sample["exit_code"] == 0

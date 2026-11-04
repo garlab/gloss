@@ -10,6 +10,101 @@ use pulldown_cmark::Event;
 
 const FIXTURE: &str = include_str!("fixtures/math.md");
 
+#[test]
+fn standalone_inputs_detect_extensions_and_keep_literal_source() {
+    use mdviewer::input::{Format, Input};
+    for (name, expected) in [
+        ("chart.MMD", Format::Mermaid),
+        ("chart.mermaid", Format::Mermaid),
+        ("game.sgf", Format::Sgf),
+        ("a.PNG", Format::Image),
+        ("a.jpeg", Format::Image),
+        ("a.svg", Format::Image),
+        ("notes.unknown", Format::Markdown),
+    ] {
+        assert_eq!(
+            Input::new(Some(name.into()), Format::Auto).unwrap().format,
+            expected
+        );
+    }
+    assert_eq!(
+        Input::new(Some("a.mmd".into()), Format::Markdown)
+            .unwrap()
+            .format,
+        Format::Markdown
+    );
+    assert_eq!(
+        Input::new(None, Format::Auto).unwrap().format,
+        Format::Markdown
+    );
+    assert!(Input::new(None, Format::Image).is_err());
+    for format in [Format::Mermaid, Format::Sgf] {
+        let source = "literal **bold** $x$ &amp;\r\n```\r\n# heading\r\nlast";
+        let input = Input::new(None, format).unwrap();
+        let document = input.document(source.into());
+        assert_eq!(document.source(), source);
+        let events: Vec<_> = document.events().collect();
+        assert_eq!(events.len(), 3);
+        assert!(matches!(&events[1].event, Event::Text(text) if text.as_ref() == source));
+        assert_eq!(events[1].source, 0..source.len());
+        assert!(export::text(&document).contains("**bold** $x$ &amp;"));
+    }
+}
+
+#[test]
+fn standalone_code_exports_preserve_bytes_and_bypass_graphics_selection() {
+    for format in ["mermaid", "sgf"] {
+        let source = "literal **source**\r\n$unparsed$\n```\nno final newline";
+        let exact = cli(
+            &[
+                "--input-format",
+                format,
+                "--output",
+                "source",
+                "--sgf-game",
+                "99",
+                "-",
+            ],
+            source,
+        );
+        assert!(exact.status.success());
+        assert_eq!(exact.stdout, source.as_bytes());
+        assert!(exact.stderr.is_empty());
+        let text = cli(
+            &["--input-format", format, "--pager", "--sgf", "kitty", "-"],
+            source,
+        );
+        assert!(text.status.success());
+        assert!(text.stderr.is_empty());
+        assert!(
+            String::from_utf8(text.stdout)
+                .unwrap()
+                .contains("literal **source**\n$unparsed$\n```")
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn standalone_images_export_references_and_reject_binary_source_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("a [100%] café.png");
+    std::fs::write(&path, b"not an image; export must not decode").unwrap();
+    let path = path.to_str().unwrap();
+    let text = cli(&[path], "");
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("[image: a [100%] café.png]"));
+    assert!(text.contains(path));
+    let source = cli(&["--output", "source", path], "");
+    assert!(!source.status.success());
+    assert!(source.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&source.stderr).contains("original image file"));
+    let stdin = cli(&["--input-format", "image", "-"], "");
+    assert!(!stdin.status.success());
+    assert!(String::from_utf8_lossy(&stdin.stderr).contains("named file"));
+}
+
 fn cli(args: &[&str], input: &str) -> std::process::Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_mdviewer"))
         .args(args)
@@ -169,6 +264,7 @@ fn code_blocks_retain_languages_content_and_source_spans() {
                 language,
                 runs,
                 source,
+                ..
             } => Some((language, runs, source)),
             _ => None,
         })

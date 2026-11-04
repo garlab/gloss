@@ -3,7 +3,10 @@
 
 mod extensions;
 
-use std::ops::Range;
+use std::{
+    ops::Range,
+    path::{Path, PathBuf},
+};
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
@@ -17,12 +20,50 @@ pub struct SpannedEvent<'a> {
 pub struct Document {
     source: String,
     prepared: extensions::Prepared,
+    kind: Kind,
+}
+
+#[derive(Debug)]
+enum Kind {
+    Markdown,
+    Code(&'static str),
+    Image(PathBuf),
 }
 
 impl Document {
     pub fn parse(source: String) -> Self {
         let prepared = extensions::prepare(&source);
-        Self { source, prepared }
+        Self {
+            source,
+            prepared,
+            kind: Kind::Markdown,
+        }
+    }
+
+    /// Standalone source remains literal code, without synthesizing Markdown fences.
+    pub fn code(source: String, language: &'static str) -> Self {
+        Self {
+            source,
+            prepared: Default::default(),
+            kind: Kind::Code(language),
+        }
+    }
+
+    /// A standalone image retains a native path, independently of Markdown URLs.
+    pub fn image(path: PathBuf) -> Self {
+        Self {
+            source: path.to_string_lossy().into_owned(),
+            prepared: Default::default(),
+            kind: Kind::Image(path),
+        }
+    }
+
+    pub(crate) fn image_path(&self) -> Option<&Path> {
+        if let Kind::Image(path) = &self.kind {
+            Some(path)
+        } else {
+            None
+        }
     }
 
     pub fn source(&self) -> &str {
@@ -39,8 +80,39 @@ impl Document {
             | Options::ENABLE_MATH
             | Options::ENABLE_GFM;
         let input = self.prepared.text.as_deref().unwrap_or(&self.source);
-        let mut parsed = Parser::new_ext(input, options).into_offset_iter();
+        let mut parsed = matches!(self.kind, Kind::Markdown)
+            .then(|| Parser::new_ext(input, options).into_offset_iter());
+        let mut stage = 0;
         std::iter::from_fn(move || {
+            if !matches!(self.kind, Kind::Markdown) {
+                let event = match (&self.kind, stage) {
+                    (Kind::Code(language), 0) => {
+                        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced((*language).into())))
+                    }
+                    (Kind::Code(_), 1) => Event::Text(self.source.as_str().into()),
+                    (Kind::Code(_), 2) => Event::End(TagEnd::CodeBlock),
+                    (Kind::Image(_), 0) => Event::Start(Tag::Image {
+                        link_type: pulldown_cmark::LinkType::Inline,
+                        dest_url: self.source.as_str().into(),
+                        title: "".into(),
+                        id: "".into(),
+                    }),
+                    (Kind::Image(path), 1) => Event::Text(
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("image")
+                            .into(),
+                    ),
+                    (Kind::Image(_), 2) => Event::End(TagEnd::Image),
+                    _ => return None,
+                };
+                stage += 1;
+                return Some(SpannedEvent {
+                    event,
+                    source: 0..self.source.len(),
+                });
+            }
+            let parsed = parsed.as_mut()?;
             let (mut event, range) = parsed.next()?;
             let range = self.prepared.original_range(range);
             if matches!(event, Event::InlineMath(_) | Event::DisplayMath(_))

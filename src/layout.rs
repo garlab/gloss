@@ -88,6 +88,7 @@ pub enum Block {
     Image(Box<Image>),
     Code {
         language: Option<String>,
+        attributes: Option<String>,
         runs: Vec<Run>,
         source: Range<usize>,
     },
@@ -240,15 +241,24 @@ pub fn visit<E>(
                         }
                     }
                     if has_text {
-                        let language = match kind {
+                        let (language, attributes) = match kind {
                             CodeBlockKind::Fenced(info) => {
-                                info.split_whitespace().next().map(str::to_owned)
+                                let mut parts = info.trim().splitn(2, char::is_whitespace);
+                                (
+                                    parts.next().filter(|s| !s.is_empty()).map(str::to_owned),
+                                    parts
+                                        .next()
+                                        .map(str::trim)
+                                        .filter(|s| !s.is_empty())
+                                        .map(str::to_owned),
+                                )
                             }
-                            CodeBlockKind::Indented => None,
+                            CodeBlockKind::Indented => (None, None),
                         };
                         let runs = std::mem::take(&mut flow.runs);
                         flow.emit(Block::Code {
                             language,
+                            attributes,
                             runs,
                             source: item.source.start..end,
                         })?;

@@ -4,19 +4,18 @@ mod tty;
 mod watch;
 mod worker;
 
+pub use crate::input::{read, read_file};
 use crate::{render, terminal::Geometry};
 use record::Page;
 use std::{
     collections::BTreeMap,
     io::{self, Write},
-    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tty::{Key, Session};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
-pub use watch::{read, read_file};
 use worker::{Request, Worker};
 
 const HELP: &str =
@@ -47,6 +46,7 @@ fn prepare(mut options: render::Options) -> (Geometry, render::Options) {
         options.kitty = None;
         options.image_base = None;
         options.mermaid = false;
+        options.sgf = false;
     }
     (screen, options)
 }
@@ -387,7 +387,7 @@ impl View {
 /// `options` is re-evaluated on resize; it must report the full terminal geometry.
 pub fn run(
     source: String,
-    path: Option<PathBuf>,
+    input: crate::input::Input,
     watch: bool,
     options: impl Fn() -> render::Options,
 ) -> io::Result<()> {
@@ -396,6 +396,7 @@ pub fn run(
     let mut tty = Session::open()?;
     let (screen, mut current_options) = prepare(options());
     let mut source = Arc::new(source);
+    let path = &input.path;
     let mut watcher = watch.then(|| watch::Watch::new(path.as_ref().unwrap()));
     let mut view = View {
         page: None,
@@ -417,7 +418,7 @@ pub fn run(
     };
     worker.submit(Request {
         source: Arc::clone(&source),
-        path: path.clone(),
+        input: input.clone(),
         options: current_options.clone(),
         force: true,
     });
@@ -525,7 +526,7 @@ pub fn run(
                 .is_none_or(|p| Some(p.geometry) != current_options.terminal);
             worker.submit(Request {
                 source: Arc::clone(&source),
-                path: path.clone(),
+                input: input.clone(),
                 options: current_options.clone(),
                 force,
             });

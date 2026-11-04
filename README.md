@@ -14,7 +14,8 @@ A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
 library. Transparent Mermaid canvases currently require the local 0.1.6 checkout
-until its next release. mdviewer enables only the library's `images` feature.
+until its next release. mdviewer enables the library's `images` and `sgf` features;
+native image codecs and image workers remain disabled.
 
 To work on document-graphics alongside mdviewer, place its checkout beside
 mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
@@ -41,11 +42,37 @@ mdviewer tests/fixtures/code.md
 mdviewer tests/fixtures/tables.md
 mdviewer tests/fixtures/images.md
 mdviewer tests/fixtures/mermaid.md
+mdviewer tests/fixtures/sgf.md
 mdviewer tests/fixtures/extensions.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
+
+## Standalone inputs
+
+Named `.mmd` / `.mermaid` files render as Mermaid, `.sgf` files as Go records,
+and `.png` / `.jpg` / `.jpeg` / `.svg` files as images. Extensions are case
+insensitive; other files and stdin default to Markdown. These inputs also work
+with `--pager` and `--watch`.
+
+```sh
+mdviewer diagram.mmd
+mdviewer --watch diagram.mermaid
+mdviewer picture.png
+mdviewer --pager record.sgf
+mdviewer --sgf-move 42 record.sgf
+cat diagram.mmd | mdviewer --input-format mermaid -
+```
+
+Use `--input-format markdown|mermaid|sgf|image` to override detection. Image input
+requires a named local file; explicit image mode can recognize PNG/JPEG/SVG
+without a recognized extension. `--base-dir` applies to Markdown image references,
+while standalone image paths are used directly. Text inputs must be UTF-8.
+
+Pipes and text-only terminals retain diagram source or an image reference.
+`--output source` preserves standalone Mermaid/SGF text exactly. It rejects image
+inputs; use the original image file for binary copying. Image stdin is not supported.
 
 ## Terminal rendering
 
@@ -98,14 +125,22 @@ cover Latin (including accents), Greek and Cyrillic labels.
 Diagrams use a transparent canvas and scale labels to terminal cell height,
 including high-density displays, then shrink to fit the reading column.
 Tall diagrams continue down the page in contiguous image bands, including inside
-the pager, instead
-of shrinking to a single screen; raster and output limits still apply.
+the pager, instead of shrinking to a single screen; raster and output limits still apply.
 `--show-mermaid-source` keeps selectable code beneath the diagram;
 `--mermaid off` keeps the code alone. Unsupported syntax, missing glyphs,
 errors, and limits retain the complete code panel. The native
 backend uses one lazy worker from the same executable, with no additional
 installation. It does not provide full Mermaid.js compatibility. See
 [Mermaid support](docs/mermaid.md) for the limits and measurements.
+
+SGF fences render native Go boards, including setup stones, captures and board
+annotations. By default they show the final position of the first game's main
+line. `--sgf-game` and `--sgf-move` select another game or earlier move; fence
+attributes such as `sgf game=2 move=12` override those defaults per board.
+Move `0` selects the root, and `move=last` selects the final main-line node.
+Every board has a selectable game/move caption. Use `--show-sgf-source` to retain
+the record below it or `--sgf off` to show code alone. Invalid, unsupported or
+over-limit records retain source. See [SGF support](docs/sgf.md).
 
 The reading column is at most 80 cells wide, with two-column horizontal margins.
 Text and equations share that column in both graphics and TeX modes. The width
@@ -120,7 +155,8 @@ The default `--math auto` enables graphics in sessions identified as Ghostty or
 Kitty by `TERM` or `TERM_PROGRAM`. This uses environment hints, assumes graphics
 are enabled, and does not probe the terminal or read keyboard input.
 `--images auto` uses the same detection independently of the math setting.
-`--mermaid auto` independently applies it to Mermaid fences.
+`--mermaid auto` and `--sgf auto` independently apply it to diagram fences and
+standalone records.
 
 Other terminals use selectable TeX. Recognized tmux, screen, and Zellij sessions,
 `TERM=dumb`, and very small windows also use TeX. Multiplexer graphics passthrough
@@ -131,12 +167,16 @@ is not implemented.
 | `--math tex` | Keep all equations as selectable source TeX. |
 | `--math kitty` | Enable graphics in another compatible terminal; pipe, multiplexer, and small-window restrictions still apply. |
 | `--show-math-source` | Print selectable TeX beneath rendered equations. |
-| `--images off` | Keep image references as text and skip image file access. |
+| `--images off` | Keep image references as text and skip image content reads and decoding. |
 | `--images kitty` | Enable local images in another compatible terminal, subject to the same graphics restrictions. |
 | `--base-dir <directory>` | Override the directory used to resolve local image paths. |
 | `--mermaid off` | Keep Mermaid fences as code and skip the diagram worker. |
 | `--mermaid kitty` | Enable supported diagrams in another compatible terminal, subject to the same graphics restrictions. |
 | `--show-mermaid-source` | Print selectable code beneath rendered Mermaid diagrams. |
+| `--sgf auto\|off\|kitty` | Select native Go board rendering, independently of other graphics. |
+| `--sgf-game <number>` | Select a one-based game in a collection; default `1`. |
+| `--sgf-move <number>` | Select a main-line move; `0` is the root, and omission selects the final position. |
+| `--show-sgf-source` | Print selectable SGF beneath rendered boards. |
 | `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
 | `--margin <columns>` | Set the horizontal margin, default `2`. |
 | `--theme auto\|dark\|light` | Select the palette; auto uses an optional `COLORFGBG` hint. |
@@ -202,7 +242,8 @@ Normal terminal selection copies prose. Selecting an equation image alone does
 not recover its TeX; use `--show-math-source` or `--math tex` when copying math.
 Image captions and source paths are selectable too; selecting pixels does not
 copy an image file or recover text drawn inside it.
-Use `--show-mermaid-source` to copy diagram code through terminal selection.
+Use `--show-mermaid-source` or `--show-sgf-source` to copy diagram code through
+terminal selection.
 
 ```sh
 cat notes.md | mdviewer -
@@ -211,7 +252,7 @@ mdviewer notes.md > notes.txt
 mdviewer --output source notes.md | pbcopy  # macOS
 ```
 
-Pipes receive readable text with source TeX, image references, and Mermaid code,
+Pipes receive readable text with source TeX, image references, and Mermaid/SGF code,
 even with forced graphics: no ANSI
 styles, graphics, added margins, or screen-width wrapping. `--output text`
 selects that representation on a terminal too. Diagnostics go to stderr.

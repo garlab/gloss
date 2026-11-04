@@ -46,6 +46,9 @@ pub struct Options {
     pub mermaid: bool,
     /// Keep a selectable code panel below rendered diagrams.
     pub show_mermaid_source: bool,
+    pub sgf: bool,
+    pub sgf_selection: crate::sgf::Selection,
+    pub show_sgf_source: bool,
 }
 
 impl Default for Options {
@@ -64,6 +67,9 @@ impl Default for Options {
             image_base: None,
             mermaid: false,
             show_mermaid_source: false,
+            sgf: false,
+            sgf_selection: Default::default(),
+            show_sgf_source: false,
         }
     }
 }
@@ -90,6 +96,7 @@ impl Options {
 pub(crate) struct RenderCache {
     math: Option<MathEngine>,
     mermaid: Option<crate::mermaid::Engine>,
+    sgf: Option<crate::sgf::Engine>,
 }
 
 impl RenderCache {
@@ -99,6 +106,9 @@ impl RenderCache {
         }
         if let Some(mermaid) = &mut self.mermaid {
             mermaid.begin_document();
+        }
+        if let Some(sgf) = &mut self.sgf {
+            sgf.begin_document();
         }
     }
 
@@ -256,6 +266,7 @@ impl<'a, W: Write> Renderer<'a, W> {
         let highlighter = &mut self.highlighter;
         let images = &mut self.images;
         let mermaid = &mut self.cache.mermaid;
+        let sgf = &mut self.cache.sgf;
         let warnings = &mut self.warnings;
         let formatted = options.terminal.is_some() || options.kitty.is_some() || options.styled;
         let geometry = options.geometry();
@@ -275,13 +286,42 @@ impl<'a, W: Write> Renderer<'a, W> {
                     text::write_runs(out, runs, false)?;
                 }
             }
-            Block::Code { language, runs, .. } => {
+            Block::Code {
+                language,
+                attributes,
+                runs,
+                ..
+            } => {
                 if formatted {
                     if options.mermaid
                         && language
                             .as_deref()
                             .is_some_and(|label| label.eq_ignore_ascii_case("mermaid"))
-                        && diagram::write(out, runs, mermaid, images, options, self.cancel)?
+                        && diagram::write(
+                            out,
+                            runs,
+                            diagram::Kind::Mermaid(mermaid),
+                            images,
+                            options,
+                            self.cancel,
+                        )?
+                    {
+                        return Ok(());
+                    }
+                    if options.sgf
+                        && language
+                            .as_deref()
+                            .is_some_and(|label| label.eq_ignore_ascii_case("sgf"))
+                        && let Some(selection) =
+                            options.sgf_selection.attributes(attributes.as_deref())
+                        && diagram::write(
+                            out,
+                            runs,
+                            diagram::Kind::Sgf(sgf, selection),
+                            images,
+                            options,
+                            self.cancel,
+                        )?
                     {
                         return Ok(());
                     }
@@ -317,7 +357,12 @@ impl<'a, W: Write> Renderer<'a, W> {
                     let width = frame.width() as u32 * u32::from(geometry.cell_width.max(1));
                     let height = u32::from(geometry.rows.saturating_sub(2).max(1))
                         * u32::from(geometry.cell_height.max(1));
-                    if let Ok(pixels) = loader.load(base, &image.target, width, height) {
+                    let pixels = if let Some(path) = document.image_path() {
+                        loader.load_path(path, width, height)
+                    } else {
+                        loader.load(base, &image.target, width, height)
+                    };
+                    if let Ok(pixels) = pixels {
                         rendered = inline::write_picture(out, pixels, &frame, options, loader)?;
                     }
                 }

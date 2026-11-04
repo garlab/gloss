@@ -44,7 +44,10 @@ Watch polls the named path's device, inode, size, and modification/change times
 every 250 ms. A change must remain stable for a subsequent poll before loading,
 so ordinary edits appear after roughly 250–500 ms plus rendering time. This
 detects atomic replacement and disappearance/recreation without directory-wide
-subscriptions. Unchanged bytes skip rendering. There is no content hashing,
+subscriptions. Unchanged text bytes skip rendering. Standalone Mermaid/SGF files
+retain their input format across reloads. Standalone images re-read their pixels
+after metadata changes; an unchanged filename does not suppress rendering.
+There is no content hashing,
 image-directory polling, or helper process while idle. Manual `r` also refreshes
 local images. File reads use nonblocking opens and reject nonregular files, so a
 replacement FIFO cannot block the input loop.
@@ -66,7 +69,7 @@ Cancelling rendering uses a nonretryable I/O error: `Write::write_all` would ret
 signal reaches the Mermaid worker supervisor, so stale requests and quit kill
 and reap an in-flight diagram instead of waiting for its reply timeout.
 
-Reload and reflow reuse the existing math and Mermaid raster caches, with the
+Reload and reflow reuse the existing math, Mermaid and SGF raster caches, with the
 same byte/entry limits. Each render restarts equation numbering and request/time/
 output budgets. Cache keys include the content, fitting bounds and appearance;
 changed bounds or colors cannot reuse incorrectly fitted pixels. Local image
@@ -79,7 +82,7 @@ an extra input-poll delay without increasing the idle polling rate.
 
 | Resource | Limit |
 | --- | --- |
-| UTF-8 Markdown input | 64 MiB |
+| UTF-8 text input (Markdown, Mermaid or SGF) | 64 MiB |
 | Row and graphics spools combined | 256 MiB |
 | Indexed rendered rows | 1,000,000 |
 | Graphics records | 32,768 |
@@ -92,8 +95,9 @@ an extra input-poll delay without increasing the idle polling rate.
 | Background rendering | One active request and one replaceable pending request |
 | Math cache retained between renders | 8 MiB / 64 entries |
 | Mermaid cache retained between renders | 8 MiB / 32 entries |
+| SGF cache retained between renders | 8 MiB / 32 entries |
 
-The existing math, image, code, table, and Mermaid budgets apply too. Full source,
+The existing math, image, code, table, Mermaid and SGF budgets apply too. Full source,
 syntax projections, parser storage, and large individual blocks still scale with
 input. Keeping a displayed page while building a replacement can temporarily use
 two page spools. These are component limits, not an overall RSS guarantee.

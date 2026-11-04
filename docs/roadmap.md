@@ -29,6 +29,12 @@ the fixed comparison data and reproduction tools.
    sections and other families need compatibility and resource checks. Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
+Standalone Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension
+detection, explicit format selection and pager/watch support. SGF fences reuse
+the native shared parser and board renderer, with main-line game/move selection,
+bounded previews and source fallback; see [SGF support](sgf.md). Interactive
+move/variation navigation and legacy text encodings remain follow-up work.
+
 Alerts, inert bounded front matter, an expanded details/summary subset, and
 validated clickable links are implemented. See [Markdown extensions](markdown-extensions.md)
 for coverage and limits; broaden HTML/detail forms only with source-preservation
