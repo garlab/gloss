@@ -13,8 +13,8 @@ fallbacks on other terminals.
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library. Both dependencies come from crates.io. mdviewer pins `document-graphics`
-0.1.5 with only its `images` feature; native codecs and image workers stay disabled.
+library. Transparent Mermaid canvases currently require the local 0.1.6 checkout
+until its next release. mdviewer enables only the library's `images` feature.
 
 To work on document-graphics alongside mdviewer, place its checkout beside
 mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
@@ -25,10 +25,9 @@ existing settings):
 document-graphics = { path = "../document-graphics" }
 ```
 
-Run Cargo from the mdviewer root when using a local override. Normal builds use
-the published dependencies and need no sibling checkout. Before validating a
-release, remove the override and run `cargo check` to restore the registry source
-and checksum in `Cargo.lock` using the version pinned in `Cargo.toml`.
+Run Cargo from the mdviewer root so it reads the local override. After
+`document-graphics` 0.1.6 is published, remove the override and run `cargo check`
+to restore its registry source and checksum in `Cargo.lock`.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
@@ -96,8 +95,10 @@ the supported subset and resource limits.
 Mermaid fences render flowcharts, sequence, class and state diagrams, ER tables,
 pie charts, mind maps, timelines, user journeys and quadrant charts. Embedded fonts
 cover Latin (including accents), Greek and Cyrillic labels.
-Diagrams fit the reading column without enlargement. Tall diagrams continue
-down the page in contiguous image bands, including inside the pager, instead
+Diagrams use a transparent canvas and scale labels to terminal cell height,
+including high-density displays, then shrink to fit the reading column.
+Tall diagrams continue down the page in contiguous image bands, including inside
+the pager, instead
 of shrinking to a single screen; raster and output limits still apply.
 `--show-mermaid-source` keeps selectable code beneath the diagram;
 `--mermaid off` keeps the code alone. Unsupported syntax, missing glyphs,

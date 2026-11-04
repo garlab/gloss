@@ -1,8 +1,8 @@
 """Benchmark fresh CLI processes against external Markdown corpora on Unix.
 
 Terminal cases use a 100x40 pseudo-terminal (14x40 for terminal-narrow), with
-10x20-pixel cells, drained without screen painting. Times include startup,
-parsing, layout, encoding, and PTY I/O,
+10x20-pixel cells by default (--cell-size overrides them), drained without screen
+painting. Times include startup, parsing, layout, encoding, and PTY I/O,
 but exclude a real emulator's image decoding, GPU work, and scrollback storage.
 Harness version 2 avoids a 10 ms empty-selector wait after output streams close;
 older short-case wall times can include that delay. CPU and RSS are unaffected.
@@ -31,9 +31,23 @@ import time
 RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
              "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow",
              "mdviewer/terminal-images", "mdviewer/terminal-mermaid"]
+
+
+def cell_size(value):
+    try:
+        width, height = (int(part) for part in value.lower().split("x"))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("cell size must be WIDTHxHEIGHT") from error
+    if not (1 <= width <= 512 and 1 <= height <= 512):
+        raise argparse.ArgumentTypeError("cell dimensions must be between 1 and 512 pixels")
+    return width, height
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--work-dir", type=Path, required=True)
 parser.add_argument("--binary", type=Path, required=True)
+parser.add_argument("--cell-size", type=cell_size, default=(10, 20),
+                    help="PTY cell pixels, e.g. 20x40 for a Retina comparison (default: 10x20)")
 parser.add_argument("--samples", type=int, default=3)
 parser.add_argument("--warmups", type=int, default=1)
 parser.add_argument("--timeout", type=float, default=45)
@@ -123,7 +137,8 @@ def run(renderer, name):
         if tty:
             master, slave = pty.openpty()
             columns = 14 if renderer == "mdviewer/terminal-narrow" else 100
-            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, columns, columns * 10, 800))
+            cw, ch = args.cell_size
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, columns, columns * cw, 40 * ch))
         start = time.perf_counter()
         process = subprocess.Popen(
             command(renderer, name), stdin=subprocess.DEVNULL,
@@ -309,7 +324,7 @@ results = {
         "os": (f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin"
                else f"{platform.system()} {platform.release()}"),
         "rustc": read_command(["rustc", "--version"]),
-        "terminal_columns": 100, "terminal_rows": 40, "cell_pixels": [10, 20],
+        "terminal_columns": 100, "terminal_rows": 40, "cell_pixels": list(args.cell_size),
         "narrow_terminal_columns": 14,
         "content_width": 80, "horizontal_margin": 2,
         "timeout_seconds": args.timeout,

@@ -2,7 +2,11 @@
 use crate::raster::Raster;
 pub(crate) use document_graphics::mermaid::MAX_SOURCE;
 pub use document_graphics::worker::worker_main;
-use document_graphics::{RasterOptions, mermaid::admissible, worker::Worker};
+use document_graphics::{
+    RasterOptions,
+    mermaid::{Background, admissible},
+    worker::Worker,
+};
 use std::{
     collections::VecDeque,
     io,
@@ -20,6 +24,7 @@ const MAX_ATTEMPTS: usize = 32;
 struct Cached {
     source: String,
     bounds: (u32, u32),
+    scale: f64,
     light: bool,
     pixels: Option<Arc<Raster>>,
 }
@@ -56,18 +61,28 @@ impl Engine {
         &mut self,
         source: &str,
         bounds: (u32, u32),
+        scale: f64,
         light: bool,
         cancel: &AtomicBool,
     ) -> io::Result<Option<Arc<Raster>>> {
         if cancel.load(Ordering::Relaxed) {
             return Err(io::ErrorKind::ConnectionAborted.into());
         }
-        if !admissible(source) || bounds.0 == 0 || bounds.1 == 0 {
+        if !admissible(source)
+            || bounds.0 == 0
+            || bounds.1 == 0
+            || !scale.is_finite()
+            || scale <= 0.
+            || scale > 4.
+        {
             return Ok(None);
         }
         let bounds = (bounds.0.min(8192), bounds.1.min(8192));
         if let Some(index) = self.cache.iter().position(|entry| {
-            entry.source == source && entry.bounds == bounds && entry.light == light
+            entry.source == source
+                && entry.bounds == bounds
+                && entry.scale == scale
+                && entry.light == light
         }) {
             let entry = self.cache.remove(index).unwrap();
             let pixels = entry.pixels.clone();
@@ -87,10 +102,11 @@ impl Engine {
                     "--mermaid-worker",
                 )?);
             }
-            self.worker.as_mut().unwrap().render(
+            self.worker.as_mut().unwrap().render_with_background(
                 source,
                 light,
-                RasterOptions::fit(bounds),
+                Background::Transparent,
+                RasterOptions { bounds, scale },
                 timeout,
                 cancel,
             )
@@ -113,6 +129,7 @@ impl Engine {
         let entry = Cached {
             source: source.into(),
             bounds,
+            scale,
             light,
             pixels: pixels.clone(),
         };
@@ -144,6 +161,7 @@ mod tests {
         let entry = Cached {
             source: source.into(),
             bounds: (500, 300),
+            scale: 1.,
             light: false,
             pixels: Some(pixels.clone()),
         };
@@ -154,7 +172,7 @@ mod tests {
         engine.elapsed = TOTAL_TIME;
         engine.begin_document();
         let hit = engine
-            .render(source, (500, 300), false, &AtomicBool::new(false))
+            .render(source, (500, 300), 1., false, &AtomicBool::new(false))
             .unwrap()
             .unwrap();
         assert!(Arc::ptr_eq(&pixels, &hit));
@@ -165,13 +183,19 @@ mod tests {
         engine.attempts = MAX_ATTEMPTS;
         assert!(
             engine
-                .render(source, (400, 300), false, &AtomicBool::new(false))
+                .render(source, (400, 300), 1., false, &AtomicBool::new(false))
                 .unwrap()
                 .is_none()
         );
         assert!(
             engine
-                .render(source, (500, 300), true, &AtomicBool::new(false))
+                .render(source, (500, 300), 1., true, &AtomicBool::new(false))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            engine
+                .render(source, (500, 300), 2., false, &AtomicBool::new(false))
                 .unwrap()
                 .is_none()
         );
@@ -192,7 +216,7 @@ mod tests {
         });
         let start = Instant::now();
         let error = engine
-            .render("flowchart LR; A-->B", (500, 300), false, &cancel)
+            .render("flowchart LR; A-->B", (500, 300), 1., false, &cancel)
             .err()
             .unwrap();
         thread.join().unwrap();
@@ -211,7 +235,7 @@ mod tests {
         ] {
             assert!(
                 engine
-                    .render(source, (500, 300), false, &AtomicBool::new(false))
+                    .render(source, (500, 300), 1., false, &AtomicBool::new(false))
                     .unwrap()
                     .is_none()
             );

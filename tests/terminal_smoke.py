@@ -82,6 +82,26 @@ def terminal(source=SAMPLE, args=(), columns=80, rows=24, variables=None, file=N
 def plain(output):
     return CSI.sub(b"", OSC.sub(b"", GRAPHICS.sub(b"", output))).replace(b"\r", b"").decode()
 
+
+def decoded_graphics(output):
+    header, payload = None, bytearray()
+    for match in GRAPHICS.finditer(output):
+        control, chunk = match.group(1).split(b";", 1)
+        fields = dict(pair.split(b"=", 1) for pair in control.split(b","))
+        if b"a" in fields:
+            header = fields
+        payload.extend(chunk)
+        if fields[b"m"] == b"0":
+            rgba = base64.b64decode(payload, validate=True)
+            if header.get(b"o") == b"z":
+                rgba = zlib.decompress(rgba)
+            width, height = int(header[b"s"]), int(header[b"v"])
+            assert len(rgba) == width * height * 4
+            yield width, height, rgba
+            header, payload = None, bytearray()
+    assert header is None
+
+
 def attributes_at(output, needle=None):
     """Interpret SGR state at visible text, independent of escape encoding."""
     end = len(output) if needle is None else output.index(needle)
@@ -469,6 +489,26 @@ class TerminalSmoke(unittest.TestCase):
             result = subprocess.run([str(BINARY), "--mermaid", mode, "--output", "source", str(fixture)], capture_output=True, check=True)
             self.assertEqual(result.stdout, source.encode())
             self.assertFalse(result.stderr)
+
+    def test_mermaid_transparency_and_text_scale_follow_terminal_cells(self):
+        source = "```mermaid\nflowchart LR; A[Read Markdown]-->B[Show document]\n```\nAfter.\n"
+        for theme in ("dark", "light"):
+            sizes = []
+            for cw, ch in ((10, 20), (20, 40)):
+                output, error = terminal(source, columns=100,
+                                         args=("--theme", theme, "--cell-size", f"{cw}x{ch}"))
+                self.assertFalse(error)
+                self.assertEqual(len(screen(output, 100, cell_width=cw, cell_height=ch)), 1)
+                (width, height, rgba), = decoded_graphics(output)
+                alpha = rgba[3::4]
+                self.assertGreater(alpha.count(0), len(alpha) // 3)
+                self.assertGreater(alpha.count(255), len(alpha) // 10)
+                self.assertTrue(any(0 < value < 255 for value in alpha))
+                self.assertIn("After.", plain(output))
+                sizes.append((width, height))
+            # Retina cells need twice the physical pixels, including label ink.
+            self.assertLessEqual(abs(sizes[1][0] - 2 * sizes[0][0]), 20)
+            self.assertLessEqual(abs(sizes[1][1] - 2 * sizes[0][1]), 40)
 
     def test_mermaid_modes_quotes_and_list_markers(self):
         source = "- ```mermaid\n  flowchart LR\n  A[Start]-->B[Done]\n  ```\n\nAfter $x$.\n"

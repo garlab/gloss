@@ -14,6 +14,11 @@ Pipes and `--output text` keep their existing source-based representation;
 diagram worker. A nonempty `NO_COLOR` disables text styling but retains selected
 graphics; `--light` changes the diagram palette.
 
+The canvas is transparent, so the terminal background shows through. Nodes,
+groups and label backplates retain their intentional theme fills. Label size
+tracks terminal cell height, including high-density displays; diagrams still
+shrink when needed to fit the reading column or raster budget.
+
 ## Coverage
 
 The shared document-graphics library uses the published
@@ -46,8 +51,9 @@ The parent starts one child of the same executable on the first eligible cache
 miss and reuses it within one document render. The pager retains bounded cache
 entries across reloads/reflow, resets the per-render budgets, and releases the
 helper after every render. Cancellation kills and reaps in-flight work. The child receives only diagram source,
-fitting bounds, and theme over private pipes. A versioned protocol bounds request
-lengths and validates response dimensions and RGBA byte counts before allocation.
+fitting bounds, scale, theme and canvas treatment over private pipes. A versioned
+protocol bounds request lengths and validates response dimensions and RGBA byte
+counts before allocation.
 One I/O thread keeps blocked writes and partial replies within the timeout.
 
 The shared `document-graphics` crate owns parsing, layout, bounded SVG/font
@@ -57,8 +63,10 @@ limits on marker count/size and no recursive paint/marker references. Local SVG
 files retain their previous restrictions. Images use the same margins, quote
 rails, row reservation, padding, and Kitty transport as other graphics.
 
-Diagrams fit the reading-column width without enlargement, subject to the
-one-million-pixel and 8,192-pixel edge caps. Height is independent of the terminal
+Diagrams request a nominal 16-unit label at 80% of terminal cell height: a
+20-pixel row uses 1× raster scale, and a 40-pixel row uses 2×. Scale is bounded
+between 0.25× and 4×, subject to reading-column width, the one-million-pixel cap
+and the 8,192-pixel edge cap. Height is independent of the terminal
 viewport. Tall images use contiguous, cell-aligned bands of at most
 `terminal rows - 2` rows (minimum one), keeping cursor movement on screen. This
 preserves native-size labels when the full raster fits the existing limits;
@@ -93,7 +101,7 @@ workers also set an eight-second CPU limit as a backstop if the parent disappear
 during computation. The total request budget includes startup; the reply timeout cannot bound OS
 process creation itself.
 
-Cache identity includes exact source, fitting bounds, and light/dark mode.
+Cache identity includes exact source, fitting bounds, raster scale and light/dark mode.
 Renderer version and bundled fonts are fixed within the invocation. Successful
 pixels and ordinary render failures are cached; invalid requests rejected by the
 parent do not start a worker. A crash, broken protocol, or timeout disables new
@@ -118,6 +126,8 @@ followed by valid diagrams.
 Tall-image checks reassemble decoded bands and compare every padded RGBA byte,
 check all-or-nothing output budgeting, and exercise contiguous quote/list
 placement, pager scrolling, cropping and resize reflow.
+Transparency checks decode terminal RGBA and verify clear canvas pixels,
+antialiased edges and proportional label scaling at 10×20 and 20×40 cell sizes.
 
 Rendered flowchart, sequence, class, state, and grouping fixtures were inspected;
 the initial release kept ER attributes as an explicit fallback. The expanded
@@ -128,14 +138,51 @@ real terminal version. Use `tests/fixtures/mermaid.md` for Ghostty/Kitty checks.
 External comparisons also preserve all 37 plain/source exports and unchanged
 text, styles, cursor operations, and graphics across 26 control cases.
 
+## Transparent canvas and terminal-density measurements
+
+Compared `ad115d6` (published graphics 0.1.5) with the transparent-canvas and
+terminal-density changes using local graphics 0.1.6. Both use published Mermaid
+backend 0.1.3. Measurements use Apple M2 Pro / 16 GiB, macOS 26.4.1, Rust 1.99.0,
+release builds with thin LTO and one codegen unit, and a drained 100×40 PTY with
+80 content columns. Medians use five fresh processes after one warm-up,
+alternating binary order. `bench/run.py --cell-size` records the physical cell
+dimensions; raw inputs, samples and decoded previews stay outside the repository.
+
+| Cells | Corpus | Wall, before → after | Reported process RSS, before → after | Output bytes, before → after |
+| --- | --- | ---: | ---: | ---: |
+| 10×20 | 13 diagram fixtures | 46.8 → 47.1 ms | 12.39 → 13.02 MiB | 208,447 → 200,964 |
+| 10×20 | 100 repeated diagrams | 25.1 → 24.0 ms | 10.45 → 10.47 MiB | 691,806 → 609,006 |
+| 10×20 | 32-node/60-edge chain | 269.9 → 262.9 ms | 19.73 → 19.22 MiB | 135,558 → 132,245 |
+| 20×40 | 13 diagram fixtures | 45.9 → 75.4 ms | 12.61 → 40.42 MiB | 213,289 → 538,354 |
+| 20×40 | 100 repeated diagrams | 25.5 → 41.7 ms | 10.47 → 10.45 MiB | 692,206 → 1,528,506 |
+| 20×40 | 32-node/60-edge chain | 263.5 → 263.9 ms | 19.72 → 20.00 MiB | 135,137 → 137,900 |
+
+Normal-density sizing stays at 1×. Retina cells now request 2× pixels rather
+than displaying half-size text, increasing raster and transport cost. The dense
+chain already reaches the pixel cap, so it cannot grow further. All 13 fixture
+diagrams and all 100 repeated diagrams render at both densities; the chain uses
+five bands at 10×20 and three at 20×40. Existing pixel, cache and output limits
+are unchanged. Reported RSS is the `wait4` process peak, not a sampled concurrent
+process-tree total. Terminal painting, GPU use and scrollback storage are excluded.
+
+Controls remain stable: 10 MiB mixed Markdown takes **943.2 → 946.6 ms**, with
+**58.27 → 58.22 MiB** reported RSS; 1,000 equations take **388.1 → 386.3 ms**,
+with **11.36 → 11.59 MiB**. Both retain their output byte counts. Small timing
+differences are sensitive to scheduling and PTY draining. Executable sizes are
+16,995,344 and 16,995,360 bytes.
+
+Validation passes 68 viewer Rust tests, 45 direct-output PTY tests, 11 pager/watch
+tests, Clippy and the Rust 1.90 check. Shared-library tests verify transparent
+antialiasing, retained node/table fills and protocol flags; 26 legacy opaque
+worker outputs remain byte-identical to 0.1.5. Decoded previews cover all 13
+fixtures in both themes. Real terminal painting remains a manual check.
+
 ## Tall diagrams and routing measurements
 
-The viewer pins published `document-graphics` 0.1.3, which uses published
-`document-graphics-mermaid` 0.1.3. Registry builds include the routing optimization
-measured below and the quadrant-axis text color fix. The source/graph, raster,
-worker and output limits above remain unchanged. Normal builds resolve both
-graphics crates from crates.io; optional development overrides belong in ignored
-Cargo configuration.
+The `document-graphics` 0.1.3 release integrated published
+`document-graphics-mermaid` 0.1.3, including the routing optimization measured
+below and the quadrant-axis text color fix. Later versions retain that backend.
+The source/graph, raster, worker and output limits above remain unchanged.
 
 The measurements below were recorded before those releases, comparing the
 previous registry versions with a local development build. They retain those

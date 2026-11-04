@@ -46,9 +46,13 @@ pub(super) fn write(
         frame.width() as u32 * u32::from(geometry.cell_width.max(1)),
         document_graphics::MAX_EDGE,
     );
+    // A 16-unit Mermaid label occupies 80% of a terminal row. Scale with physical
+    // cell pixels so Retina text is readable; width and raster caps still apply.
+    let scale = (f64::from(geometry.cell_height.max(1)) / 20.).clamp(0.25, 4.);
     let Some(pixels) = engine.get_or_insert_with(Engine::default).render(
         &source,
         bounds,
+        scale,
         options.light_background,
         cancel,
     )?

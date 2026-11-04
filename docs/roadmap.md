@@ -66,10 +66,10 @@ JavaScript is not part of the runtime plan.
 
 ## Reproducible builds and distribution
 
-- `katex-native` and `document-graphics` 0.1.5 come from crates.io; normal builds
-  need no local overrides. Shared native rendering lives in the standalone
-  `document-graphics` library; keep its API and resource checks covered by both
-  terminal and GUI integration tests.
+- Publish `document-graphics` 0.1.6 for the transparent Mermaid API, then remove
+  the local override and restore mdviewer's registry lockfile. Math and the
+  Mermaid backend already come from crates.io. Keep shared API and resource
+  checks covered by both terminal and GUI integration tests.
 - Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
   version against the locked dependencies.
