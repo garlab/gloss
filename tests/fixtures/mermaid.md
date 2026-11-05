@@ -141,9 +141,9 @@ quadrantChart
 Unsupported families and unavailable glyphs retain complete source:
 
 ```mermaid
-gantt
-    title Release
-    Work: 2026-01-01, 1d
+kanban
+    todo[Plan]
+        work[Release]
 ```
 
 

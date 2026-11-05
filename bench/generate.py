@@ -223,6 +223,7 @@ flow = "flowchart LR\n A[Read] --> B[Render] --> C[Show]\n"
 sequence = "sequenceDiagram\n Reader->>Viewer: Open file\n Viewer-->>Reader: Show document\n"
 def fence(source):
     return "```mermaid\n" + source + "\n```\n\n"
+gantt = "gantt\n title Small plan\n excludes weekends\n Build: a, 2026-01-02, 2d\n Check: after a, 1d\n Ship: milestone, 0d\n"
 mermaid_cases = {
     "mermaid-basic.md": ((PROJECT / "tests/fixtures/mermaid.md").read_text(), 13),
     "mermaid-flow.md": (fence(flow), 1),
@@ -231,6 +232,12 @@ mermaid_cases = {
     "mermaid-unique-40.md": ("".join(fence(f"flowchart LR; A[Diagram {i}]-->B") for i in range(40)), 32),
     "mermaid-complex.md": (fence("flowchart TD\n" + "".join(
         f" N{i}[Stage {i}]-->N{i+1}\n N{i}-->N{i+2}\n" for i in range(30))), 1),
+    "mermaid-gantt-basic.md": ((PROJECT / "tests/fixtures/gantt.md").read_text(), 3),
+    "mermaid-gantt-repeated-100.md": (fence(gantt) * 100, 100),
+    "mermaid-gantt-unique-40.md": ("".join(fence(gantt.replace("Small plan", f"Plan {i}")) for i in range(40)), 32),
+    "mermaid-gantt-tasks-128.md": (fence("gantt\nStart: 2026-01-01, 1d\n" + "".join(
+        f"Task {i}: 1d\n" for i in range(1, 128))), 1),
+    "mermaid-gantt-long-span.md": (fence("gantt\nexcludes weekends\nTask: 2026-01-01, 25000d"), 1),
     "mermaid-fallbacks.md": (fence("flowchart LR\n" + "A" * (64 * 1024))
         + fence("pie\n\"A\":1") + fence("flowchart LR; A[中文]-->B")
         + fence("flowchart LR; A[Broken") + fence("%%{init: {}}%%\nflowchart LR; A-->B")

@@ -26,8 +26,8 @@ shrink when needed to fit the reading column or raster budget.
 
 ## Coverage
 
-The shared document-graphics library uses the published
-[`document-graphics-mermaid` 0.1.3](https://crates.io/crates/document-graphics-mermaid/0.1.3)
+The shared document-graphics library requires the
+[`document-graphics-mermaid` 0.2.0](https://crates.io/crates/document-graphics-mermaid)
 crate, a maintained fork of `mermaid-rs-renderer`, with CLI and PNG features
 disabled. Supported families are:
 
@@ -36,6 +36,8 @@ disabled. Supported families are:
 - ER relationships and attribute tables, including types, names, PK/FK/UK keys
   and inline comments. Rows stay intact; an incomplete table retains source.
 - Pie charts, mind maps, timelines without sections, user journeys, and quadrant charts.
+- Day-based Gantt charts with dates, dependencies, milestones and weekend/holiday
+  exclusions. See [Gantt coverage and measurements](gantt.md) for the exact subset.
 
 Embedded Noto Sans fonts add Latin, Greek and Cyrillic labels, including accented
 and combining characters. KaTeX fonts preserve existing ASCII diagram appearance.
@@ -89,6 +91,7 @@ terminal scrollback storage, within the same raster and output budgets.
 | 32 sequence participants, 16 frames/boxes, 64 notes, 128 activations | Bound additional sequence structure. |
 | 64 state notes; 1 KiB per node label | Reject excessive annotations. |
 | 64 pie slices, 128 mind-map nodes/depth 32, 64 timeline periods/128 events, 128 quadrant points; 32 journey actors with scores 1–5 | Bound additional families before layout; chart numbers must be finite and in range. |
+| Gantt: 128 tasks, 16 sections, 128 excluded dates, 36,600-day task/chart span, 128-byte axis format; 1 KiB labels/titles | Reject invalid or excessive schedules before layout. |
 | 32 requests and 5 seconds cumulative request time per document render | Later uncached diagrams retain code; cache hits remain available. |
 | 2 seconds per reply after worker startup | Kill and reap a stalled worker, then retain source. |
 | 8 MiB cache, at most 32 entries | Account for source and fitted RGBA bytes; evict least recently used entries. |

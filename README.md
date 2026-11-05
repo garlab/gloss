@@ -13,7 +13,8 @@ fallbacks on other terminals.
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library. Transparent Mermaid canvases currently require the local 0.1.6 checkout
+library. Publish the Mermaid backend 0.2.0 before document-graphics 0.1.7.
+Gantt schedules currently require the local 0.1.7 checkout
 until its next release. mdviewer enables the library's `images` and `sgf` features;
 native image codecs and image workers remain disabled.
 
@@ -24,10 +25,11 @@ existing settings):
 ```toml
 [patch.crates-io]
 document-graphics = { path = "../document-graphics" }
+document-graphics-mermaid = { path = "../mermaid-rs-renderer" }
 ```
 
 Run Cargo from the mdviewer root so it reads the local override. After
-`document-graphics` 0.1.6 is published, remove the override and run `cargo check`
+`document-graphics` 0.1.7 is published, remove both overrides and run `cargo check`
 to restore its registry source and checksum in `Cargo.lock`.
 
 From the `mdviewer` directory, install locally and try the included examples.
@@ -120,7 +122,8 @@ font scans, or helper processes are used. See [local images](docs/images.md) for
 the supported subset and resource limits.
 
 Mermaid fences render flowcharts, sequence, class and state diagrams, ER tables,
-pie charts, mind maps, timelines, user journeys and quadrant charts. Embedded fonts
+pie charts, mind maps, timelines, user journeys, quadrant charts and
+[day-based Gantt schedules](docs/gantt.md). Embedded fonts
 cover Latin (including accents), Greek and Cyrillic labels.
 Diagrams use a transparent canvas and scale labels to terminal cell height,
 including high-density displays, then shrink to fit the reading column.

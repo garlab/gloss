@@ -229,7 +229,7 @@ mod tests {
     fn unsupported_input_never_starts_worker_or_spends_terminal_budget() {
         let mut engine = Engine::default();
         for source in [
-            "gantt\nTask: 2025-01-01, 1d",
+            "kanban\n  todo[Tasks]",
             "%%{init: {}}%%\nflowchart LR; A-->B",
             "flowchart LR; A\x1b[2J-->B",
         ] {

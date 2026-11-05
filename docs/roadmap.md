@@ -26,7 +26,9 @@ the fixed comparison data and reproduction tools.
    [Mermaid support](mermaid.md) for coverage and measured backend costs.
    Latin/Greek/Cyrillic labels, ER attributes and five additional diagram families
    are implemented in the shared library. Broader script coverage, timeline
-   sections and other families need compatibility and resource checks. Consider an optional official-renderer
+   sections and other families need compatibility and resource checks. Native
+   day-based Gantt schedules are implemented; sub-day/custom-date formats and
+   advanced calendar options remain follow-up work. See [Gantt support](gantt.md). Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
 Standalone Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension
@@ -72,9 +74,10 @@ JavaScript is not part of the runtime plan.
 
 ## Reproducible builds and distribution
 
-- Publish `document-graphics` 0.1.6 for the transparent Mermaid API, then remove
-  the local override and restore mdviewer's registry lockfile. Math and the
-  Mermaid backend already come from crates.io. Keep shared API and resource
+- Publish `document-graphics-mermaid` 0.2.0 for Gantt schedules, then
+  `document-graphics` 0.1.7 for Gantt integration.
+  Remove both local overrides and restore registry lockfiles after publication.
+  Math already comes from crates.io. Keep shared API and resource
   checks covered by both terminal and GUI integration tests.
 - Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust

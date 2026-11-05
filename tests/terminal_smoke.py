@@ -472,7 +472,7 @@ class TerminalSmoke(unittest.TestCase):
         output, error = terminal(file=fixture)
         self.assertFalse(error)
         self.assertEqual(len(screen(output, 80)), 15)  # 13 diagrams; two need a second band.
-        self.assertIn('gantt', plain(output))
+        self.assertIn('kanban', plain(output))
         self.assertNotIn('A[Read Markdown]', plain(output))
         output, error = terminal(file=fixture, args=("--show-mermaid-source",))
         self.assertFalse(error)
@@ -492,6 +492,47 @@ class TerminalSmoke(unittest.TestCase):
             result = subprocess.run([str(BINARY), "--mermaid", mode, "--output", "source", str(fixture)], capture_output=True, check=True)
             self.assertEqual(result.stdout, source.encode())
             self.assertFalse(result.stderr)
+
+    def test_gantt_dates_labels_and_fallbacks_use_the_existing_mermaid_path(self):
+        fixture = Path(__file__).resolve().parent / "fixtures/gantt.md"
+        for columns in (24, 100):
+            for theme in ("dark", "light"):
+                output, error = terminal(file=fixture, columns=columns, args=("--theme", theme))
+                self.assertFalse(error)
+                self.assertEqual(len(screen(output, columns)), 3)
+                self.assertIn("Meeting", plain(output))
+                self.assertIn("missing", plain(output))
+                self.assertNotIn("after build docs", plain(output))
+                for _, _, rgba in decoded_graphics(output):
+                    self.assertIn(0, rgba[3::4])
+        for args, variables in [(("--mermaid", "off"), {}),
+                                ((), {"TERM": "xterm-256color", "TERM_PROGRAM": ""})]:
+            output, error = terminal(file=fixture, args=args, variables=variables)
+            self.assertFalse(error)
+            self.assertFalse(GRAPHICS.search(output))
+            self.assertIn("after build docs", plain(output))
+        output, error = terminal(file=fixture, columns=100, args=("--show-mermaid-source",))
+        self.assertFalse(error)
+        self.assertIn("after build docs", plain(output))
+        result = subprocess.run([str(BINARY), "--output", "source", str(fixture)], capture_output=True, check=True)
+        self.assertEqual(result.stdout, fixture.read_bytes())
+
+    def test_standalone_gantt_matches_fenced_input_and_resource_fallback_recovers(self):
+        diagram = "gantt\nA: a, 2026-01-02, 1d\nB: after a, 1w\n"
+        fenced = "```mermaid\n" + diagram + "```\n"
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "schedule.mmd"
+            file.write_text(diagram)
+            standalone, error = terminal(file=file)
+            self.assertFalse(error)
+            markdown, error = terminal(fenced)
+            self.assertFalse(error)
+            self.assertEqual(list(decoded_graphics(standalone)), list(decoded_graphics(markdown)))
+        oversized = "gantt\nStart: 2026-01-01, 1d\n" + "\n".join(f"Task {i}: 1d" for i in range(128))
+        output, error = terminal("```mermaid\n" + oversized + "\n```\n\n" + fenced)
+        self.assertFalse(error)
+        self.assertIn("Task 127", plain(output))
+        self.assertEqual(len(screen(output, 80)), 1)
 
     def test_mermaid_transparency_and_text_scale_follow_terminal_cells(self):
         source = "```mermaid\nflowchart LR; A[Read Markdown]-->B[Show document]\n```\nAfter.\n"
@@ -671,7 +712,7 @@ class TerminalSmoke(unittest.TestCase):
             self.assertIn("After.", plain(output))
 
     def test_mermaid_failures_and_budget_keep_complete_code(self):
-        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "gantt\nSlice: 2026-01-01, 1d", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
+        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "gantt\nSlice: 2026-01-01, 30m", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
         source = "\n\n".join("```mermaid\n" + block + "\n```" for block in blocks)
         source += "\n\n```mermaid\nflowchart LR; A[Valid]-->B\n```\nAfter.\n"
         output, error = terminal(source)
