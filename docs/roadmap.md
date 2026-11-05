@@ -27,8 +27,9 @@ the fixed comparison data and reproduction tools.
    Latin/Greek/Cyrillic labels, ER attributes and five additional diagram families
    are implemented in the shared library. Broader script coverage, timeline
    sections and other families need compatibility and resource checks. Native
-   day-based Gantt schedules are implemented; sub-day/custom-date formats and
-   advanced calendar options remain follow-up work. See [Gantt support](gantt.md). Consider an optional official-renderer
+   Gantt schedules include clock/date-time formats down to milliseconds;
+   timezones, other date formats and advanced calendar options remain follow-up
+   work. See [Gantt support](gantt.md). Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
 Standalone Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension

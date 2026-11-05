@@ -534,6 +534,40 @@ class TerminalSmoke(unittest.TestCase):
         self.assertIn("Task 127", plain(output))
         self.assertEqual(len(screen(output, 80)), 1)
 
+    def test_sub_day_gantt_formats_render_and_preserve_source_fallbacks(self):
+        fixture = Path(__file__).resolve().parent / "fixtures/gantt-time.md"
+        for columns in (24, 100):
+            for theme in ("dark", "light"):
+                output, error = terminal(file=fixture, columns=columns, args=("--theme", theme))
+                self.assertFalse(error)
+                self.assertEqual(len(screen(output, columns)), 4)
+                self.assertIn("Zoned", plain(output))
+                self.assertIn("Undated", plain(output))
+                self.assertNotIn("after build notes", plain(output))
+        output, error = terminal(file=fixture, columns=100, args=("--show-mermaid-source", "--cell-size", "20x40"))
+        self.assertFalse(error)
+        self.assertEqual(len(screen(output, 100, cell_width=20, cell_height=40)), 4)
+        self.assertIn("after build notes", plain(output))
+        for mode in ("off", "auto", "kitty"):
+            result = subprocess.run([str(BINARY), "--mermaid", mode, "--output", "source", str(fixture)], capture_output=True, check=True)
+            self.assertEqual(result.stdout, fixture.read_bytes())
+        output, error = terminal(file=fixture, args=("--mermaid", "off"))
+        self.assertFalse(error)
+        self.assertFalse(GRAPHICS.search(output))
+        self.assertIn("1.5h", plain(output))
+
+    def test_standalone_millisecond_gantt_matches_markdown(self):
+        diagram = "gantt\ndateFormat YYYY-MM-DD HH:mm:ss.SSS\naxisFormat %S.%L\nA: 9999-01-01 12:00:00.001, 1ms\nB: 2ms\n"
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "stages.mmd"
+            file.write_text(diagram)
+            standalone, error = terminal(file=file, columns=100)
+            self.assertFalse(error)
+            fenced, error = terminal("```mermaid\n" + diagram + "```\n", columns=100)
+            self.assertFalse(error)
+            self.assertEqual(len(screen(standalone, 100)), 1)
+            self.assertEqual(list(decoded_graphics(standalone)), list(decoded_graphics(fenced)))
+
     def test_mermaid_transparency_and_text_scale_follow_terminal_cells(self):
         source = "```mermaid\nflowchart LR; A[Read Markdown]-->B[Show document]\n```\nAfter.\n"
         for theme in ("dark", "light"):
@@ -712,7 +746,7 @@ class TerminalSmoke(unittest.TestCase):
             self.assertIn("After.", plain(output))
 
     def test_mermaid_failures_and_budget_keep_complete_code(self):
-        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "gantt\nSlice: 2026-01-01, 30m", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
+        blocks = ["flowchart LR\nA[Broken", "flowchart LR; A[中文]-->B", "gantt\nSlice: 2026-01-01, 30q", "%%{init: {}}%%\nflowchart LR; A-->B", "flowchart LR; A-->B\nclick A \"https://example.com\""]
         source = "\n\n".join("```mermaid\n" + block + "\n```" for block in blocks)
         source += "\n\n```mermaid\nflowchart LR; A[Valid]-->B\n```\nAfter.\n"
         output, error = terminal(source)

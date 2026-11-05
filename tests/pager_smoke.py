@@ -385,6 +385,26 @@ class PagerSmoke(unittest.TestCase):
             self.assertTrue(p.screen.placements)
             p.close()
 
+    def test_sub_day_gantt_watch_updates_times_and_keeps_invalid_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / 'timing.mmd'
+            file.write_text('gantt\ndateFormat HH:mm\nOriginal: 09:00, 30m\n')
+            p = self.pager(file=file, args=['--watch', '--show-mermaid-source'], rows=20)
+            p.ready('Original')
+            original = set(p.screen.image_checksums.values())
+            self.assertTrue(original)
+            file.write_text('gantt\ndateFormat HH:mm\nInvalid: 23:00, 00:30\n')
+            p.ready('Invalid')
+            self.assertFalse(p.screen.placements)
+            file.write_text('gantt\ndateFormat HH:mm\nUpdated: 23:00, 90m\n')
+            p.ready('Updated')
+            self.assertTrue(p.screen.placements)
+            self.assertNotEqual(set(p.screen.image_checksums.values()), original)
+            p.resize(40, 16)
+            p.until(lambda: p.screen.row == 15 and 'rendering' not in p.screen.text())
+            self.assertTrue(p.screen.placements)
+            p.close()
+
     def test_standalone_image_watch_rereads_pixels_and_recovers_from_missing_file(self):
         with tempfile.TemporaryDirectory() as root:
             file = Path(root) / 'drawing [100%].svg'
@@ -447,7 +467,7 @@ class PagerSmoke(unittest.TestCase):
         p.close()
 
     def test_existing_rich_fixtures(self):
-        for name in ("style", "code", "tables", "math", "extensions", "mermaid", "gantt"):
+        for name in ("style", "code", "tables", "math", "extensions", "mermaid", "gantt", "gantt-time"):
             with self.subTest(fixture=name):
                 p = self.pager(file=Path("tests/fixtures") / f"{name}.md")
                 p.ready()

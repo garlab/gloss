@@ -36,7 +36,8 @@ disabled. Supported families are:
 - ER relationships and attribute tables, including types, names, PK/FK/UK keys
   and inline comments. Rows stay intact; an incomplete table retains source.
 - Pie charts, mind maps, timelines without sections, user journeys, and quadrant charts.
-- Day-based Gantt charts with dates, dependencies, milestones and weekend/holiday
+- Gantt charts with dates, clock times down to milliseconds, dependencies,
+  milestones and weekend/holiday
   exclusions. See [Gantt coverage and measurements](gantt.md) for the exact subset.
 
 Embedded Noto Sans fonts add Latin, Greek and Cyrillic labels, including accented

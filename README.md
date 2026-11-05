@@ -44,6 +44,7 @@ mdviewer tests/fixtures/code.md
 mdviewer tests/fixtures/tables.md
 mdviewer tests/fixtures/images.md
 mdviewer tests/fixtures/mermaid.md
+mdviewer tests/fixtures/gantt-time.md
 mdviewer tests/fixtures/sgf.md
 mdviewer tests/fixtures/extensions.md
 ```
@@ -123,7 +124,7 @@ the supported subset and resource limits.
 
 Mermaid fences render flowcharts, sequence, class and state diagrams, ER tables,
 pie charts, mind maps, timelines, user journeys, quadrant charts and
-[day-based Gantt schedules](docs/gantt.md). Embedded fonts
+[Gantt schedules with date and sub-day timing](docs/gantt.md). Embedded fonts
 cover Latin (including accents), Greek and Cyrillic labels.
 Diagrams use a transparent canvas and scale labels to terminal cell height,
 including high-density displays, then shrink to fit the reading column.

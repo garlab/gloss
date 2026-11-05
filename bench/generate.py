@@ -224,6 +224,7 @@ sequence = "sequenceDiagram\n Reader->>Viewer: Open file\n Viewer-->>Reader: Sho
 def fence(source):
     return "```mermaid\n" + source + "\n```\n\n"
 gantt = "gantt\n title Small plan\n excludes weekends\n Build: a, 2026-01-02, 2d\n Check: after a, 1d\n Ship: milestone, 0d\n"
+gantt_time = "gantt\n title Short plan\n dateFormat HH:mm\n Build: a, 09:00, 1.5h\n Check: after a, 15m\n Ship: milestone, 0ms\n"
 mermaid_cases = {
     "mermaid-basic.md": ((PROJECT / "tests/fixtures/mermaid.md").read_text(), 13),
     "mermaid-flow.md": (fence(flow), 1),
@@ -238,6 +239,12 @@ mermaid_cases = {
     "mermaid-gantt-tasks-128.md": (fence("gantt\nStart: 2026-01-01, 1d\n" + "".join(
         f"Task {i}: 1d\n" for i in range(1, 128))), 1),
     "mermaid-gantt-long-span.md": (fence("gantt\nexcludes weekends\nTask: 2026-01-01, 25000d"), 1),
+    "mermaid-gantt-time-basic.md": ((PROJECT / "tests/fixtures/gantt-time.md").read_text(), 4),
+    "mermaid-gantt-time-repeated-100.md": (fence(gantt_time) * 100, 100),
+    "mermaid-gantt-time-unique-40.md": ("".join(fence(gantt_time.replace("Short plan", f"Plan {i}")) for i in range(40)), 32),
+    "mermaid-gantt-time-tasks-128.md": (fence("gantt\ndateFormat YYYY-MM-DD HH:mm:ss.SSS\naxisFormat %S.%L\nStart: t0, 9999-01-01 09:00:00.000, 1ms\n" + "".join(
+        f"Task {i}: t{i}, after t{i-1}, 1ms\n" for i in range(1, 128))), 1),
+    "mermaid-gantt-time-long-span.md": (fence("gantt\ndateFormat YYYY-MM-DD HH:mm\nexcludes weekends\nTask: 2026-01-01 16:30, 600001h"), 1),
     "mermaid-fallbacks.md": (fence("flowchart LR\n" + "A" * (64 * 1024))
         + fence("pie\n\"A\":1") + fence("flowchart LR; A[中文]-->B")
         + fence("flowchart LR; A[Broken") + fence("%%{init: {}}%%\nflowchart LR; A-->B")

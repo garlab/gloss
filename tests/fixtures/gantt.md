@@ -47,12 +47,12 @@ gantt
 
 ## Source fallbacks
 
-Unsupported sub-day formats retain their complete source:
+Unsupported timezone formats retain their complete source:
 
 ```mermaid
 gantt
-    dateFormat HH:mm
-    Meeting :09:00, 30m
+    dateFormat YYYY-MM-DDTHH:mm:ssZ
+    Meeting :2026-11-05T09:00:00Z, 30m
 ```
 
 Unknown dependencies also retain source:
