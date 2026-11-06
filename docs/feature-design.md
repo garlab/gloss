@@ -115,8 +115,9 @@ fallbacks must not decode images.
 
 ## Mermaid
 
-The initial implementation uses pinned `mermaid-rs-renderer` with its CLI/PNG
-features disabled, running in one lazy worker from the mdviewer executable.
+The native implementation uses `document-graphics` with a pinned
+`document-graphics-mermaid` backend and its CLI/PNG features disabled, running in
+one lazy worker from the mdviewer executable.
 [Mermaid support](mermaid.md) records the selected subset, compatibility limits,
 bounded worker/cache behavior, and native/official renderer measurements.
 Broader dialect support remains future work.

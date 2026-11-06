@@ -27,7 +27,7 @@ shrink when needed to fit the reading column or raster budget.
 ## Coverage
 
 The shared document-graphics library requires the
-[`document-graphics-mermaid` 0.2.0](https://crates.io/crates/document-graphics-mermaid)
+[`document-graphics-mermaid` 0.2.1](https://crates.io/crates/document-graphics-mermaid)
 crate, a maintained fork of `mermaid-rs-renderer`, with CLI and PNG features
 disabled. Supported families are:
 
@@ -48,7 +48,7 @@ emoji), unsupported families, timeline sections, directives/front matter,
 clickable nodes and excessive diagrams retain source. Source exports are unchanged.
 
 This remains a native subset: layout and syntax can differ from Mermaid.js.
-The [backend fork](https://github.com/garlab/mermaid-rs-renderer/tree/fork-release)
+The [backend fork](https://github.com/garlab/document-graphics-mermaid/tree/main)
 also preserves all ER key badges and fixes contrast and multiline axis labels in
 the added chart families. An optional official-renderer adapter remains a possible
 route to broader Mermaid.js compatibility.
