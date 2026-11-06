@@ -5,7 +5,8 @@ Colored terminal output highlights one logical code block before wrapping it.
 This preserves multiline syntax while avoiding a whole-document token model.
 The [README](../README.md#terminal-rendering) lists supported languages and aliases.
 
-The measurements below describe the initial highlighting implementation.
+The dependency-cost and performance-comparison sections below describe the
+initial highlighting implementation.
 Subsequent [rendering optimizations](performance-optimizations.md) reduce its
 time, memory, output volume, and binary size while retaining the same languages
 and highlighting limits.
@@ -27,6 +28,7 @@ runtime grammar download, editor dependency, or additional checkout.
 | --- | --- |
 | 128 KiB decoded code per block | Larger blocks retain the ordinary code panel. |
 | 16,384 query captures per block | Capture-heavy blocks fall back to uncolored code. |
+| 128 embedded regions per Dockerfile block | More regions retain the complete uncolored block. |
 | 1,024 in-progress query matches | Exceeding the query cursor limit causes fallback. |
 | 25 ms parse/query/span work per block | Cooperative callbacks and elapsed-time checks abandon expensive blocks. |
 | 8 MiB attempted code per invocation | Further blocks remain uncolored. |
@@ -40,13 +42,61 @@ of a hard process-wide memory ceiling.
 
 Unknown languages, unlabeled/indented blocks, and exhausted limits keep all code
 content. Incomplete snippets use grammar error recovery where possible.
-Embedded-language injections and a lexical fallback are not implemented.
+Embedded-language highlighting is limited to the Dockerfile support below.
+A lexical fallback is not implemented.
 
 `--no-highlight` bypasses the highlighter without disabling the rest of the
 theme. `NO_COLOR`, plain pipes, `--output text`, and `--output source` also
 bypass it. Plain export uses the flat layout path so it does not pay for
 independently owned fence metadata and per-block vectors. Exact source export
 still bypasses parsing entirely.
+
+## Dockerfile and Containerfile
+
+The `dockerfile`, `containerfile`, and `docker` fence/language aliases share
+[`tree-sitter-containerfile` 0.9.2](https://crates.io/crates/tree-sitter-containerfile),
+including its published highlight and injection queries. A small leading query
+colors complete instruction flags because the bundled query expects a named
+child absent from those nodes. Grammar and query data remain in the dependency;
+file detection, semantic span merging, terminal colors, and budgets remain here.
+
+Instruction keywords, comments, variables, flags, strings, and ports
+use the parent grammar. Shell commands and `RUN` heredocs use Bash. `COPY` heredocs
+with JSON, YAML, or TOML destination extensions use the corresponding bundled
+grammar. Every embedded region is parsed independently, so an unfinished shell
+string cannot affect the next instruction. Unsupported embedded languages keep
+the parent's colors.
+
+This adds one dependency and reuses the existing Bash/JSON/YAML/TOML grammars.
+Queries still compile lazily. There is one nonrecursive injection layer; sorted,
+disjoint UTF-8 ranges prevent repeated parsing of overlapping content. The
+16,384-capture and 25 ms work limits apply to the whole block, including discovery,
+embedded parsing, queries, and span merging. Query compilation counts toward the
+invocation's time budget. Trees are released between regions, and span overlays
+use a linear merge instead of storage proportional to every input byte.
+
+### Incremental cost
+
+A release comparison against `0b22557` used the repository's PTY benchmark routine:
+100×40 cells, 10×20 pixels per cell, one warm-up and five interleaved measured
+processes per case. Results are medians; emulator painting is excluded. Generated
+inputs and raw measurements remain outside the repository.
+
+| Input | Before | With Dockerfile support | Before RSS | After RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary Markdown, 1 MiB | 92.4 ms | 92.1 ms | 16.72 MiB | 16.78 MiB |
+| Standalone YAML, 16 KiB | 13.9 ms | 13.6 ms | 6.77 MiB | 6.88 MiB |
+| Dockerfile fixture, shell and JSON/YAML/TOML heredocs | 4.3 ms | 10.3 ms | 3.06 MiB | 11.17 MiB |
+| Dockerfile, 64 shell commands | 3.5 ms | 7.5 ms | 3.11 MiB | 10.45 MiB |
+| Dockerfile, 129 commands (region-limit fallback) | 3.5 ms | 4.6 ms | 3.08 MiB | 5.11 MiB |
+| Dockerfile, 1 MiB (size-limit fallback) | 157.4 ms | 158.1 ms | 5.28 MiB | 5.34 MiB |
+
+The release executable grew from 17,112,336 to 17,245,152 bytes, an increase of
+129.7 KiB (0.8%). The embedded-language fixture initializes four existing grammars
+in addition to the new one. `--no-highlight` renders it in 3.5 ms at 3.14 MiB peak
+RSS. Markdown, YAML, disabled highlighting, and exhausted-limit cases retained
+their previous output sizes; terminal tests also verify complete source and
+matching plain output with and without colors.
 
 ## Dependency cost
 

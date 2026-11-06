@@ -1002,6 +1002,45 @@ class TerminalSmoke(unittest.TestCase):
                 self.assertNotIn(b"\x1b_G", colored)
                 self.assertIn(source.splitlines()[-1], plain(colored))
 
+    def test_dockerfile_and_containerfile_share_colors_in_files_fences_and_stdin(self):
+        source = (Path(__file__).resolve().parent / "fixtures" / "Dockerfile").read_text()
+        fenced, fence_error = terminal(f"````containerfile\n{source}````\n", args=("--line-numbers", "on"))
+        stdin, stdin_error = terminal(source, args=("--language", "docker"))
+        self.assertFalse(fence_error or stdin_error)
+        self.assertEqual(stdin, fenced)
+        with tempfile.TemporaryDirectory() as root:
+            for name in ("Dockerfile", "Containerfile", "Dockerfile.dev", "build.containerfile"):
+                with self.subTest(name=name):
+                    file = Path(root) / name
+                    file.write_text(source)
+                    colored, error = terminal(file=file)
+                    disabled, disabled_error = terminal(file=file, args=("--no-highlight",))
+                    uncolored, plain_error = terminal(file=file, variables={"NO_COLOR": "1"})
+                    self.assertFalse(error or disabled_error or plain_error)
+                    self.assertEqual(colored, fenced)
+                    self.assertEqual(plain(colored), plain(disabled))
+                    self.assertEqual(plain(colored), plain(uncolored))
+                    self.assertNotEqual(colored, disabled)
+                    self.assertNotIn(b"\x1b", uncolored)
+                    self.assertNotIn(b"\x1b_G", colored)
+                    for token, color in [(b"FROM", 176), (b"CoPy", 176), (b"--chown=1000:1000", 117),
+                                         (b"printf", 81), (b"if", 176), (b"42", 215)]:
+                        self.assertEqual(attributes_at(colored, token)["foreground"], color, token)
+
+    def test_dockerfile_limits_keep_complete_source_without_affecting_next_block(self):
+        source = "RUN echo hello\n" * 129
+        args = ("--language", "containerfile")
+        colored, error = terminal(source, args=args)
+        disabled, disabled_error = terminal(source, args=(*args, "--no-highlight"))
+        self.assertFalse(error or disabled_error)
+        self.assertEqual(colored, disabled)
+        self.assertEqual(plain(colored).count("RUN echo hello"), 129)
+        markdown = f"```dockerfile\n{source}```\n\n```dockerfile\nFROM scratch\n```\n"
+        output, error = terminal(markdown)
+        self.assertFalse(error)
+        self.assertEqual(plain(output).count("RUN echo hello"), 129)
+        self.assertEqual(attributes_at(output, b"FROM")["foreground"], 176)
+
     def test_code_fallbacks_and_no_color_keep_the_complete_content(self):
         for language, body in [
             ("unknown", "fn main() { let value = 42; }\n"),

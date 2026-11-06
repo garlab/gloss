@@ -422,6 +422,21 @@ class PagerSmoke(unittest.TestCase):
             self.assertTrue(p.screen.placements)
             p.close()
 
+    def test_containerfile_watch_reloads_syntax_colors_and_keeps_numbered_source(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / "Containerfile"
+            file.write_text('FROM scratch\nRUN echo "before"\n')
+            p = self.pager(file=file, args=["--watch"])
+            p.ready('2 │ RUN echo "before"')
+            self.assertIn(b"38;5;176", p.output)
+            replacement = file.with_suffix(".new")
+            replacement.write_text('FROM scratch\nRUN printf "after"\n')
+            replacement.replace(file)
+            p.ready('2 │ RUN printf "after"')
+            self.assertIn('1 │ FROM scratch', p.screen.text())
+            self.assertEqual(p.screen.uploads, 0)
+            p.close()
+
     def test_sub_day_gantt_watch_updates_times_and_keeps_invalid_source(self):
         with tempfile.TemporaryDirectory() as root:
             file = Path(root) / 'timing.mmd'

@@ -86,7 +86,7 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
 
 #[cfg(unix)]
 #[test]
-fn special_code_filenames_keep_literal_content_and_select_toml_for_cargo_lock() {
+fn special_code_filenames_keep_literal_content_and_select_language() {
     use mdviewer::input::{Format, Input};
     use pulldown_cmark::{CodeBlockKind, Tag};
 
@@ -99,10 +99,15 @@ fn special_code_filenames_keep_literal_content_and_select_toml_for_cargo_lock() 
         ),
         (
             "Dockerfile",
-            "",
+            "dockerfile",
             "# Build image\nFROM scratch\nLABEL note=\"**literal** $VALUE$\"\n",
         ),
-        ("Dockerfile.dev", "", "# Build image\nFROM scratch\n"),
+        (
+            "Dockerfile.dev",
+            "dockerfile",
+            "# Build image\nFROM scratch\n",
+        ),
+        ("Dockerfile.json", "json", "{\"enabled\": true}\n"),
     ] {
         let path = dir.path().join(name);
         std::fs::write(&path, source).unwrap();

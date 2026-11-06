@@ -42,23 +42,21 @@ impl Input {
             .and_then(Path::extension)
             .and_then(|s| s.to_str())
             .map(str::to_ascii_lowercase);
-        let detected_language =
-            path.as_deref()
-                .and_then(filename_language)
-                .or(match extension.as_deref() {
-                    Some("yaml" | "yml") => Some("yaml"),
-                    Some("toml") => Some("toml"),
-                    Some("json") => Some("json"),
-                    Some("rs") => Some("rust"),
-                    Some("py" | "pyi" | "pyw") => Some("python"),
-                    Some("js" | "jsx" | "mjs" | "cjs") => Some("javascript"),
-                    Some("ts" | "mts" | "cts") => Some("typescript"),
-                    Some("tsx") => Some("tsx"),
-                    Some("go") => Some("go"),
-                    Some("sh" | "bash") => Some("bash"),
-                    Some("dockerfile" | "containerfile") => Some("dockerfile"),
-                    _ => None,
-                });
+        let detected_language = match extension.as_deref() {
+            Some("yaml" | "yml") => Some("yaml"),
+            Some("toml") => Some("toml"),
+            Some("json") => Some("json"),
+            Some("rs") => Some("rust"),
+            Some("py" | "pyi" | "pyw") => Some("python"),
+            Some("js" | "jsx" | "mjs" | "cjs") => Some("javascript"),
+            Some("ts" | "mts" | "cts") => Some("typescript"),
+            Some("tsx") => Some("tsx"),
+            Some("go") => Some("go"),
+            Some("sh" | "bash") => Some("bash"),
+            Some("dockerfile" | "containerfile") => Some("dockerfile"),
+            _ => None,
+        }
+        .or_else(|| path.as_deref().and_then(filename_language));
         let format = if format == Format::Auto {
             match extension.as_deref() {
                 _ if language.is_some() => Format::Code,

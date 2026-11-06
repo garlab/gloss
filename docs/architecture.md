@@ -30,7 +30,7 @@ images yield image events from a native path, without loading image bytes into
 the text source model. They export a reference; binary source output is rejected.
 Markdown still uses its original parser and syntax projections.
 Filename detection also recognizes `Cargo.lock` as TOML and Dockerfile/Containerfile
-names as code with the normal uncolored fallback. Explicit formats take precedence;
+names as code using the bundled Containerfile grammar. Explicit formats take precedence;
 recognized Markdown and image extensions keep their formats.
 Local image blocks are built only when image graphics are enabled. Disabled or
 unsupported graphics retain the existing flat image references and never open
@@ -107,6 +107,13 @@ Standalone code uses one block and the same syntax budgets; files above the
 128 KiB block limit remain complete uncolored code. Bounded readers cap code,
 diagram, and pager text at 64 MiB. Extension detection initializes no parsers,
 queries, or graphics resources.
+Dockerfile highlighting reuses the published grammar's highlight and injection
+queries. One nonrecursive layer handles independent Bash command/`RUN` heredoc
+regions and JSON/YAML/TOML `COPY` heredocs. All regions share the outer block's
+capture and time budgets. Disjoint ranges keep the total embedded source length
+within the outer block's length; each tree is released before the next region.
+Sorted span overlays clear parent colors inside supported regions without a
+per-byte color buffer. Other embedded languages retain the parent syntax colors.
 Code line numbers are terminal decoration. The CLI enables them automatically
 for standalone code; `--line-numbers on` includes Markdown blocks. The renderer
 counts newlines across existing code runs without copying the block, then adds

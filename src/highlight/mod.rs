@@ -1,10 +1,11 @@
 //! Bounded, terminal-independent syntax spans. No editor or display dependencies.
 
+mod injections;
 mod languages;
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
+    collections::{BinaryHeap, HashMap, hash_map::Entry},
     ops::{ControlFlow, Range},
     time::{Duration, Instant},
 };
@@ -84,6 +85,37 @@ pub struct Span {
     pub highlight: Highlight,
 }
 
+/// One block, including embedded languages. Query compilation is bounded by the
+/// fixed grammar set and invocation deadline; parse/query work shares one budget.
+struct Budget {
+    deadline: Instant,
+    invocation_deadline: Instant,
+    captures: usize,
+}
+
+impl Budget {
+    fn new(start: Instant, remaining: Duration) -> Self {
+        Self {
+            deadline: start + BLOCK_TIME.min(remaining),
+            invocation_deadline: start + remaining,
+            captures: MAX_CAPTURES,
+        }
+    }
+
+    fn compiled(&mut self, elapsed: Duration) {
+        self.deadline = (self.deadline + elapsed).min(self.invocation_deadline);
+    }
+
+    fn expired(&self) -> bool {
+        Instant::now() >= self.deadline
+    }
+
+    fn consume(&mut self, count: usize) -> Option<()> {
+        self.captures = self.captures.checked_sub(count)?;
+        (!self.captures.is_multiple_of(64) || !self.expired()).then_some(())
+    }
+}
+
 /// One rendering invocation. Only compiled queries and parser scratch space are
 /// retained; syntax trees, captures, and token spans belong to a single block.
 pub struct Highlighter {
@@ -128,16 +160,50 @@ impl Highlighter {
     }
 
     fn block(&mut self, language: Language, text: &str, start: Instant) -> Option<Vec<Span>> {
-        let compiled = self
-            .queries
-            .entry(language)
-            .or_insert_with(|| language.compile())
-            .as_ref()?;
-        // Query compilation has a fixed, bundled input; parsing and query
-        // execution have cooperative deadlines for document-controlled work.
-        let now = Instant::now();
-        let deadline = (start + self.remaining_time).min(now + BLOCK_TIME);
-        if now >= deadline {
+        let mut budget = Budget::new(start, self.remaining_time);
+        let (spans, injections) = self.part(language, text, &mut budget)?;
+        if injections.is_empty() {
+            return Some(spans);
+        }
+        let mut replacements = Vec::with_capacity(injections.len());
+        for injection in injections {
+            let (spans, nested) = self.part(
+                injection.language,
+                text.get(injection.range.clone())?,
+                &mut budget,
+            )?;
+            // Only one embedded layer is supported. Disjoint ranges keep the
+            // total embedded source length within the outer block's length.
+            if !nested.is_empty() {
+                return None;
+            }
+            replacements.push((injection.range, spans));
+        }
+        let spans = injections::overlay(spans, replacements);
+        (!budget.expired()).then_some(spans)
+    }
+
+    fn part(
+        &mut self,
+        language: Language,
+        text: &str,
+        budget: &mut Budget,
+    ) -> Option<(Vec<Span>, Vec<injections::Injection>)> {
+        if budget.expired() {
+            return None;
+        }
+        let compiled = match self.queries.entry(language) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => {
+                let start = Instant::now();
+                let compiled = language.compile();
+                budget.compiled(start.elapsed());
+                entry.insert(compiled)
+            }
+        }
+        .as_ref()?;
+        let deadline = budget.deadline;
+        if budget.expired() {
             return None;
         }
         let parser = self.parser.get_or_insert_with(Parser::new);
@@ -175,12 +241,8 @@ impl Highlighter {
                 text.as_bytes(),
                 QueryCursorOptions::new().progress_callback(&mut progress),
             );
-            let mut count = 0;
             while let Some((found, index)) = matches.next() {
-                count += 1;
-                if count > MAX_CAPTURES || (count % 64 == 0 && Instant::now() >= deadline) {
-                    return None;
-                }
+                budget.consume(1)?;
                 let capture = found.captures()[*index];
                 let kind = compiled.kinds[capture.index as usize];
                 let range = capture.node.byte_range();
@@ -197,8 +259,13 @@ impl Highlighter {
         if cursor.did_exceed_match_limit() || Instant::now() >= deadline {
             return None;
         }
+        let injections = if let Some(query) = &compiled.injections {
+            injections::collect(query, &tree, text, budget)?
+        } else {
+            Vec::new()
+        };
         let spans = resolve(captures);
-        (Instant::now() < deadline).then_some(spans)
+        (!budget.expired()).then_some((spans, injections))
     }
 }
 
@@ -311,6 +378,14 @@ mod tests {
                 Highlight::Keyword,
             ),
             ("yml", "value: 42\n", "42", Highlight::Number),
+            ("dockerfile", "FROM scratch\n", "FROM", Highlight::Keyword),
+            (
+                "CONTAINERFILE",
+                "from scratch\n",
+                "from",
+                Highlight::Keyword,
+            ),
+            ("docker", "CoPy . /app\n", "CoPy", Highlight::Keyword),
         ] {
             let spans = Highlighter::default()
                 .highlight(label, text)
@@ -361,12 +436,144 @@ mod tests {
     }
 
     #[test]
+    fn dockerfile_colors_instructions_flags_shell_and_supported_heredocs() {
+        let text = include_str!("../../tests/fixtures/Dockerfile");
+        let spans = Highlighter::default()
+            .highlight("dockerfile", text)
+            .unwrap();
+        for (token, expected) in [
+            ("# syntax=", Highlight::Comment),
+            ("FROM", Highlight::Keyword),
+            ("from alpine", Highlight::Keyword),
+            ("CoPy", Highlight::Keyword),
+            ("${VERSION}", Highlight::Punctuation),
+            ("VERSION}", Highlight::Constant),
+            ("GREETING=", Highlight::Property),
+            ("--chown=1000:1000", Highlight::Property),
+            ("--from=build", Highlight::Property),
+            ("8080", Highlight::Number),
+            ("\"/bin/sh\"", Highlight::String),
+            ("echo \"$GREETING\"", Highlight::Function),
+            ("printf", Highlight::Function),
+            ("if true", Highlight::Keyword),
+            ("\"enabled\"", Highlight::String),
+            ("true,", Highlight::Constant),
+            ("true\nname:", Highlight::Constant),
+            ("42", Highlight::Number),
+            ("\"café\"", Highlight::String),
+        ] {
+            assert_eq!(
+                color_at(&spans, text.find(token).unwrap()),
+                Some(expected),
+                "{token}"
+            );
+        }
+        // Embedded syntax clears the parent heredoc's string color in whitespace,
+        // while keeping its delimiters outside the embedded region.
+        assert_eq!(color_at(&spans, text.find("    echo").unwrap()), None);
+        assert_eq!(
+            color_at(&spans, text.find("\nEOF").unwrap() + 1),
+            Some(Highlight::Label)
+        );
+        assert!(
+            spans
+                .iter()
+                .all(|span| text.get(span.range.clone()).is_some())
+        );
+        assert!(
+            spans
+                .windows(2)
+                .all(|pair| pair[0].range.end <= pair[1].range.start)
+        );
+    }
+
+    #[test]
+    fn dockerfile_heredocs_match_their_standalone_language_spans() {
+        let source = include_str!("../../tests/fixtures/Dockerfile");
+        let spans = Highlighter::default()
+            .highlight("dockerfile", source)
+            .unwrap();
+        for (language, text) in [
+            ("json", "{\"enabled\": true, \"count\": 2}\n"),
+            ("yaml", "enabled: true\nname: \"café\"\n"),
+            ("toml", "enabled = true\ncount = 42\n"),
+            (
+                "bash",
+                "if true; then\n    echo \"hello from a heredoc\"\nfi\n",
+            ),
+        ] {
+            let start = source.find(text).unwrap();
+            let end = start + text.len();
+            let actual: Vec<_> = spans
+                .iter()
+                .filter_map(|span| {
+                    let left = span.range.start.max(start);
+                    let right = span.range.end.min(end);
+                    (left < right).then_some(Span {
+                        range: left.saturating_sub(start)..right.saturating_sub(start),
+                        highlight: span.highlight,
+                    })
+                })
+                .collect();
+            let expected = Highlighter::default().highlight(language, text).unwrap();
+            assert_eq!(actual, expected, "{language}");
+        }
+    }
+
+    #[test]
+    fn dockerfile_embedded_documents_are_independent_and_unknown_languages_keep_parent_colors() {
+        let text = "RUN echo \"unterminated\nRUN printf '%s' \"next\"\nCOPY <<EOF /app/file.xml\n<item/>\nEOF\n";
+        let spans = Highlighter::default()
+            .highlight("containerfile", text)
+            .unwrap();
+        assert_eq!(
+            color_at(&spans, text.find("printf").unwrap()),
+            Some(Highlight::Function)
+        );
+        assert_eq!(
+            color_at(&spans, text.find("\"next\"").unwrap()),
+            Some(Highlight::String)
+        );
+        assert_eq!(
+            color_at(&spans, text.find("<item/>").unwrap()),
+            Some(Highlight::String)
+        );
+    }
+
+    #[test]
+    fn dockerfile_injection_limits_fall_back_and_allow_later_blocks() {
+        let mut engine = Highlighter::default();
+        let text = "RUN echo hello\n".repeat(injections::MAX_INJECTIONS + 1);
+        assert!(text.len() < MAX_BLOCK_BYTES);
+        assert!(engine.highlight("dockerfile", &text).is_none());
+        assert!(engine.highlight("dockerfile", "RUN echo hello\n").is_some());
+        // A capture budget belongs to the entire outer block, not each RUN.
+        let mut budget = Budget::new(Instant::now(), Duration::from_secs(1));
+        let (_, embedded) = engine
+            .part(Language::Dockerfile, "RUN echo hi\n", &mut budget)
+            .unwrap();
+        assert_eq!(embedded.len(), 1);
+        budget.captures = 0;
+        assert!(
+            engine
+                .part(Language::Bash, "echo hi", &mut budget)
+                .is_none()
+        );
+    }
+
+    #[test]
     fn unknown_and_oversized_blocks_do_not_initialize_resources() {
         let mut engine = Highlighter::default();
         assert!(engine.highlight("unknown", "fn main() {}").is_none());
         assert!(
             engine
                 .highlight("rust", &"x".repeat(MAX_BLOCK_BYTES + 1))
+                .is_none()
+        );
+        assert!(engine.parser.is_none() && engine.queries.is_empty());
+        assert!(
+            engine
+                .highlight("dockerfile", &"#".repeat(MAX_BLOCK_BYTES + 1))
                 .is_none()
         );
         assert!(engine.parser.is_none() && engine.queries.is_empty());

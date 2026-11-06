@@ -5,6 +5,7 @@ use super::CaptureKind;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum Language {
     Bash,
+    Dockerfile,
     Go,
     JavaScript,
     Json,
@@ -20,12 +21,17 @@ pub(super) struct Compiled {
     pub grammar: tree_sitter::Language,
     pub query: Query,
     pub kinds: Vec<CaptureKind>,
+    pub injections: Option<Box<Query>>,
 }
 
 impl Language {
     pub fn find(label: &str) -> Option<Self> {
         const ALIASES: &[(&[&str], Language)] = &[
             (&["bash", "sh", "shell"], Language::Bash),
+            (
+                &["dockerfile", "containerfile", "docker"],
+                Language::Dockerfile,
+            ),
             (&["go", "golang"], Language::Go),
             (
                 &["javascript", "js", "jsx", "mjs", "cjs"],
@@ -52,6 +58,15 @@ impl Language {
             Self::Bash => (
                 tree_sitter_bash::LANGUAGE.into(),
                 &[tree_sitter_bash::HIGHLIGHT_QUERY],
+            ),
+            Self::Dockerfile => (
+                tree_sitter_containerfile::LANGUAGE.into(),
+                &[
+                    // Flags such as --chown=1000:1000 occupy one param node;
+                    // the bundled query expects a named child that is absent.
+                    "(param) @property\n",
+                    tree_sitter_containerfile::HIGHLIGHTS_QUERY,
+                ],
             ),
             Self::Go => (
                 tree_sitter_go::LANGUAGE.into(),
@@ -108,10 +123,18 @@ impl Language {
             .iter()
             .map(|name| CaptureKind::from_name(name))
             .collect();
+        let injections = if self == Self::Dockerfile {
+            Some(Box::new(
+                Query::new(&grammar, tree_sitter_containerfile::INJECTIONS_QUERY).ok()?,
+            ))
+        } else {
+            None
+        };
         Some(Compiled {
             grammar,
             query,
             kinds,
+            injections,
         })
     }
 }

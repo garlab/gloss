@@ -75,7 +75,8 @@ Extensions are case insensitive; other files and stdin default to Markdown.
 All input formats work with `--pager` and named files support `--watch`.
 `Cargo.lock` uses TOML highlighting. `Dockerfile`, `Dockerfile.dev`,
 `build.Dockerfile`, and equivalent `Containerfile` names are recognized as code.
-Dockerfiles currently use an uncolored code panel; no Dockerfile grammar is bundled.
+Dockerfile and Containerfile inputs share syntax colors, including shell commands
+and supported heredocs.
 
 ```sh
 mdviewer diagram.mmd
@@ -126,9 +127,15 @@ Use `--links off` to disable hyperlinks. See [Markdown extensions](docs/markdown
 for syntax, limits, and fallback behavior.
 
 Fenced code uses syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX,
-JSON, Bash/shell, Go, TOML, and YAML. Common aliases such as `rs`, `py`, `js`,
-`ts`, `sh`, and `yml` are accepted without case sensitivity. Multiline comments
-and strings retain their context before the code is wrapped.
+JSON, Bash/shell, Go, TOML, YAML, and Dockerfile/Containerfile. Common aliases such
+as `rs`, `py`, `js`, `ts`, `sh`, `yml`, and `docker` are accepted without case
+sensitivity. Multiline comments and strings retain their context before the code
+is wrapped.
+
+Dockerfile shell commands and `RUN` heredocs use Bash highlighting. `COPY` heredocs
+targeting JSON, YAML, or TOML files use those grammars. Embedded regions share the
+outer block's highlighting budget, with at most 128 regions; exhausted limits
+keep the complete block uncolored. See [syntax highlighting](docs/syntax-highlighting.md).
 
 Use `--no-highlight` to keep the rest of the theme while disabling syntax colors.
 Unknown languages and indented code retain the normal code panel. Highlighting
@@ -326,8 +333,8 @@ change the clipboard itself.
 Math support follows the KaTeX subset implemented by `katex-native`.
 
 Complex combinations of nested blocks still need layout improvements.
-Embedded languages inside code strings or HTML are not
-highlighted separately; unsupported fences remain uncolored.
+Embedded-language highlighting is currently limited to Dockerfile shell commands
+and the supported heredocs above; unsupported fences remain uncolored.
 Remote image URLs remain text references. HTML is not executed.
 
 ## Development

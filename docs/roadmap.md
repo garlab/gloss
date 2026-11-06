@@ -36,8 +36,9 @@ Standalone code, Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with exten
 detection, explicit format selection and pager/watch support. Code files reuse
 the bounded syntax highlighter; `--language` selects code mode for stdin or
 overrides the filename's language. Named-file detection includes `Cargo.lock`
-and Dockerfile/Containerfile variants; Dockerfile syntax coloring remains a
-possible grammar addition. Code line numbers are enabled for standalone code
+and Dockerfile/Containerfile variants, with syntax colors and bounded Bash and
+JSON/YAML/TOML heredoc highlighting. Further language grammars and embedded-language
+support need the same resource checks. Code line numbers are enabled for standalone code
 and available for Markdown blocks, with numbered source lines and unnumbered
 wrapped continuations. SGF fences reuse
 the native shared parser and board renderer, with main-line game/move selection,
