@@ -87,15 +87,18 @@ its `document-graphics-mermaid` 0.2.1 backend, and `katex-native` 0.1.0. Registr
 lockfiles require no local overrides. Keep shared API and resource checks covered
 by both terminal and GUI integration tests.
 
-- Add clean-checkout CI for formatting, Clippy,
-  Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
-  version against the locked dependencies.
-- Establish a tested platform matrix before adding release binaries or package
-  distribution. The CLI remains unpublished; library releases are versioned
-  independently.
+Clean-checkout CI is configured for Linux, macOS, and Windows, with formatting,
+Clippy, Rust tests, Unix pseudo-terminal tests, a Rust 1.90 check, and package
+verification. The tag-triggered release workflow reuses those checks before
+publishing `gloss-cli`. [Releasing](releasing.md) records the initial publication,
+Trusted Publisher configuration, and Homebrew handoff.
 
-A public checkout should build without private files or machine-specific
-configuration before distribution is enabled.
+- Complete the first hosted matrix run and registry publication, then add the
+  `gloss` formula to the separate Homebrew tap.
+- Establish platform and terminal coverage before adding prebuilt binaries or
+  broader distribution. Windows pager/watch support remains separate work.
+- Keep library releases independently versioned. Release from a clean checkout
+  without local dependency overrides or machine-specific configuration.
 
 ## Terminal integration
 

@@ -3,7 +3,7 @@
 The Cargo package is `gloss-cli`; the executable and planned Homebrew formula
 are named `gloss`.
 
-A terminal Markdown viewer with native inline and display equations. Math is laid
+A terminal viewer for Markdown, math, diagrams, images, and code. Math is laid
 out by `katex-native`; surrounding prose stays selectable terminal text. No
 browser, Node.js, or external TeX installation is needed at runtime.
 
@@ -20,8 +20,9 @@ library and its native `document-graphics-mermaid` backend. Cargo downloads thes
 dependencies from crates.io. gloss enables the library's
 `images` and `sgf` features; native image codecs and image workers remain disabled.
 
-From the `gloss` directory, install locally and try the included examples.
-Cargo's binary directory must be on your `PATH`.
+The first crates.io release is being prepared. From the `gloss` directory,
+install locally and try the included examples. Cargo's binary directory must
+be on your `PATH`; building also requires a C compiler for the syntax grammars.
 
 ```sh
 cargo install --path . --locked
@@ -346,6 +347,7 @@ Remote image URLs remain text references. HTML is not executed.
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+cargo +1.90.0 check --locked --all-targets
 cargo build --locked
 python3 tests/terminal_smoke.py target/debug/gloss  # Unix, Python 3
 python3 tests/pager_smoke.py target/debug/gloss
@@ -358,6 +360,13 @@ also cover input, search, image cropping/reuse, resize, atomic saves, and termin
 restoration. Visual checks
 in real terminals are still needed to assess font alignment, scrolling, and
 selection behavior.
+
+[CI](.github/workflows/ci.yml) runs Rust checks on Linux, macOS, and Windows,
+Unix pseudo-terminal checks on Linux and macOS, and minimum-Rust and package
+verification on Linux. The pager and `--watch` require Unix; Windows uses direct
+output. See [releasing](docs/releasing.md) for the first crates.io publication,
+tag-triggered releases, and the Homebrew handoff. Hosted platform checks must
+pass before publication.
 
 See [architecture](docs/architecture.md) for module boundaries and contracts,
 [feature design](docs/feature-design.md) for planned rendering features and
@@ -377,8 +386,8 @@ The [local image implementation](docs/images.md) records decoder, cache, output,
 and SVG limits, together with its measurements.
 The [Mermaid implementation](docs/mermaid.md) records native coverage, worker
 limits, and comparisons with the official renderer.
-The terminal application is not published to crates.io. The independently versioned
-`document-graphics` library has no terminal or GUI dependencies.
+The independently versioned `document-graphics` library has no terminal or GUI
+dependencies.
 
 ## License
 

@@ -6,9 +6,14 @@ name = "gloss-cli"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
-description = "A terminal Markdown viewer with native inline and display equations."
+description = "A terminal viewer for Markdown, math, diagrams, images, and code."
 license = "MIT"
-publish = false
+readme = "README.md"
+repository = "https://github.com/garlab/gloss"
+keywords = ["markdown", "terminal", "mermaid", "latex", "syntax-highlighting"]
+categories = ["command-line-utilities", "visualization"]
+publish = ["crates-io"]
+include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
 
 [[bin]]
 name = "gloss"
