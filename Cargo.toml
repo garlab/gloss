@@ -2,13 +2,17 @@
 resolver = "3"
 
 [package]
-name = "mdviewer"
+name = "gloss-cli"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.90"
 description = "A terminal Markdown viewer with native inline and display equations."
 license = "MIT"
 publish = false
+
+[[bin]]
+name = "gloss"
+path = "src/main.rs"
 
 [dependencies]
 document-graphics = { version = "=0.1.8", features = ["images", "sgf"] }

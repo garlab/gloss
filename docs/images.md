@@ -43,9 +43,9 @@ copying.
 The loader is created only when an enabled image block is encountered. PNG/JPEG
 decoding uses the optional `images` API in `document-graphics`, backed by
 `image` with only those codecs enabled. SVG uses its strict document renderer
-with bundled fonts. mdviewer does not enable native codecs or the broader image
+with bundled fonts. gloss does not enable native codecs or the broader image
 worker. Image decoding adds no helper process or persistent cache. File-access
-policy, invocation budgets, fitting bounds and cache eviction stay in mdviewer.
+policy, invocation budgets, fitting bounds and cache eviction stay in gloss.
 
 | Limit | Behavior |
 | --- | --- |
@@ -204,10 +204,10 @@ plain and exact-source exports.
 
 Generate inputs using the existing [benchmark instructions](performance-baseline.md).
 The generator now adds `images-*` documents and deterministic external assets.
-Select them with `--corpus 'images-*' --renderer mdviewer/terminal-images`.
+Select them with `--corpus 'images-*' --renderer gloss/terminal-images`.
 Compare `--image-mode auto` with `--image-mode off`; use `--image-mode legacy`
 for older binaries that predate the `--images` flag. The runner checks asset and
-document hashes as well as expected image counts. Include `mdviewer/plain-pipe`
+document hashes as well as expected image counts. Include `gloss/plain-pipe`
 to check export costs.
 
 ## Shared decoder extraction

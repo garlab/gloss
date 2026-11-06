@@ -1,7 +1,7 @@
 # Native ABC music notation
 
 Status: deferred design. ABC engraving is not implemented and does not block the
-initial mdviewer release. An `abc` fence currently remains a code block. No music
+initial gloss release. An `abc` fence currently remains a code block. No music
 backend or JavaScript runtime is selected by this document.
 
 The intended feature is sheet music from fenced ABC notation, rendered entirely
@@ -21,12 +21,12 @@ collisions, and system breaks still need an engine.
 
 Source and manifest inspection produced this shortlist. These are candidates,
 not independently verified compatibility or performance results; no native ABC
-candidate has been benchmarked for mdviewer.
+candidate has been benchmarked for gloss.
 
 | Candidate | Reusable pieces | What needs evaluation |
 | --- | --- | --- |
 | [acorde](https://github.com/kent-tokyo/acorde/tree/a1c726b009fe33ee8e4bb585e8eae6fd25ddb750) | Separate Rust ABC I/O, score model, layout, and SVG crates; MIT OR Apache-2.0. | Evaluate the complete path first. Its [coverage matrix](https://github.com/kent-tokyo/acorde/blob/a1c726b009fe33ee8e4bb585e8eae6fd25ddb750/docs/notation-coverage.md) marks many ABC features partial. Review loss diagnostics, timing precision, source spans, cancellation, SVG compatibility, and glyph quality. |
-| [croma-core](https://github.com/ro-ag/croma/tree/f1bd4588eee0af130b78d2e212277083558922fd/crates/croma-core) | ABC parser, diagnostics, source spans, rational score model, and MusicXML conversion; Apache-2.0. Its default core manifest has no runtime dependencies. | Strong parser/model candidate, with engraving still to supply. The inspected workspace declares Rust 1.96, above mdviewer's 1.90; investigate an earlier compatible release or a justified backport before adoption. Public model types also have a narrower stability promise than conversion functions. |
+| [croma-core](https://github.com/ro-ag/croma/tree/f1bd4588eee0af130b78d2e212277083558922fd/crates/croma-core) | ABC parser, diagnostics, source spans, rational score model, and MusicXML conversion; Apache-2.0. Its default core manifest has no runtime dependencies. | Strong parser/model candidate, with engraving still to supply. The inspected workspace declares Rust 1.96, above gloss's 1.90; investigate an earlier compatible release or a justified backport before adoption. Public model types also have a narrower stability promise than conversion functions. |
 | [abc-parser 0.4.0](https://docs.rs/crate/abc-parser/0.4.0) | Focused PEG parser and ABC data types; MIT. | A smaller parser fork candidate. Upstream explicitly describes incomplete ABC 2.1 coverage. Establish semantic lowering, diagnostics/source mapping, exact-duration behavior, and bounded parsing requirements before choosing it. |
 | [stave](https://github.com/manavbabel/stave/tree/c8750489e6a97a6fb311094b72c36d3ef22eb3f0) | Native ABC parser, rational-duration model, and notation tests; MIT OR Apache-2.0 for its own code. | Extraction candidate, not a terminal dependency. Its graphical path uses Verovio; reusing the parser does not supply a Rust engraver. Audit retained notation and source locations before extraction. |
 
@@ -181,7 +181,7 @@ changes should reuse logical layout when its width is unchanged.
   Keep engine work behind its existing bounded request model until cancellation
   and allocation behavior justify an in-process path. Extend the protocol for
   system-level output without permitting an unbounded batch response.
-- **mdviewer and other consumers:** fence recognition, capability decisions,
+- **gloss and other consumers:** fence recognition, capability decisions,
   reading width, theme, source fallback, queues, cache budgets, scrolling,
   copying/export, and watch/resize invalidation. Add the adapter to shared graphics
   so terminal and GUI consumers can reuse it independently.
@@ -190,7 +190,7 @@ Music parsing and engraving do not belong in katex-native. General graphics
 limits or drawing helpers are candidates for sharing only when both consumers
 need the same contract; the math display list should not become a music model.
 
-For mdviewer, recognize `abc` before generic fence rendering only once the feature
+For gloss, recognize `abc` before generic fence rendering only once the feature
 is available. Unsupported terminals, disabled graphics, errors, or exhausted
 budgets retain the complete fence. Plain/source exports continue to carry ABC
 text and never initialize the engine. Raster notes are not selectable text;
@@ -301,7 +301,7 @@ New music rendering costs need their own measured acceptance limits.
    and cancellation alongside each algorithm, not after graphical success.
 4. Add optional document-graphics integration and validate worker cleanup,
    system output, fonts/SVG/raster limits, and shared-library regressions.
-5. Integrate mdviewer fences, source fallbacks, pager/watch/reflow and export tests;
+5. Integrate gloss fences, source fallbacks, pager/watch/reflow and export tests;
    repeat resource and terminal checks before documenting ABC as supported.
 
 The release can proceed while this work remains deferred. No runtime dependency,

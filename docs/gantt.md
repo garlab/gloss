@@ -118,7 +118,7 @@ latency; those timings are not used above.
 
 Reproduce with `bench/generate.py` and `bench/run.py` using an external work
 directory prepared as described in the baseline. Select `--renderer
-mdviewer/terminal-mermaid --corpus 'mermaid-gantt-*.md'` and
+gloss/terminal-mermaid --corpus 'mermaid-gantt-*.md'` and
 `--diagram-tiles mermaid-gantt-tasks-128.md=4` at these cell dimensions.
 Use `--mermaid-mode off` to measure the disabled path; use `--process-tree` in a
 separate run for sampled combined memory, because sampling affects short timings.
@@ -154,6 +154,6 @@ The unique case still renders 32 charts and retains source for eight; repeated
 charts reuse the cache. RSS uses `wait4`, not simultaneous CLI/worker totals.
 There are no added dependencies, and the measured release binary changes from
 17,095,488 to 17,095,776 bytes. The original performance baseline is unchanged.
-Reproduce the time cases with `--renderer mdviewer/terminal-mermaid --corpus
+Reproduce the time cases with `--renderer gloss/terminal-mermaid --corpus
 'mermaid-gantt-time-*.md' --diagram-tiles mermaid-gantt-time-tasks-128.md=4`.
 Generated inputs, PNG reviews and raw samples remain outside the repository.

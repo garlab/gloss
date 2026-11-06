@@ -1,6 +1,6 @@
 """Exercise interactive input, viewport graphics, reloads, and terminal cleanup.
 
-Build first: python3 tests/pager_smoke.py target/debug/mdviewer
+Build first: python3 tests/pager_smoke.py target/debug/gloss
 Uses a controlling Unix PTY; no GUI or third-party Python dependencies.
 """
 import base64
@@ -22,7 +22,7 @@ import unicodedata
 import unittest
 import zlib
 
-BINARY = Path(sys.argv.pop(1) if len(sys.argv) > 1 else "target/debug/mdviewer").resolve()
+BINARY = Path(sys.argv.pop(1) if len(sys.argv) > 1 else "target/debug/gloss").resolve()
 CSI = re.compile(rb"\x1b\[([?0-9;]*)([@-~])")
 
 

@@ -4,7 +4,8 @@ Terminal cases use a 100x40 pseudo-terminal (14x40 for terminal-narrow), with
 10x20-pixel cells by default (--cell-size overrides them), drained without screen
 painting. Times include startup, parsing, layout, encoding, and PTY I/O,
 but exclude a real emulator's image decoding, GPU work, and scrollback storage.
-Harness version 2 avoids a 10 ms empty-selector wait after output streams close;
+Harness version 3 uses gloss renderer names and gloss_commit metadata.
+Version 2 avoids a 10 ms empty-selector wait after output streams close;
 older short-case wall times can include that delay. CPU and RSS are unaffected.
 Defaults: one warm-up, three measured processes per case, warm filesystem caches.
 """
@@ -28,9 +29,9 @@ import sys
 import termios
 import time
 
-RENDERERS = ["mdviewer/terminal-tex", "glow/terminal",
-             "mdviewer/terminal-math", "mdviewer/plain-pipe", "mdviewer/terminal-narrow",
-             "mdviewer/terminal-images", "mdviewer/terminal-mermaid", "mdviewer/terminal-sgf"]
+RENDERERS = ["gloss/terminal-tex", "glow/terminal",
+             "gloss/terminal-math", "gloss/plain-pipe", "gloss/terminal-narrow",
+             "gloss/terminal-images", "gloss/terminal-mermaid", "gloss/terminal-sgf"]
 
 
 def cell_size(value):
@@ -56,7 +57,7 @@ parser.add_argument("--renderer", action="append", choices=RENDERERS)
 parser.add_argument("--hardware", default="unspecified", help="Generic CPU/RAM description; no hostname")
 parser.add_argument("--profile", default="unspecified", help="Build command or profile used for the binary")
 parser.add_argument("--binary-revision", help="Source revision actually used to build the binary")
-parser.add_argument("--no-highlight", action="store_true", help="Measure mdviewer with syntax highlighting disabled")
+parser.add_argument("--no-highlight", action="store_true", help="Measure gloss with syntax highlighting disabled")
 parser.add_argument("--image-mode", choices=["auto", "off", "legacy"], default="auto",
                     help="Use legacy for binaries predating --images; off measures the disabled path")
 parser.add_argument("--mermaid-mode", choices=["auto", "off", "legacy"], default="auto",
@@ -96,20 +97,20 @@ def command(renderer, name):
     if renderer == "glow/terminal":
         return ["glow", "--config", str(ROOT / "glow.yml"), "-s", "dark", "-w", "84", file]
     flags = {
-        "mdviewer/terminal-tex": ["--math", "tex"],
-        "mdviewer/terminal-narrow": ["--math", "tex"],
-        "mdviewer/terminal-math": ["--math", "kitty"],
-        "mdviewer/terminal-images": ["--math", "tex"],
-        "mdviewer/terminal-mermaid": ["--math", "tex"],
-        "mdviewer/terminal-sgf": ["--math", "tex"],
-        "mdviewer/plain-pipe": ["--output", "text"],
+        "gloss/terminal-tex": ["--math", "tex"],
+        "gloss/terminal-narrow": ["--math", "tex"],
+        "gloss/terminal-math": ["--math", "kitty"],
+        "gloss/terminal-images": ["--math", "tex"],
+        "gloss/terminal-mermaid": ["--math", "tex"],
+        "gloss/terminal-sgf": ["--math", "tex"],
+        "gloss/plain-pipe": ["--output", "text"],
     }[renderer]
     image_flags = [] if args.image_mode == "legacy" else ["--images",
-        "kitty" if args.image_mode == "auto" and renderer == "mdviewer/terminal-images" else args.image_mode]
+        "kitty" if args.image_mode == "auto" and renderer == "gloss/terminal-images" else args.image_mode]
     mermaid_flags = [] if args.mermaid_mode == "legacy" else ["--mermaid",
-        "kitty" if args.mermaid_mode == "auto" and renderer == "mdviewer/terminal-mermaid" else args.mermaid_mode]
+        "kitty" if args.mermaid_mode == "auto" and renderer == "gloss/terminal-mermaid" else args.mermaid_mode]
     sgf_flags = [] if args.sgf_mode == "legacy" else ["--sgf",
-        "kitty" if args.sgf_mode == "auto" and renderer == "mdviewer/terminal-sgf" else args.sgf_mode]
+        "kitty" if args.sgf_mode == "auto" and renderer == "gloss/terminal-sgf" else args.sgf_mode]
     return [str(BINARY), *flags, *image_flags, *mermaid_flags, *sgf_flags, *(["--no-highlight"] if args.no_highlight else []), *(["--links", "off"] if args.no_links else []), file]
 
 
@@ -135,13 +136,13 @@ def kill_group(process):
 
 
 def run(renderer, name):
-    tty = renderer != "mdviewer/plain-pipe"
+    tty = renderer != "gloss/plain-pipe"
     master = slave = process = None
     selector = selectors.DefaultSelector()
     try:
         if tty:
             master, slave = pty.openpty()
-            columns = 14 if renderer == "mdviewer/terminal-narrow" else 100
+            columns = 14 if renderer == "gloss/terminal-narrow" else 100
             cw, ch = args.cell_size
             fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, columns, columns * cw, 40 * ch))
         start = time.perf_counter()
@@ -266,38 +267,38 @@ cases = []
 for name in ["commonmark.md", "mixed-256k.md", "mixed-1m.md", "mixed-5m.md", "mixed-10m.md", "long-lines-1m.md"]:
     cases.extend((renderer, name) for renderer in RENDERERS[:2])
 for name in ["math-100.md", "math-1000.md", "math-5000.md", "math-repeated-1000.md"]:
-    cases.append(("mdviewer/terminal-math", name))
+    cases.append(("gloss/terminal-math", name))
 for name in ["mixed-1m.md", "mixed-10m.md", "math-5000.md"]:
-    cases.append(("mdviewer/plain-pipe", name))
-cases.append(("mdviewer/terminal-tex", "math-5000.md"))
+    cases.append(("gloss/plain-pipe", name))
+cases.append(("gloss/terminal-tex", "math-5000.md"))
 for name in ["prose-1m.md", "prose-10m.md", "code-languages.md", "code-multiline.md",
              "code-over-limit.md", "code-captures.md"]:
     if name in CORPORA:
-        cases.append(("mdviewer/terminal-tex", name))
+        cases.append(("gloss/terminal-tex", name))
 for name in ["tables-1m.md", "tables-10m.md", "tables-wide.md", "tables-over-limit.md", "tables-math-100.md"]:
     if name in CORPORA:
-        cases.append(("mdviewer/terminal-tex", name))
+        cases.append(("gloss/terminal-tex", name))
         if name in ("tables-1m.md", "tables-10m.md"):
-            cases.append(("mdviewer/plain-pipe", name))
+            cases.append(("gloss/plain-pipe", name))
         if name == "tables-1m.md":
-            cases.append(("mdviewer/terminal-narrow", name))
+            cases.append(("gloss/terminal-narrow", name))
         if name == "tables-math-100.md":
-            cases.append(("mdviewer/terminal-math", name))
+            cases.append(("gloss/terminal-math", name))
 for name in CORPORA:
     if name.startswith("extensions-"):
-        cases.append(("mdviewer/terminal-tex", name))
-        cases.append(("mdviewer/plain-pipe", name))
+        cases.append(("gloss/terminal-tex", name))
+        cases.append(("gloss/plain-pipe", name))
         if CORPORA[name].get("equations", 0):
-            cases.append(("mdviewer/terminal-math", name))
+            cases.append(("gloss/terminal-math", name))
     if name.startswith("images-"):
-        cases.append(("mdviewer/terminal-images", name))
-        cases.append(("mdviewer/plain-pipe", name))
+        cases.append(("gloss/terminal-images", name))
+        cases.append(("gloss/plain-pipe", name))
     if name.startswith("mermaid-"):
-        cases.append(("mdviewer/terminal-mermaid", name))
-        cases.append(("mdviewer/plain-pipe", name))
+        cases.append(("gloss/terminal-mermaid", name))
+        cases.append(("gloss/plain-pipe", name))
     if name.startswith("sgf-"):
-        cases.append(("mdviewer/terminal-sgf", name))
-        cases.append(("mdviewer/plain-pipe", name))
+        cases.append(("gloss/terminal-sgf", name))
+        cases.append(("gloss/plain-pipe", name))
 cases = [(renderer, name) for renderer, name in cases
          if (not args.renderer or renderer in args.renderer)
          and (not args.corpus or any(fnmatch.fnmatchcase(name, pattern) for pattern in args.corpus))]
@@ -314,8 +315,8 @@ del data
 
 results = {
     "metadata": {
-        "harness_version": 2,
-        "mdviewer_commit": args.binary_revision,
+        "harness_version": 3,
+        "gloss_commit": args.binary_revision,
         "source_checkout": checkout(PROJECT),
         "katex_native_checkout": checkout(PROJECT.parent / "katex-native"),
         "binary_sha256": hashlib.sha256(BINARY.read_bytes()).hexdigest(),
@@ -345,10 +346,10 @@ results = {
 }
 for renderer, name in cases:
     print(f"START {renderer} {name}", flush=True)
-    expected_images = CORPORA[name].get("equations", 0) if renderer == "mdviewer/terminal-math" else 0
-    if args.image_mode == "auto" and renderer.startswith("mdviewer/terminal"):
+    expected_images = CORPORA[name].get("equations", 0) if renderer == "gloss/terminal-math" else 0
+    if args.image_mode == "auto" and renderer.startswith("gloss/terminal"):
         expected_images += CORPORA[name].get("images", 0)
-    if renderer.startswith("mdviewer/terminal"):
+    if renderer.startswith("gloss/terminal"):
         diagrams = CORPORA[name].get("diagrams", 0) if args.mermaid_mode == "auto" else 0
         diagrams += CORPORA[name].get("boards", 0) if args.sgf_mode == "auto" else 0
         expected_images += DIAGRAM_TILES.get(name, diagrams)

@@ -144,9 +144,9 @@ repeat the 20-case comparison:
 ```sh
 python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
   --samples 3 --warmups 1 \
-  --renderer mdviewer/terminal-tex \
-  --renderer mdviewer/plain-pipe \
-  --renderer mdviewer/terminal-math
+  --renderer gloss/terminal-tex \
+  --renderer gloss/plain-pipe \
+  --renderer gloss/terminal-math
 ```
 
 Set `bench_dir` to the generated external corpus directory and `renderer` to the

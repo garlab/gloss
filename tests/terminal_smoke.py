@@ -1,6 +1,6 @@
 """Exercise the real CLI through Unix pseudo-terminals, without a GUI.
 
-Build first, then run: python3 tests/terminal_smoke.py target/debug/mdviewer
+Build first, then run: python3 tests/terminal_smoke.py target/debug/gloss
 These checks validate output policy and cell placement, not emulator appearance.
 """
 
@@ -23,7 +23,7 @@ import unicodedata
 import zlib
 
 
-BINARY = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else Path("target/debug/mdviewer").resolve()
+BINARY = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else Path("target/debug/gloss").resolve()
 SAMPLE = "Above.\n\nBefore $\\frac{a}{b}$, between $x^2$ and $\\sqrt{1+x}$ after.\n\nBelow.\n"
 GRAPHICS = re.compile(rb"\x1b_G(.*?)\x1b\\", re.DOTALL)
 OSC = re.compile(rb"\x1b\]8;;[^\x1b\x07]*(?:\x1b\\|\x07)")

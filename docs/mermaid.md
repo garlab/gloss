@@ -65,7 +65,7 @@ counts before allocation.
 One I/O thread keeps blocked writes and partial replies within the timeout.
 
 The shared `document-graphics` crate owns parsing, layout, bounded SVG/font
-rasterization, wire protocol and worker supervision. mdviewer retains its
+rasterization, wire protocol and worker supervision. gloss retains its
 invocation budget and fitted-image cache. Only this generated SVG route permits simple arrow markers, with
 limits on marker count/size and no recursive paint/marker references. Local SVG
 files retain their previous restrictions. Images use the same margins, quote
@@ -127,7 +127,7 @@ Unix CPU limit is a backstop for that computation. There is no background servic
 
 Tests in `document-graphics` cover the native subset, fitting, known
 incompatibilities, source and structure limits, protocol validation, truncated
-replies and worker timeout/reaping. mdviewer tests cover policy and unchanged
+replies and worker timeout/reaping. gloss tests cover policy and unchanged
 exports. Pseudo-terminal checks cover graphics detection, modes
 independent of math/images, selectable source, list bullets, quote rails, narrow
 windows, light/no-color modes, cache reuse after the request budget, and failures
@@ -258,7 +258,7 @@ when comparing this renderer with an older binary:
 
 ```sh
 python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
-  --renderer mdviewer/terminal-mermaid --corpus mermaid-complex.md \
+  --renderer gloss/terminal-mermaid --corpus mermaid-complex.md \
   --samples 7 --warmups 1 --diagram-tiles mermaid-complex.md=5
 ```
 
@@ -292,7 +292,7 @@ possible browser adapter or diagram type.
 The temporary official installation contains about 356.38 MiB of package files;
 the existing headless browser adds 184.26 MiB. These are logical on-disk sizes,
 excluding package-manager caches and not download sizes. The native dependency
-adds about 2.44 MiB to mdviewer's executable and needs no separate installation.
+adds about 2.44 MiB to gloss's executable and needs no separate installation.
 This cost, plus the tested compatibility subset, motivates the initial choice.
 
 ## Viewer measurements
@@ -360,7 +360,7 @@ Seven lockfile packages are added: `mermaid-rs-renderer`, `anyhow`, `json5`,
 features expand, but no new font assets or private checkout are required.
 
 Generate inputs using the [benchmark instructions](performance-baseline.md).
-Select `--corpus 'mermaid-*' --renderer mdviewer/terminal-mermaid`; compare
+Select `--corpus 'mermaid-*' --renderer gloss/terminal-mermaid`; compare
 `--mermaid-mode auto` and `--mermaid-mode off`. Use `--mermaid-mode legacy` for
 older binaries without the flag. Run `--process-tree` separately for approximate
 concurrent RSS; it requires permission to inspect process relationships.

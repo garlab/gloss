@@ -86,7 +86,7 @@ repeated boards, standalone inputs and exact exports. Pager checks cover SGF
 reloads, standalone Mermaid atomic saves and changed standalone image pixels.
 
 Generate benchmark inputs outside the checkout with `bench/generate.py`.
-`bench/run.py --renderer mdviewer/terminal-sgf --corpus 'sgf-*'` measures the
+`bench/run.py --renderer gloss/terminal-sgf --corpus 'sgf-*'` measures the
 feature cases and validates expected image counts. Use `--sgf-mode off` for
 disabled rendering and `--sgf-mode legacy` for binaries predating SGF support.
 At larger cell sizes, repeated boards can reach the unchanged output budget;

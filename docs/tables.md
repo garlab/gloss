@@ -73,7 +73,7 @@ Use `tests/fixtures/tables.md` at normal and narrow widths for manual checks.
 Large table inputs and generated results remain outside the repository. The
 benchmark generator adds large single tables, excessive columns, over-limit
 cells/rows, and a 100-equation table. Select `--corpus 'tables-*'` with the runner;
-the `mdviewer/terminal-narrow` case uses 14 columns to exercise fallback.
+the `gloss/terminal-narrow` case uses 14 columns to exercise fallback.
 
 ## Performance comparison
 

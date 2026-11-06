@@ -1,10 +1,13 @@
-# mdviewer
+# gloss
+
+The Cargo package is `gloss-cli`; the executable and planned Homebrew formula
+are named `gloss`.
 
 A terminal Markdown viewer with native inline and display equations. Math is laid
 out by `katex-native`; surrounding prose stays selectable terminal text. No
 browser, Node.js, or external TeX installation is needed at runtime.
 
-mdviewer prints into terminal scrollback and exits by default. Use `--pager` for
+gloss prints into terminal scrollback and exits by default. Use `--pager` for
 interactive reading or `--watch` for live file updates. Kitty graphics have text
 fallbacks on other terminals.
 
@@ -14,31 +17,31 @@ A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
 library and its native `document-graphics-mermaid` backend. Cargo downloads these
-dependencies from crates.io. mdviewer enables the library's
+dependencies from crates.io. gloss enables the library's
 `images` and `sgf` features; native image codecs and image workers remain disabled.
 
-From the `mdviewer` directory, install locally and try the included examples.
+From the `gloss` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
 
 ```sh
 cargo install --path . --locked
-mdviewer tests/fixtures/math.md
-mdviewer --show-math-source tests/fixtures/inline.md
-mdviewer tests/fixtures/style.md
-mdviewer tests/fixtures/code.md
-mdviewer tests/fixtures/tables.md
-mdviewer tests/fixtures/images.md
-mdviewer tests/fixtures/mermaid.md
-mdviewer tests/fixtures/gantt-time.md
-mdviewer tests/fixtures/sgf.md
-mdviewer tests/fixtures/extensions.md
+gloss tests/fixtures/math.md
+gloss --show-math-source tests/fixtures/inline.md
+gloss tests/fixtures/style.md
+gloss tests/fixtures/code.md
+gloss tests/fixtures/tables.md
+gloss tests/fixtures/images.md
+gloss tests/fixtures/mermaid.md
+gloss tests/fixtures/gantt-time.md
+gloss tests/fixtures/sgf.md
+gloss tests/fixtures/extensions.md
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
 
-To develop document-graphics alongside mdviewer, place its checkout beside
-mdviewer and add this optional override to an untracked `.cargo/config.toml`
+To develop document-graphics alongside gloss, place its checkout beside
+gloss and add this optional override to an untracked `.cargo/config.toml`
 (merging with any existing settings):
 
 ```toml
@@ -48,7 +51,7 @@ document-graphics = { path = "../document-graphics" }
 # document-graphics-mermaid = { path = "../document-graphics-mermaid" }
 ```
 
-Run Cargo from the mdviewer root so it reads the local override. To return to
+Run Cargo from the gloss root so it reads the local override. To return to
 published dependencies, remove the overrides and run `cargo check` to restore
 registry sources and checksums in `Cargo.lock`.
 
@@ -79,18 +82,18 @@ Dockerfile and Containerfile inputs share syntax colors, including shell command
 and supported heredocs.
 
 ```sh
-mdviewer diagram.mmd
-mdviewer --watch diagram.mermaid
-mdviewer picture.png
-mdviewer --pager record.sgf
-mdviewer --sgf-move 42 record.sgf
-mdviewer config.yaml
-mdviewer --watch config.toml
-mdviewer Cargo.lock
-mdviewer Dockerfile
-mdviewer --input-format code settings.conf
-cat config.yaml | mdviewer --language yaml -
-cat diagram.mmd | mdviewer --input-format mermaid -
+gloss diagram.mmd
+gloss --watch diagram.mermaid
+gloss picture.png
+gloss --pager record.sgf
+gloss --sgf-move 42 record.sgf
+gloss config.yaml
+gloss --watch config.toml
+gloss Cargo.lock
+gloss Dockerfile
+gloss --input-format code settings.conf
+cat config.yaml | gloss --language yaml -
+cat diagram.mmd | gloss --input-format mermaid -
 ```
 
 Use `--input-format markdown|code|mermaid|sgf|image` to override detection.
@@ -201,8 +204,8 @@ Text and equations share that column in both graphics and TeX modes. The width
 fits the terminal, and margins shrink automatically in narrow windows.
 
 ```sh
-mdviewer --width 100 --margin 3 notes.md
-mdviewer --width 0 --margin 0 notes.md  # Use the available terminal width.
+gloss --width 100 --margin 3 notes.md
+gloss --width 0 --margin 0 notes.md  # Use the available terminal width.
 ```
 
 The default `--math auto` enables graphics in sessions identified as Ghostty or
@@ -250,9 +253,9 @@ text styling without disabling images or hyperlinks. See
 ## Pager and live updates
 
 ```sh
-mdviewer --pager notes.md
-mdviewer --watch notes.md
-cat notes.md | mdviewer --pager -
+gloss --pager notes.md
+gloss --watch notes.md
+cat notes.md | gloss --pager -
 ```
 
 `-p` / `--pager` opens an alternate screen on Unix terminals (including macOS).
@@ -300,10 +303,10 @@ Use `--show-mermaid-source` or `--show-sgf-source` to copy diagram code through
 terminal selection.
 
 ```sh
-cat notes.md | mdviewer -
-mdviewer --output text notes.md
-mdviewer notes.md > notes.txt
-mdviewer --output source notes.md | pbcopy  # macOS
+cat notes.md | gloss -
+gloss --output text notes.md
+gloss notes.md > notes.txt
+gloss --output source notes.md | pbcopy  # macOS
 ```
 
 Pipes receive readable text with source TeX, image references, and Mermaid/SGF code,
@@ -313,7 +316,7 @@ selects that representation on a terminal too. Diagnostics go to stderr.
 
 `--output source` preserves the original UTF-8 Markdown byte for byte, including
 line endings and final-newline state. It bypasses parsing and control-character
-filtering. Clipboard commands such as `pbcopy` are external; mdviewer does not
+filtering. Clipboard commands such as `pbcopy` are external; gloss does not
 change the clipboard itself.
 
 ## Markdown and math
@@ -344,8 +347,8 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo build --locked
-python3 tests/terminal_smoke.py target/debug/mdviewer  # Unix, Python 3
-python3 tests/pager_smoke.py target/debug/mdviewer
+python3 tests/terminal_smoke.py target/debug/gloss  # Unix, Python 3
+python3 tests/pager_smoke.py target/debug/gloss
 ```
 
 Rust tests cover parsing, source preservation, wrapping, math, and output
@@ -361,6 +364,8 @@ See [architecture](docs/architecture.md) for module boundaries and contracts,
 resource limits, and [the roadmap](docs/roadmap.md) for implementation order.
 The [performance baseline](docs/performance-baseline.md) records comparisons with
 Glow and commands for repeating them without keeping large inputs in the repo.
+That frozen baseline and its raw samples retain the former `mdviewer` name.
+For current builds, use `gloss` in binary paths and benchmark renderer names.
 The [syntax highlighting measurements](docs/syntax-highlighting.md) record its
 implementation limits, dependency costs, and comparison with that baseline.
 The [rendering optimizations](docs/performance-optimizations.md) record subsequent

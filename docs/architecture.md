@@ -1,6 +1,6 @@
 # Architecture
 
-mdviewer separates the original document, layout, raster generation, and terminal
+gloss separates the original document, layout, raster generation, and terminal
 output. The Rust library API is not yet stable; these boundaries guide further
 implementation.
 
@@ -85,17 +85,17 @@ The full source and parser working storage still scale with input.
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
 `document-graphics` is a separate library repository. Its optional `images`
-module owns bounded PNG/JPEG thumbnail decoding; mdviewer does not enable its
+module owns bounded PNG/JPEG thumbnail decoding; gloss does not enable its
 native image codecs or image worker. The strict `svg` entry point retains
 bundled fonts and rejects external resources. The library also owns Mermaid
 validation/layout, bounded SVG/font rasterization, worker protocol, cancellation
 and process supervision. Its optional `sgf` module owns parsing, Go position
-reconstruction and board rasterization. mdviewer selects the displayed position
+reconstruction and board rasterization. gloss selects the displayed position
 and retains its own cache and invocation budgets.
 File resolution, allowed URI schemes and invocation limits remain here.
 It returns owned RGBA buffers and logical sizes; consumers move those buffers into
 their image types. Terminal caches, total time/output budgets and fitting remain
-in mdviewer. The shared crate contains no global queue or application lifecycle.
+in gloss. The shared crate contains no global queue or application lifecycle.
 Terminal-specific behavior belongs here. Additional graphics protocols should
 reuse the document model and layout rather than introduce separate parsers.
 

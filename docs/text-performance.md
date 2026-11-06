@@ -91,7 +91,7 @@ checking small differences.
 
 ```sh
 python3 bench/run.py --work-dir "$bench_dir" --binary "$renderer" \
-  --samples 7 --warmups 1 --renderer mdviewer/terminal-tex \
+  --samples 7 --warmups 1 --renderer gloss/terminal-tex \
   --corpus long-lines-1m.md --corpus prose-1m.md \
   --corpus prose-10m.md --corpus mixed-10m.md
 ```

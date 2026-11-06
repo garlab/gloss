@@ -4,15 +4,15 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use gloss_cli::{document::Document, export, layout, math::MathEngine, render, terminal::Geometry};
 use katex_native::Color;
-use mdviewer::{document::Document, export, layout, math::MathEngine, render, terminal::Geometry};
 use pulldown_cmark::Event;
 
 const FIXTURE: &str = include_str!("fixtures/math.md");
 
 #[test]
 fn standalone_inputs_detect_extensions_and_keep_literal_source() {
-    use mdviewer::input::{Format, Input};
+    use gloss_cli::input::{Format, Input};
     for (name, expected) in [
         ("chart.MMD", Format::Mermaid),
         ("chart.mermaid", Format::Mermaid),
@@ -87,7 +87,7 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
 #[cfg(unix)]
 #[test]
 fn special_code_filenames_keep_literal_content_and_select_language() {
-    use mdviewer::input::{Format, Input};
+    use gloss_cli::input::{Format, Input};
     use pulldown_cmark::{CodeBlockKind, Tag};
 
     let dir = tempfile::tempdir().unwrap();
@@ -164,7 +164,7 @@ fn code_line_numbers_never_change_plain_or_source_exports() {
 
 #[test]
 fn standalone_language_selection_is_explicit_and_keeps_markdown_inert() {
-    use mdviewer::input::{Format, Input};
+    use gloss_cli::input::{Format, Input};
     use pulldown_cmark::{CodeBlockKind, Tag};
 
     let source = "# Comment\nvalue: '**literal** $x$ &amp;'\n```\n";
@@ -291,7 +291,7 @@ fn standalone_images_export_references_and_reject_binary_source_output() {
 }
 
 fn cli(args: &[&str], input: &str) -> std::process::Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_mdviewer"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_gloss"))
         .args(args)
         // Even when inherited from Ghostty, a pipe must not receive graphics.
         .env("TERM_PROGRAM", "ghostty")
@@ -1093,14 +1093,14 @@ fn hyperlinks_wrap_without_leaking_and_reject_unsafe_targets() {
         "https://example.com/a b",
         "https:\\example.com",
     ] {
-        assert!(!mdviewer::links::allowed(invalid), "{invalid:?}");
+        assert!(!gloss_cli::links::allowed(invalid), "{invalid:?}");
     }
     for valid in [
         "https://example.com/path?q=1#anchor",
         "mailto:reader@example.com",
         "HTTP://example.com",
     ] {
-        assert!(mdviewer::links::allowed(valid));
+        assert!(gloss_cli::links::allowed(valid));
     }
 }
 

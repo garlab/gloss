@@ -138,7 +138,7 @@ zoom levels, or terminal versions.
 
 Generate the external corpus with the [baseline procedure](performance-baseline.md).
 The generator now also creates the four `extensions-*.md` inputs. For the updated
-viewer, run all mdviewer cases with three samples and one warm-up; omit the Glow
+viewer, run all gloss cases with three samples and one warm-up; omit the Glow
 renderer when comparing these two viewer builds. Use `--corpus 'extensions-*'` to
 isolate the added cases and `--no-links` for a hyperlink-disabled control.
 Preserve each local `results.json` before running another comparison. Do not

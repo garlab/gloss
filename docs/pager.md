@@ -109,7 +109,7 @@ threads, signal handlers, temporary files, or polling on those paths.
 
 ## Validation
 
-Run `python3 tests/pager_smoke.py target/debug/mdviewer` after building. Its
+Run `python3 tests/pager_smoke.py target/debug/gloss` after building. Its
 controlling PTY exercises piped document input, navigation, Unicode search,
 resize, graphics payloads and clipping, upload reuse/eviction, atomic saves,
 read failures/recovery, native-selection policy, and terminal restoration.
@@ -154,10 +154,10 @@ latency. These samples are references, not portable performance guarantees.
 Repeat using the existing externally generated corpora:
 
 ```sh
-python3 bench/pager.py --binary target/release/mdviewer \
-  --input "$TMPDIR/mdviewer-bench/corpora/mixed-10m.md"
-python3 bench/pager.py --binary target/release/mdviewer \
-  --input "$TMPDIR/mdviewer-bench/corpora/mermaid-repeated-100.md" \
+python3 bench/pager.py --binary target/release/gloss \
+  --input "$TMPDIR/gloss-bench/corpora/mixed-10m.md"
+python3 bench/pager.py --binary target/release/gloss \
+  --input "$TMPDIR/gloss-bench/corpora/mermaid-repeated-100.md" \
   --watch-seconds 3
 ```
 
@@ -210,8 +210,8 @@ output byte counts are unchanged. The fixed initial baseline remains untouched.
 The runner now records reload/resize latency and resident samples:
 
 ```sh
-python3 bench/pager.py --binary target/release/mdviewer \
-  --input "$TMPDIR/mdviewer-bench/corpora/math-100.md" \
+python3 bench/pager.py --binary target/release/gloss \
+  --input "$TMPDIR/gloss-bench/corpora/math-100.md" \
   --reloads 8 --resize-cycles 3 --watch-seconds 1
 ```
 

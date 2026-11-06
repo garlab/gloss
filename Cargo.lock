@@ -399,6 +399,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloss-cli"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "clap",
+ "document-graphics",
+ "flate2",
+ "image",
+ "katex-native",
+ "libc",
+ "pulldown-cmark",
+ "signal-hook",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-containerfile",
+ "tree-sitter-go",
+ "tree-sitter-javascript",
+ "tree-sitter-json",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-toml-ng",
+ "tree-sitter-typescript",
+ "tree-sitter-yaml",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -531,35 +560,6 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
-
-[[package]]
-name = "mdviewer"
-version = "0.1.0"
-dependencies = [
- "base64",
- "clap",
- "document-graphics",
- "flate2",
- "image",
- "katex-native",
- "libc",
- "pulldown-cmark",
- "signal-hook",
- "tempfile",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-containerfile",
- "tree-sitter-go",
- "tree-sitter-javascript",
- "tree-sitter-json",
- "tree-sitter-python",
- "tree-sitter-rust",
- "tree-sitter-toml-ng",
- "tree-sitter-typescript",
- "tree-sitter-yaml",
- "unicode-segmentation",
- "unicode-width",
-]
 
 [[package]]
 name = "memchr"

@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::{CommandFactory, Parser, ValueEnum};
-use mdviewer::{
+use gloss_cli::{
     export,
     input::{Format, Input},
     render,
@@ -15,6 +15,7 @@ use mdviewer::{
 
 #[derive(Parser)]
 #[command(
+    name = "gloss",
     version,
     about = "A terminal Markdown viewer with native inline and display equations"
 )]
@@ -75,7 +76,7 @@ struct Args {
     #[arg(long, value_enum, default_value_t = Theme::Auto)]
     theme: Theme,
     /// Terminal cell dimensions in pixels, e.g. 10x20; overrides reported geometry.
-    #[arg(long, value_parser = mdviewer::terminal::cell_size)]
+    #[arg(long, value_parser = gloss_cli::terminal::cell_size)]
     cell_size: Option<(u16, u16)>,
     /// Use a light theme for text and equations (alias for --theme light).
     #[arg(long, conflicts_with = "theme")]
@@ -150,7 +151,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("mdviewer: {}", render::text::sanitize(&error.to_string()));
+            eprintln!("gloss: {}", render::text::sanitize(&error.to_string()));
             ExitCode::FAILURE
         }
     }
@@ -159,7 +160,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     if args.mermaid_worker {
-        mdviewer::mermaid::worker_main()?;
+        gloss_cli::mermaid::worker_main()?;
         return Ok(());
     }
     let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?;
@@ -189,7 +190,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let source = input.read(paging)?;
     if paging {
         #[cfg(unix)]
-        return mdviewer::pager::run(source, input, args.watch, || {
+        return gloss_cli::pager::run(source, input, args.watch, || {
             args.render_options(Terminal::detect(), input_format)
         })
         .map_err(Into::into);
@@ -207,14 +208,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         } else {
             if args.math == Math::Kitty && terminal.multiplexer {
                 eprintln!(
-                    "mdviewer: multiplexer graphics passthrough is not implemented; showing TeX"
+                    "gloss: multiplexer graphics passthrough is not implemented; showing TeX"
                 );
             }
             let options = args.render_options(terminal, input_format);
             let warnings = render::write_document(&mut out, &document, &options)?;
             out.flush()?;
             for warning in warnings {
-                eprintln!("mdviewer: {}", render::text::sanitize(&warning));
+                eprintln!("gloss: {}", render::text::sanitize(&warning));
             }
         }
     }
@@ -276,7 +277,7 @@ impl Args {
                     Images::Off => false,
                     Images::Kitty => true,
                 },
-            sgf_selection: mdviewer::sgf::Selection {
+            sgf_selection: gloss_cli::sgf::Selection {
                 game: self.sgf_game as usize,
                 at_move: self.sgf_move.map(|n| n as usize),
             },
