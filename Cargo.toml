@@ -15,7 +15,7 @@ name = "gloss"
 path = "src/main.rs"
 
 [dependencies]
-document-graphics = { version = "=0.1.8", features = ["images", "sgf"] }
+document-graphics = { version = "=0.1.9", features = ["images", "sgf"] }
 base64 = "0.22"
 flate2 = "1.1"
 clap = { version = "4", features = ["derive"] }

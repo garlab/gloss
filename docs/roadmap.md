@@ -82,11 +82,11 @@ JavaScript is not part of the runtime plan.
 
 ## Reproducible builds and distribution
 
-- Publish `document-graphics-mermaid` 0.2.0 for Gantt schedules, then
-  `document-graphics` 0.1.7 for Gantt integration.
-  Remove both local overrides and restore registry lockfiles after publication.
-  Math already comes from crates.io. Keep shared API and resource
-  checks covered by both terminal and GUI integration tests.
+Shared rendering dependencies now come from crates.io: `document-graphics` 0.1.9,
+its `document-graphics-mermaid` 0.2.1 backend, and `katex-native` 0.1.0. Registry
+lockfiles require no local overrides. Keep shared API and resource checks covered
+by both terminal and GUI integration tests.
+
 - Add clean-checkout CI for formatting, Clippy,
   Rust tests, and Unix pseudo-terminal tests. Verify the declared minimum Rust
   version against the locked dependencies.

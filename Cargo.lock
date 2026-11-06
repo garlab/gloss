@@ -266,9 +266,9 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "document-graphics"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b120423c8236b19014e5ed5949e068aa50cff96569ec7ec93ce0c96b833d1b83"
+checksum = "548963839d9833acae7d59968a9cd82d72334eed0075dee92078870a3b5381e0"
 dependencies = [
  "document-graphics-mermaid",
  "image",
