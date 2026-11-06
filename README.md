@@ -13,26 +13,9 @@ fallbacks on other terminals.
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library. This checkout targets document-graphics 0.1.8 with the published
-`document-graphics-mermaid` 0.2.1 backend. Until the library release is available,
-use the local document-graphics override below. mdviewer enables the library's
+library and its native `document-graphics-mermaid` backend. Cargo downloads these
+dependencies from crates.io. mdviewer enables the library's
 `images` and `sgf` features; native image codecs and image workers remain disabled.
-
-To work on document-graphics alongside mdviewer, place its checkout beside
-mdviewer and add this to an untracked `.cargo/config.toml` (merging with any
-existing settings):
-
-```toml
-[patch.crates-io]
-document-graphics = { path = "../document-graphics" }
-# Optional while also developing the backend:
-# document-graphics-mermaid = { path = "../document-graphics-mermaid" }
-```
-
-Run Cargo from the mdviewer root so it reads the local override. After
-`document-graphics` 0.1.8 is published, remove its override (and the optional
-backend override, if enabled), then run `cargo check` to restore registry sources
-and checksums in `Cargo.lock`.
 
 From the `mdviewer` directory, install locally and try the included examples.
 Cargo's binary directory must be on your `PATH`.
@@ -53,6 +36,21 @@ mdviewer tests/fixtures/extensions.md
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
+
+To develop document-graphics alongside mdviewer, place its checkout beside
+mdviewer and add this optional override to an untracked `.cargo/config.toml`
+(merging with any existing settings):
+
+```toml
+[patch.crates-io]
+document-graphics = { path = "../document-graphics" }
+# Optional while also developing the backend:
+# document-graphics-mermaid = { path = "../document-graphics-mermaid" }
+```
+
+Run Cargo from the mdviewer root so it reads the local override. To return to
+published dependencies, remove the overrides and run `cargo check` to restore
+registry sources and checksums in `Cargo.lock`.
 
 ## Standalone inputs
 
