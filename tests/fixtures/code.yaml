@@ -1,0 +1,12 @@
+# Deployment settings
+name: café
+enabled: true
+replicas: 3
+paths:
+  - src
+  - tests
+script: |
+  echo "$HOME"
+  # Keep this comment as code
+  ```
+message: "**bold** and $x^2$ stay literal"

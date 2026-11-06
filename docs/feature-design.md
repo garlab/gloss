@@ -64,9 +64,10 @@ renderer’s control-character filtering.
 
 Unknown languages, invalid input, and exhausted budgets retain all code as
 ordinary text. Plain/source export and disabled color bypass highlighting.
-Documents without code must not initialize highlighting resources. Language
-labels and line numbers are later presentation options, independent of token
-parsing.
+Documents without code must not initialize highlighting resources. Code line
+numbers are implemented as renderer-only decoration, independent of token
+parsing and plain/source exports. Language labels remain a possible presentation
+option.
 
 ## Tables
 

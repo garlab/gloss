@@ -30,6 +30,8 @@ pub struct Options {
     pub links: bool,
     /// Color known fenced languages; ignored for unstyled/plain output.
     pub highlight: bool,
+    /// Number logical code lines in terminal output; independent of syntax colors.
+    pub line_numbers: bool,
     pub kitty: Option<Geometry>,
     /// Terminal geometry for formatted text, including sessions without graphics.
     pub terminal: Option<Geometry>,
@@ -57,6 +59,7 @@ impl Default for Options {
             styled: false,
             links: false,
             highlight: true,
+            line_numbers: false,
             kitty: None,
             terminal: None,
             width: 80,

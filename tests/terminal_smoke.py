@@ -893,6 +893,115 @@ class TerminalSmoke(unittest.TestCase):
             foreground=None, background=None, bold=False, italic=False,
             underline=False, strike=False))
 
+    def test_standalone_yaml_reuses_fenced_colors_and_keeps_comments_literal(self):
+        file = Path(__file__).resolve().parent / "fixtures" / "code.yaml"
+        source = file.read_text()
+        colored, error = terminal(file=file)
+        fenced, fence_error = terminal(f"````yaml\n{source}````\n", args=("--line-numbers", "on"))
+        stdin, stdin_error = terminal(source, args=("--language", "YML"))
+        disabled, disabled_error = terminal(file=file, args=("--no-highlight",))
+        uncolored, uncolored_error = terminal(file=file, variables={"NO_COLOR": "1"})
+        self.assertFalse(error or fence_error or stdin_error or disabled_error or uncolored_error)
+        self.assertEqual(colored, fenced)
+        self.assertEqual(colored, stdin)
+        self.assertEqual(plain(colored), plain(disabled))
+        self.assertEqual(plain(colored), plain(uncolored))
+        self.assertNotEqual(colored, disabled)
+        self.assertNotIn(b"\x1b", uncolored)
+        self.assertEqual(attributes_at(colored, b"# Deployment settings")["foreground"], 245)
+        self.assertFalse(attributes_at(colored, b"# Deployment settings")["bold"])
+        self.assertIn("**bold** and $x^2$ stay literal", plain(colored))
+        self.assertNotIn(b"\x1b_G", colored)
+
+    def test_code_line_numbers_count_logical_lines_and_align_wrapped_continuations(self):
+        source = "\r\n".join(["abcdefghijklmnopqrst", "", "    x", "é 👩‍💻"] +
+                               [f"row {n}" for n in range(5, 13)])
+        args = ("--input-format", "code", "--width", "12")
+        for ending in ("", "\r\n"):
+            with self.subTest(ending=ending):
+                output, error = terminal(source + ending, args=args)
+                self.assertFalse(error)
+                lines = [line.rstrip() for line in plain(output).splitlines() if line.strip()]
+                self.assertEqual(lines[:4], ["   1 │ abcdefg", "     │ hijklmn", "     │ opqrst", "   2 │"])
+                self.assertIn("   3 │     x", lines)
+                self.assertIn("   4 │ é 👩‍💻", lines)
+                self.assertEqual([int(m[1]) for line in lines
+                                  if (m := re.match(r"\s*(\d+) │", line))], list(range(1, 13)))
+                self.assertTrue(all(len(line) <= 14 for line in lines))
+                self.assertEqual(attributes_at(output, "1 │".encode())["foreground"], 245)
+        light, error = terminal(source, args=(*args, "--light"))
+        self.assertFalse(error)
+        self.assertEqual(attributes_at(light, "1 │".encode())["foreground"], 243)
+
+    def test_code_line_number_controls_preserve_nested_markdown_prefixes(self):
+        source = "- ```text\n  first\n  second\n  ```\n\n> ```text\n> third\n> fourth\n> ```\n"
+        numbered, error = terminal(source, args=("--line-numbers", "on"))
+        default, default_error = terminal(source)
+        disabled, off_error = terminal(source, args=("--line-numbers", "off"))
+        self.assertFalse(error or default_error or off_error)
+        self.assertEqual(default, disabled)
+        lines = [line.rstrip() for line in plain(numbered).splitlines() if line.strip()]
+        self.assertEqual(lines, ["  • 1 │ first", "    2 │ second", "  │ 1 │ third", "  │ 2 │ fourth"])
+
+    def test_code_line_numbers_yield_space_to_content_in_narrow_terminals(self):
+        source = "界\ne\u0301\n"
+        for columns in range(2, 9):
+            with self.subTest(columns=columns):
+                args = ("--input-format", "code", "--width", "0", "--margin", "0")
+                output, error = terminal(source, args=args, columns=columns, variables={"NO_COLOR": "1"})
+                disabled, other_error = terminal(source, args=(*args, "--line-numbers", "off"),
+                                                columns=columns, variables={"NO_COLOR": "1"})
+                self.assertFalse(error or other_error)
+                self.assertIn("界", plain(output))
+                self.assertIn("e\u0301", plain(output))
+                for line in plain(output).splitlines():
+                    width = sum(0 if unicodedata.combining(ch) else
+                                2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in line)
+                    self.assertLessEqual(width, columns)
+                if columns < 7:
+                    self.assertEqual(output, disabled)
+                else:
+                    self.assertIn("1 │ 界", plain(output))
+                    self.assertIn("2 │ e\u0301", plain(output))
+
+    def test_special_code_filenames_get_numbers_and_keep_comments_literal(self):
+        with tempfile.TemporaryDirectory() as root:
+            for name, source in [
+                ("Cargo.lock", '# Generated lockfile\nversion = 4\n'),
+                ("Dockerfile", '# Build image\nFROM scratch\n'),
+            ]:
+                with self.subTest(name=name):
+                    file = Path(root) / name
+                    file.write_text(source)
+                    output, error = terminal(file=file)
+                    disabled, other_error = terminal(file=file, args=("--line-numbers", "off"))
+                    self.assertFalse(error or other_error)
+                    self.assertIn("  1 │ # ", plain(output))
+                    self.assertIn("  │ # ", plain(disabled))
+                    self.assertNotIn("  1 │", plain(disabled))
+                    if name == "Cargo.lock":
+                        fenced, fenced_error = terminal(f"```toml\n{source}```\n", args=("--line-numbers", "on"))
+                        self.assertFalse(fenced_error)
+                        self.assertEqual(output, fenced)
+                    self.assertNotIn(b"\x1b_G", output)
+
+    def test_standalone_code_fallbacks_do_not_start_diagrams_or_math(self):
+        for language, source in [
+            ("unknown", "# Comment\n**literal** and $x$\n"),
+            ("mermaid", "flowchart LR; A-->B\n"),
+            ("sgf", "(;GM[1]FF[4]SZ[9];B[dd])\n"),
+            ("math", "x^2\n"),
+            ("yaml", "# " + "x" * (128 * 1024) + "\nlast: kept\n"),
+        ]:
+            with self.subTest(language=language):
+                args = ("--input-format", "code", "--language", language)
+                colored, error = terminal(source, args=args)
+                disabled, disabled_error = terminal(source, args=(*args, "--no-highlight"))
+                self.assertFalse(error or disabled_error)
+                self.assertEqual(colored, disabled)
+                self.assertNotIn(b"\x1b_G", colored)
+                self.assertIn(source.splitlines()[-1], plain(colored))
+
     def test_code_fallbacks_and_no_color_keep_the_complete_content(self):
         for language, body in [
             ("unknown", "fn main() { let value = 42; }\n"),

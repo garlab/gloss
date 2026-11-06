@@ -55,9 +55,27 @@ registry sources and checksums in `Cargo.lock`.
 ## Standalone inputs
 
 Named `.mmd` / `.mermaid` files render as Mermaid, `.sgf` files as Go records,
-and `.png` / `.jpg` / `.jpeg` / `.svg` files as images. Extensions are case
-insensitive; other files and stdin default to Markdown. These inputs also work
-with `--pager` and `--watch`.
+and `.png` / `.jpg` / `.jpeg` / `.svg` files as images. Code files reuse the fenced
+code renderer, so comments, Markdown delimiters, and math stay literal:
+
+| Language | File extensions |
+| --- | --- |
+| YAML | `.yaml`, `.yml` |
+| TOML | `.toml` |
+| JSON | `.json` |
+| Rust | `.rs` |
+| Python | `.py`, `.pyi`, `.pyw` |
+| JavaScript / JSX | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| TypeScript | `.ts`, `.mts`, `.cts` |
+| TSX | `.tsx` |
+| Go | `.go` |
+| Bash / shell | `.sh`, `.bash` |
+
+Extensions are case insensitive; other files and stdin default to Markdown.
+All input formats work with `--pager` and named files support `--watch`.
+`Cargo.lock` uses TOML highlighting. `Dockerfile`, `Dockerfile.dev`,
+`build.Dockerfile`, and equivalent `Containerfile` names are recognized as code.
+Dockerfiles currently use an uncolored code panel; no Dockerfile grammar is bundled.
 
 ```sh
 mdviewer diagram.mmd
@@ -65,16 +83,31 @@ mdviewer --watch diagram.mermaid
 mdviewer picture.png
 mdviewer --pager record.sgf
 mdviewer --sgf-move 42 record.sgf
+mdviewer config.yaml
+mdviewer --watch config.toml
+mdviewer Cargo.lock
+mdviewer Dockerfile
+mdviewer --input-format code settings.conf
+cat config.yaml | mdviewer --language yaml -
 cat diagram.mmd | mdviewer --input-format mermaid -
 ```
 
-Use `--input-format markdown|mermaid|sgf|image` to override detection. Image input
-requires a named local file; explicit image mode can recognize PNG/JPEG/SVG
+Use `--input-format markdown|code|mermaid|sgf|image` to override detection.
+`--language` selects code mode and overrides the detected syntax language; it
+also works for stdin and extensionless files. Use it with automatic detection or
+explicit code mode. Unknown languages use an uncolored code panel. Explicit code
+mode always keeps source literal, including Mermaid/SGF files.
+
+Standalone code is one block and uses the same highlighting limits as fenced
+code: files above 128 KiB retain all content without syntax colors. Code,
+Mermaid, SGF, and pager text inputs are limited to 64 MiB.
+
+Image input requires a named local file; explicit image mode can recognize PNG/JPEG/SVG
 without a recognized extension. `--base-dir` applies to Markdown image references,
 while standalone image paths are used directly. Text inputs must be UTF-8.
 
-Pipes and text-only terminals retain diagram source or an image reference.
-`--output source` preserves standalone Mermaid/SGF text exactly. It rejects image
+Pipes and text-only terminals retain code/diagram source or an image reference.
+`--output source` preserves standalone code/Mermaid/SGF text exactly. It rejects image
 inputs; use the original image file for binary copying. Image stdin is not supported.
 
 ## Terminal rendering
@@ -101,6 +134,16 @@ Use `--no-highlight` to keep the rest of the theme while disabling syntax colors
 Unknown languages and indented code retain the normal code panel. Highlighting
 has bounded work: oversized or expensive blocks fall back to uncolored code
 without losing content. No grammar downloads or helper processes are needed.
+
+Code line numbers default to `--line-numbers auto`: enabled for standalone code
+and disabled for Markdown blocks. Use `--line-numbers on` to number all code
+blocks or `--line-numbers off` to hide them. Each block starts at 1; blank source
+lines count, and wrapped continuations leave the number column empty. Very narrow
+views omit the number column to preserve space for code.
+
+Numbers remain visible with `--no-highlight` or `NO_COLOR`. Pipes, `--output text`,
+and `--output source` omit them. Use `--line-numbers off` for mouse selection
+without the number column.
 
 Tables retain left, center, and right alignment and wrap cells within the reading
 column. Headers use accent colors; inline styles and equations remain supported.

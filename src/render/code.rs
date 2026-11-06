@@ -3,6 +3,19 @@ use crate::{
     layout::{Role, Run, Style},
 };
 
+/// Count source lines across token runs without copying or splitting the block.
+pub(super) fn line_count(runs: &[Run]) -> usize {
+    let mut count = 0;
+    let mut last = None;
+    for run in runs.iter().filter(|run| run.style.role == Role::CodeBlock) {
+        count += run.text.bytes().filter(|&byte| byte == b'\n').count();
+        if let Some(byte) = run.text.as_bytes().last() {
+            last = Some(*byte);
+        }
+    }
+    count + usize::from(last.is_some_and(|byte| byte != b'\n'))
+}
+
 pub(super) fn highlight(
     runs: &[Run],
     language: Option<&str>,

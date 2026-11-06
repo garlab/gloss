@@ -26,7 +26,7 @@ pub struct Document {
 #[derive(Debug)]
 enum Kind {
     Markdown,
-    Code(&'static str),
+    Code(String),
     Image(PathBuf),
 }
 
@@ -41,11 +41,11 @@ impl Document {
     }
 
     /// Standalone source remains literal code, without synthesizing Markdown fences.
-    pub fn code(source: String, language: &'static str) -> Self {
+    pub fn code(source: String, language: impl Into<String>) -> Self {
         Self {
             source,
             prepared: Default::default(),
-            kind: Kind::Code(language),
+            kind: Kind::Code(language.into()),
         }
     }
 
@@ -86,9 +86,9 @@ impl Document {
         std::iter::from_fn(move || {
             if !matches!(self.kind, Kind::Markdown) {
                 let event = match (&self.kind, stage) {
-                    (Kind::Code(language), 0) => {
-                        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced((*language).into())))
-                    }
+                    (Kind::Code(language), 0) => Event::Start(Tag::CodeBlock(
+                        CodeBlockKind::Fenced(language.as_str().into()),
+                    )),
                     (Kind::Code(_), 1) => Event::Text(self.source.as_str().into()),
                     (Kind::Code(_), 2) => Event::End(TagEnd::CodeBlock),
                     (Kind::Image(_), 0) => Event::Start(Tag::Image {

@@ -7,7 +7,7 @@ implementation.
 ## Data flow
 
 ```text
-UTF-8 Markdown
+Markdown / code / diagram text / image path
 ├── exact source output
 └── Document: original source → optional syntax projection → events + original ranges
     └── Completed blocks: text + code + table cells + math + local images
@@ -20,12 +20,18 @@ UTF-8 Markdown
 The CLI chooses an output mode before rendering. Non-terminal stdout always uses
 text export unless exact source output was requested. Math is laid out only when
 graphics are selected.
-Input format is resolved once from an explicit option or the named-file extension;
-stdin defaults to Markdown. Standalone Mermaid/SGF retain their exact UTF-8 source
-and yield literal code events without synthetic Markdown fences. Standalone
+Input format and code language are resolved once from explicit options or the
+named-file extension; stdin defaults to Markdown. `--language` selects code mode
+and overrides extension-based language detection. Standalone code/Mermaid/SGF
+retain their exact UTF-8 source and yield literal code events without synthetic
+Markdown fences. Code mode forwards only supported syntax labels to the renderer,
+so selecting a diagram language cannot enable graphics in this mode. Standalone
 images yield image events from a native path, without loading image bytes into
 the text source model. They export a reference; binary source output is rejected.
 Markdown still uses its original parser and syntax projections.
+Filename detection also recognizes `Cargo.lock` as TOML and Dockerfile/Containerfile
+names as code with the normal uncolored fallback. Explicit formats take precedence;
+recognized Markdown and image extensions keep their formats.
 Local image blocks are built only when image graphics are enabled. Disabled or
 unsupported graphics retain the existing flat image references and never open
 image files. Text and exact source exports bypass all image decoding.
@@ -47,8 +53,8 @@ The full source and parser working storage still scale with input.
 | Module | Responsibility |
 | --- | --- |
 | `src/main.rs` | Arguments, input, output policy, errors, and diagnostics. |
-| `src/input.rs` | Resolve input formats, build standalone documents, and read bounded regular text files for diagrams and reloads. |
-| `src/document.rs` | CommonMark events, original Markdown, and source ranges; normalize fenced math. |
+| `src/input.rs` | Resolve input formats/languages, build standalone documents, and read bounded regular text files for code, diagrams, and reloads. |
+| `src/document.rs` | CommonMark or literal input events, original source, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
 | `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
@@ -97,6 +103,16 @@ Code blocks retain their language label, optional fence attributes, original sou
 span, and decoded text runs. Terminal rendering highlights one block at a time, retaining multiline
 syntax state without storing token runs for the whole document. Plain/source
 export, disabled highlighting, and disabled color bypass the highlighter.
+Standalone code uses one block and the same syntax budgets; files above the
+128 KiB block limit remain complete uncolored code. Bounded readers cap code,
+diagram, and pager text at 64 MiB. Extension detection initializes no parsers,
+queries, or graphics resources.
+Code line numbers are terminal decoration. The CLI enables them automatically
+for standalone code; `--line-numbers on` includes Markdown blocks. The renderer
+counts newlines across existing code runs without copying the block, then adds
+numbers to each logical line's frame before wrapping. Continuations reserve the
+same gutter without repeating the number; narrow frames omit it. Numbers do not
+enter syntax queries, document events, source spans, or text/source exports.
 
 Tables retain cell runs and source spans instead of flattening their delimiters.
 The renderer samples bounded text to choose column widths, then wraps and aligns
@@ -184,6 +200,8 @@ render also releases its helper while retaining bounded cache entries. The last 
 remains usable while a watched replacement renders. The terminal guard unwinds
 before joining the render worker, including on errors. Idle watch mode polls file
 metadata rather than rereading content or retaining renderer processes.
+Viewport geometry is refreshed before each redraw as well as during idle polling,
+so input immediately after a resize cannot redraw a page at the old width.
 Reload requests retain the resolved input format across atomic saves. Text
 reloads compare content; standalone image reloads rebuild after a metadata change
 even though the source-model path is unchanged. Native image paths bypass URL

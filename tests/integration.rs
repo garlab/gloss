@@ -20,27 +20,60 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
         ("a.PNG", Format::Image),
         ("a.jpeg", Format::Image),
         ("a.svg", Format::Image),
+        ("config.YaMl", Format::Code),
+        ("config.yml", Format::Code),
+        ("Cargo.toml", Format::Code),
+        ("Cargo.lock", Format::Code),
+        ("nested/CARGO.LOCK", Format::Code),
+        ("Dockerfile", Format::Code),
+        ("nested/dockerfile.dev", Format::Code),
+        ("build.Dockerfile", Format::Code),
+        ("Containerfile", Format::Code),
+        ("Containerfile.test", Format::Code),
+        ("build.containerfile", Format::Code),
+        ("Dockerfile.md", Format::Markdown),
+        ("other.lock", Format::Markdown),
+        ("data.json", Format::Code),
+        ("main.rs", Format::Code),
+        ("script.py", Format::Code),
+        ("types.pyi", Format::Code),
+        ("script.pyw", Format::Code),
+        ("app.js", Format::Code),
+        ("view.jsx", Format::Code),
+        ("module.mjs", Format::Code),
+        ("module.cjs", Format::Code),
+        ("app.ts", Format::Code),
+        ("module.mts", Format::Code),
+        ("module.cts", Format::Code),
+        ("view.tsx", Format::Code),
+        ("main.go", Format::Code),
+        ("script.sh", Format::Code),
+        ("script.bash", Format::Code),
+        ("notes.md", Format::Markdown),
+        ("README", Format::Markdown),
         ("notes.unknown", Format::Markdown),
     ] {
         assert_eq!(
-            Input::new(Some(name.into()), Format::Auto).unwrap().format,
+            Input::new(Some(name.into()), Format::Auto, None)
+                .unwrap()
+                .format,
             expected
         );
     }
     assert_eq!(
-        Input::new(Some("a.mmd".into()), Format::Markdown)
+        Input::new(Some("a.mmd".into()), Format::Markdown, None)
             .unwrap()
             .format,
         Format::Markdown
     );
     assert_eq!(
-        Input::new(None, Format::Auto).unwrap().format,
+        Input::new(None, Format::Auto, None).unwrap().format,
         Format::Markdown
     );
-    assert!(Input::new(None, Format::Image).is_err());
-    for format in [Format::Mermaid, Format::Sgf] {
+    assert!(Input::new(None, Format::Image, None).is_err());
+    for format in [Format::Code, Format::Mermaid, Format::Sgf] {
         let source = "literal **bold** $x$ &amp;\r\n```\r\n# heading\r\nlast";
-        let input = Input::new(None, format).unwrap();
+        let input = Input::new(None, format, None).unwrap();
         let document = input.document(source.into());
         assert_eq!(document.source(), source);
         let events: Vec<_> = document.events().collect();
@@ -51,9 +84,156 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn special_code_filenames_keep_literal_content_and_select_toml_for_cargo_lock() {
+    use mdviewer::input::{Format, Input};
+    use pulldown_cmark::{CodeBlockKind, Tag};
+
+    let dir = tempfile::tempdir().unwrap();
+    for (name, language, source) in [
+        (
+            "Cargo.lock",
+            "toml",
+            "# Generated lockfile\nversion = 4\n[[package]]\nname = \"demo\"\n",
+        ),
+        (
+            "Dockerfile",
+            "",
+            "# Build image\nFROM scratch\nLABEL note=\"**literal** $VALUE$\"\n",
+        ),
+        ("Dockerfile.dev", "", "# Build image\nFROM scratch\n"),
+    ] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, source).unwrap();
+        let input = Input::new(Some(path.clone()), Format::Auto, None).unwrap();
+        let document = input.document(input.read(false).unwrap());
+        assert!(matches!(document.events().next().unwrap().event,
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(label))) if label.as_ref() == language));
+        let output = cli(&[path.to_str().unwrap()], "");
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains(source.trim_end())
+        );
+    }
+}
+
+#[test]
+fn code_line_numbers_never_change_plain_or_source_exports() {
+    let source = "# Comment\r\n\r\nvalue: '**literal** $x$ &amp;'\r\nlast: café";
+    let plain = cli(&["--language", "yaml", "-"], source);
+    assert!(plain.status.success());
+    for numbers in ["auto", "on", "off"] {
+        for output in ["auto", "text", "source"] {
+            let result = cli(
+                &[
+                    "--language",
+                    "yaml",
+                    "--line-numbers",
+                    numbers,
+                    "--output",
+                    output,
+                    "--width",
+                    "5",
+                    "--pager",
+                    "-",
+                ],
+                source,
+            );
+            assert!(result.status.success());
+            assert!(result.stderr.is_empty());
+            assert_eq!(
+                result.stdout,
+                if output == "source" {
+                    source.as_bytes()
+                } else {
+                    &plain.stdout
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn standalone_language_selection_is_explicit_and_keeps_markdown_inert() {
+    use mdviewer::input::{Format, Input};
+    use pulldown_cmark::{CodeBlockKind, Tag};
+
+    let source = "# Comment\nvalue: '**literal** $x$ &amp;'\n```\n";
+    for (name, format, language) in [
+        (Some("config.YAML"), Format::Auto, None),
+        (Some("config.yml"), Format::Code, None),
+        (Some("settings"), Format::Auto, Some("yaml")),
+        (Some("notes.md"), Format::Auto, Some("yaml")),
+        (None, Format::Code, Some("yaml")),
+        (Some("-"), Format::Auto, Some("yaml")),
+    ] {
+        let input = Input::new(name.map(Into::into), format, language.map(Into::into)).unwrap();
+        assert_eq!(input.format, Format::Code);
+        let document = input.document(source.into());
+        let events: Vec<_> = document.events().collect();
+        assert_eq!(events.len(), 3);
+        assert!(matches!(&events[0].event,
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(label))) if label.as_ref() == "yaml"));
+        assert!(matches!(&events[1].event, Event::Text(text) if text.as_ref() == source));
+        assert_eq!(document.source(), source);
+    }
+    for format in [
+        Format::Markdown,
+        Format::Mermaid,
+        Format::Sgf,
+        Format::Image,
+    ] {
+        let error =
+            Input::new(Some("config.yaml".into()), format, Some("yaml".into())).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("--language"));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn standalone_yaml_cli_keeps_comments_and_exact_source_and_allows_markdown_override() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.YAML");
+    let source = "# Comment\r\nmessage: \"**bold** $x$ &amp;\"\r\nlast: café";
+    std::fs::write(&path, source).unwrap();
+    let path = path.to_str().unwrap();
+    for args in [vec![path], vec!["--output", "text", path]] {
+        let result = cli(&args, "");
+        assert!(result.status.success());
+        assert!(result.stderr.is_empty());
+        let text = String::from_utf8(result.stdout).unwrap();
+        assert!(text.contains("# Comment\nmessage: \"**bold** $x$ &amp;\"\nlast: café"));
+        assert!(!text.contains('\x1b'));
+    }
+    let exact = cli(&["--output", "source", path], "");
+    assert!(exact.status.success());
+    assert_eq!(exact.stdout, source.as_bytes());
+    let stdin = cli(&["--language", "YML", "--output", "source", "-"], source);
+    assert!(stdin.status.success());
+    assert_eq!(stdin.stdout, source.as_bytes());
+    let markdown = cli(&["--input-format", "markdown", path], "");
+    assert!(markdown.status.success());
+    assert!(
+        !String::from_utf8(markdown.stdout)
+            .unwrap()
+            .contains("# Comment")
+    );
+    let conflict = cli(
+        &["--input-format", "markdown", "--language", "yaml", path],
+        "",
+    );
+    assert!(!conflict.status.success());
+    assert!(String::from_utf8_lossy(&conflict.stderr).contains("--language"));
+}
+
 #[test]
 fn standalone_code_exports_preserve_bytes_and_bypass_graphics_selection() {
-    for format in ["mermaid", "sgf"] {
+    for format in ["code", "mermaid", "sgf"] {
         let source = "literal **source**\r\n$unparsed$\n```\nno final newline";
         let exact = cli(
             &[

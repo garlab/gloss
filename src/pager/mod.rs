@@ -470,17 +470,6 @@ pub fn run(
         }
         let mut reload = false;
         let mut force = false;
-        if checked.elapsed() >= Duration::from_millis(200) {
-            checked = Instant::now();
-            let (screen, next) = prepare(options());
-            if screen != view.screen {
-                view.screen = screen;
-                current_options = next;
-                view.graphics.clear(tty.out())?;
-                force = true;
-                reload = true;
-            }
-        }
         if let (Some(watcher), Some(path)) = (&mut watcher, &path) {
             reload |= watcher.poll(path);
         }
@@ -494,6 +483,19 @@ pub fn run(
                 view.search = None;
                 view.message = format!("Not found: {}", view.query);
                 dirty = true;
+            }
+        }
+        // A key or search result may request a redraw before the idle resize
+        // poll. Never emit rows laid out for a wider viewport after a resize.
+        if dirty || checked.elapsed() >= Duration::from_millis(200) {
+            checked = Instant::now();
+            let (screen, next) = prepare(options());
+            if screen != view.screen {
+                view.screen = screen;
+                current_options = next;
+                view.graphics.clear(tty.out())?;
+                force = true;
+                reload = true;
             }
         }
         if dirty {

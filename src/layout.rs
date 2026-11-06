@@ -16,6 +16,7 @@ pub enum Role {
     Body,
     Heading(u8),
     CodeBlock,
+    CodeLineNumber,
     ListMarker,
     QuoteMarker,
     LinkTarget,

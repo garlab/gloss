@@ -157,7 +157,7 @@ mod tests {
             .unwrap();
         worker.submit(Request {
             source: Arc::new("Ready.\n".into()),
-            input: Input::new(None, Format::Auto).unwrap(),
+            input: Input::new(None, Format::Auto, None).unwrap(),
             force: true,
             options: render::Options {
                 terminal: Some(crate::terminal::Geometry::default()),

@@ -17,7 +17,7 @@ use crate::{
     math::MathEngine,
 };
 
-use super::{Options, kitty, text};
+use super::{Options, code, kitty, text};
 
 struct LogicalLine {
     runs: Vec<Run>,
@@ -121,6 +121,36 @@ impl Frame {
 
     pub(super) fn width(&self) -> usize {
         self.width
+    }
+
+    fn number(&mut self, number: usize, digits: usize) {
+        // Drop the optional gutter in narrow views, leaving at least two cells
+        // for a wide grapheme. Never truncate a number or displace list/quote rails.
+        if self.width < digits + 3
+            || !self.first.ends_with("│ ")
+            || !self.continuation.ends_with("│ ")
+        {
+            return;
+        }
+        self.first.insert_str(
+            self.first.len() - "│ ".len(),
+            &format!("{number:>digits$} "),
+        );
+        self.continuation.insert_str(
+            self.continuation.len() - "│ ".len(),
+            &" ".repeat(digits + 1),
+        );
+        self.width -= digits + 1;
+        self.prefix_style = Style {
+            role: Role::CodeLineNumber,
+            code: false,
+            syntax: None,
+            bold: false,
+            italic: false,
+            strike: false,
+            link: false,
+            ..self.prefix_style
+        };
     }
 
     pub(super) fn cell(&self, number: usize, first: bool) -> Self {
@@ -229,6 +259,12 @@ pub(super) fn write(
     warnings: &mut Vec<String>,
     edge_quotes: (usize, usize),
 ) -> io::Result<()> {
+    let digits = options
+        .line_numbers
+        .then(|| code::line_count(runs))
+        .filter(|&count| count > 0)
+        .map(|count| count.ilog10() as usize + 1);
+    let mut number = 0;
     let mut lines = logical_lines(runs).peekable();
     let mut previous_quote = edge_quotes.0;
     while let Some(mut logical) = lines.next() {
@@ -246,7 +282,13 @@ pub(super) fn write(
             writeln!(out)?;
             continue;
         }
-        let frame = Frame::new(&mut logical, options);
+        let mut frame = Frame::new(&mut logical, options);
+        if frame.style.role == Role::CodeBlock
+            && let Some(digits) = digits
+        {
+            number += 1;
+            frame.number(number, digits);
+        }
         if frame.style.role == Role::Rule {
             let line = Line {
                 parts: vec![Part::Text {

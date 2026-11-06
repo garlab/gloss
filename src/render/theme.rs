@@ -24,6 +24,7 @@ impl Theme {
                 style.syntax.map_or(body, |token| self.token(token)),
                 Some(panel),
             ),
+            Role::CodeLineNumber => (muted, Some(panel)),
             Role::ListMarker => (if self.light { 29 } else { 114 }, None),
             Role::QuoteMarker | Role::Rule | Role::TableBorder => {
                 (if self.light { 245 } else { 240 }, None)

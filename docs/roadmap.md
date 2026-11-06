@@ -32,8 +32,14 @@ the fixed comparison data and reproduction tools.
    work. See [Gantt support](gantt.md). Consider an optional official-renderer
    adapter when full Mermaid.js compatibility justifies its runtime cost.
 
-Standalone Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension
-detection, explicit format selection and pager/watch support. SGF fences reuse
+Standalone code, Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension
+detection, explicit format selection and pager/watch support. Code files reuse
+the bounded syntax highlighter; `--language` selects code mode for stdin or
+overrides the filename's language. Named-file detection includes `Cargo.lock`
+and Dockerfile/Containerfile variants; Dockerfile syntax coloring remains a
+possible grammar addition. Code line numbers are enabled for standalone code
+and available for Markdown blocks, with numbered source lines and unnumbered
+wrapped continuations. SGF fences reuse
 the native shared parser and board renderer, with main-line game/move selection,
 bounded previews and source fallback; see [SGF support](sgf.md). Interactive
 move/variation navigation and legacy text encodings remain follow-up work.

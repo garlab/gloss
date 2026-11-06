@@ -363,6 +363,43 @@ class PagerSmoke(unittest.TestCase):
             self.assertTrue(p.screen.placements)
             p.close()
 
+    def test_standalone_yaml_watch_and_language_override_keep_code_after_reload(self):
+        for filename, args in [("config.yaml", []), ("settings", ["--language", "yaml"])]:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as root:
+                file = Path(root) / filename
+                file.write_text('# Original\nvalue: "**literal** $x$"\n')
+                p = self.pager(file=file, args=["--watch", *args])
+                p.ready("# Original")
+                self.assertIn('1 │ # Original', p.screen.text())
+                self.assertIn('**literal** $x$', p.screen.text())
+                replacement = file.with_suffix(".new")
+                replacement.write_text('# Updated\nvalue: "**retained** $y$"\n')
+                replacement.replace(file)
+                p.ready("# Updated")
+                self.assertIn('1 │ # Updated', p.screen.text())
+                self.assertIn('**retained** $y$', p.screen.text())
+                self.assertEqual(p.screen.uploads, 0)
+                p.close()
+
+    def test_numbered_code_scrolls_reflows_and_reloads_without_renumbering_wraps(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / "Dockerfile"
+            file.write_text("\n".join(f"# row {n}: abcdefghijklmnopqrstuvwxyz" for n in range(1, 31)) + "\n")
+            p = self.pager(file=file, args=["--watch"], columns=80, rows=12)
+            p.ready("1 │ # row 1:")
+            p.keys("G", "30 │ # row 30:")
+            p.resize(30, 12)
+            # Input immediately after resize must not redraw the old, wider page.
+            p.keys("G", "30 │ # row 30:")
+            self.assertIn("│", p.screen.text())
+            replacement = file.with_suffix(".new")
+            replacement.write_text(file.read_text().replace("# row 30:", "# last 30:"))
+            replacement.replace(file)
+            p.ready("# last 30:")
+            self.assertIn("30 │ # last 30:", p.screen.text())
+            self.assertEqual(p.screen.uploads, 0)
+            p.close()
+
     def test_gantt_watch_updates_dates_and_recovers_from_invalid_schedule(self):
         with tempfile.TemporaryDirectory() as root:
             file = Path(root) / 'schedule.mmd'

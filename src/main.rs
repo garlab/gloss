@@ -19,11 +19,14 @@ use mdviewer::{
     about = "A terminal Markdown viewer with native inline and display equations"
 )]
 struct Args {
-    /// Markdown, Mermaid, SGF or image file; omit or use '-' for text stdin.
+    /// Markdown, code, Mermaid, SGF or image file; omit or use '-' for text stdin.
     file: Option<PathBuf>,
     /// Auto detects named-file extensions; stdin defaults to Markdown.
     #[arg(long, value_enum, default_value_t = Format::Auto)]
     input_format: Format,
+    /// Treat input as code in this language; overrides extension detection.
+    #[arg(long)]
+    language: Option<String>,
     /// Open an interactive pager; ignored for pipes and text/source exports.
     #[arg(short = 'p', long)]
     pager: bool,
@@ -77,9 +80,12 @@ struct Args {
     /// Use a light theme for text and equations (alias for --theme light).
     #[arg(long, conflicts_with = "theme")]
     light: bool,
-    /// Keep code blocks uncolored while retaining the rest of the theme.
+    /// Keep code uncolored while retaining the rest of the theme.
     #[arg(long)]
     no_highlight: bool,
+    /// Code line numbers: auto enables them for standalone code; on includes Markdown blocks.
+    #[arg(long, value_enum, default_value_t = LineNumbers::Auto)]
+    line_numbers: LineNumbers,
     /// Maximum content width, excluding margins; 0 uses the terminal width.
     #[arg(short = 'w', long, default_value_t = 80)]
     width: u16,
@@ -126,6 +132,13 @@ enum Theme {
     Light,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum LineNumbers {
+    Auto,
+    On,
+    Off,
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
@@ -149,7 +162,8 @@ fn run() -> Result<(), Box<dyn Error>> {
         mdviewer::mermaid::worker_main()?;
         return Ok(());
     }
-    let input = Input::new(args.file.clone(), args.input_format)?;
+    let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?;
+    let input_format = input.format;
     let named_file = input.path.as_deref();
     if input.format == Format::Image && args.output == Output::Source {
         return Err(
@@ -176,7 +190,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     if paging {
         #[cfg(unix)]
         return mdviewer::pager::run(source, input, args.watch, || {
-            args.render_options(Terminal::detect())
+            args.render_options(Terminal::detect(), input_format)
         })
         .map_err(Into::into);
         #[cfg(not(unix))]
@@ -196,7 +210,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                     "mdviewer: multiplexer graphics passthrough is not implemented; showing TeX"
                 );
             }
-            let options = args.render_options(terminal);
+            let options = args.render_options(terminal, input_format);
             let warnings = render::write_document(&mut out, &document, &options)?;
             out.flush()?;
             for warning in warnings {
@@ -209,7 +223,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 impl Args {
-    fn render_options(&self, mut terminal: Terminal) -> render::Options {
+    fn render_options(&self, mut terminal: Terminal, input_format: Format) -> render::Options {
         if let Some((width, height)) = self.cell_size {
             terminal.geometry.cell_width = width;
             terminal.geometry.cell_height = height;
@@ -229,6 +243,11 @@ impl Args {
                     Links::Always => true,
                 },
             highlight: !self.no_highlight,
+            line_numbers: match self.line_numbers {
+                LineNumbers::Auto => input_format == Format::Code,
+                LineNumbers::On => true,
+                LineNumbers::Off => false,
+            },
             kitty: kitty.then_some(terminal.geometry),
             terminal: Some(terminal.geometry),
             width: self.width,
