@@ -13,7 +13,21 @@ repository = "https://github.com/garlab/gloss"
 keywords = ["markdown", "terminal", "mermaid", "latex", "syntax-highlighting"]
 categories = ["command-line-utilities", "visualization"]
 publish = ["crates-io"]
-include = ["src/**", "tests/**", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
+# An explicit include list bypasses .gitignore, so exclude generated files here.
+include = [
+    "/src/**/*.rs",
+    "/tests/*.rs",
+    "/tests/*.py",
+    "/tests/fixtures/**",
+    "!**/__pycache__/**",
+    "!**/*.py[cod]",
+    "!**/.DS_Store",
+    "/Cargo.toml",
+    "/Cargo.lock",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [[bin]]
 name = "gloss"
