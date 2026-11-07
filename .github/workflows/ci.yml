@@ -48,6 +48,9 @@ jobs:
         run: |
           python3 tests/terminal_smoke.py target/debug/gloss
           python3 tests/pager_smoke.py target/debug/gloss
+      - name: Release helper tests
+        if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s ci -p 'test_*.py'
       - name: Verify the crates.io package
         if: runner.os == 'Linux'
         run: cargo publish -p gloss-cli --locked --dry-run

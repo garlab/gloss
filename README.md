@@ -13,7 +13,7 @@ fallbacks on other terminals.
 
 ## Install
 
-With Homebrew, once the tap's initial bottle publication is complete:
+With Homebrew:
 
 ```sh
 brew install garlab/tap/gloss
@@ -21,7 +21,7 @@ brew install garlab/tap/gloss
 
 Bottles cover Apple Silicon on macOS 26 or newer and Linux x86-64. Other
 supported platforms build from source. The
-[tap](https://github.com/garlab/homebrew-tap) follows stable crates.io releases
+[tap](https://github.com/garlab/homebrew-tap) follows stable GitHub releases
 automatically.
 
 ## Build and run
