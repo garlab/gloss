@@ -76,7 +76,8 @@ hit. Files are reread, so aliases can reuse pixels and changed files invalidate
 them. Renderer code and fonts are fixed within the invocation; images keep their
 original colors. Cache hits avoid decoding but still pad and transmit each
 placement. Transport now compresses beneficial payloads before base64 encoding;
-terminal-side image reuse remains follow-up work. See the
+terminal-side image reuse in direct output remains follow-up work; the pager
+reuses visible uploads. See the
 [streaming and graphics measurements](streaming-and-graphics.md).
 
 The output budget is shared by local images, [native Mermaid diagrams](mermaid.md)

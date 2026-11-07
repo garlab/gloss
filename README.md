@@ -368,26 +368,10 @@ output. See [releasing](docs/releasing.md) for the first crates.io publication,
 tag-triggered releases, and the Homebrew handoff. Hosted platform checks must
 pass before publication.
 
-See [architecture](docs/architecture.md) for module boundaries and contracts,
-[feature design](docs/feature-design.md) for planned rendering features and
-resource limits, and [the roadmap](docs/roadmap.md) for implementation order.
-The [performance baseline](docs/performance-baseline.md) records comparisons with
-Glow and commands for repeating them without keeping large inputs in the repo.
-That frozen baseline and its raw samples retain the former `mdviewer` name.
-For current builds, use `gloss` in binary paths and benchmark renderer names.
-The [syntax highlighting measurements](docs/syntax-highlighting.md) record its
-implementation limits, dependency costs, and comparison with that baseline.
-The [rendering optimizations](docs/performance-optimizations.md) record subsequent
-reductions in time, memory, output volume, and executable size.
-The [streaming and graphics measurements](docs/streaming-and-graphics.md) cover
-completed-block rendering, math caching, compression, and Markdown extensions.
-The [table implementation](docs/tables.md) records its limits and measured cost.
-The [local image implementation](docs/images.md) records decoder, cache, output,
-and SVG limits, together with its measurements.
-The [Mermaid implementation](docs/mermaid.md) records native coverage, worker
-limits, and comparisons with the official renderer.
-The independently versioned `document-graphics` library has no terminal or GUI
-dependencies.
+The [documentation index](docs/README.md) separates feature references, contributor
+guides, and historical performance measurements. Start with the
+[architecture](docs/architecture.md), [design decisions](docs/feature-design.md),
+and [roadmap](docs/roadmap.md) when contributing.
 
 ## License
 

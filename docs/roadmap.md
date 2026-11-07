@@ -1,138 +1,82 @@
 # Roadmap
 
-This tracks remaining implementation work. Current behavior and limitations are
-documented in the [README](../README.md); [architecture](architecture.md) records
-the boundaries and output contracts that should remain intact.
-[Feature design](feature-design.md) records the agreed rendering sequence and
-resource requirements; [performance baseline](performance-baseline.md) provides
-the fixed comparison data and reproduction tools.
-
-## Rich Markdown, in order
-
-1. Syntax highlighting is implemented for the initial language set, with retained
-   fence languages, lazy queries, bounded work, and complete plain-code fallback.
-   Evaluate additional grammars against binary size, startup, and query cost.
-2. Table cells, alignment, wrapping, inline math, and numbered-cell fallbacks are
-   implemented with bounded measurement and temporary row storage. See
-   [table rendering](tables.md) for the limits and measurements.
-3. Local PNG/JPEG/SVG images are implemented through shared raster placement and
-   transport, with selectable captions, bounded decoding/cache/output, and text
-   fallback. See [local images](images.md) for the SVG subset and measurements.
-   PNG/JPEG decoding now shares `document-graphics` through its optional `images`
-   feature; native codecs and the broader SVG worker are not enabled.
-   Broader SVG/font support and images inside tables remain follow-up work.
-4. An initial native Mermaid subset is implemented with a lazy reusable worker,
-   bounded requests/cache/output, and complete code fallback. See
-   [Mermaid support](mermaid.md) for coverage and measured backend costs.
-   Latin/Greek/Cyrillic labels, ER attributes and five additional diagram families
-   are implemented in the shared library. Broader script coverage, timeline
-   sections and other families need compatibility and resource checks. Native
-   Gantt schedules include clock/date-time formats down to milliseconds;
-   timezones, other date formats and advanced calendar options remain follow-up
-   work. See [Gantt support](gantt.md). Consider an optional official-renderer
-   adapter when full Mermaid.js compatibility justifies its runtime cost.
-
-Standalone code, Mermaid, PNG/JPEG/SVG and SGF inputs are implemented with extension
-detection, explicit format selection and pager/watch support. Code files reuse
-the bounded syntax highlighter; `--language` selects code mode for stdin or
-overrides the filename's language. Named-file detection includes `Cargo.lock`
-and Dockerfile/Containerfile variants, with syntax colors and bounded Bash and
-JSON/YAML/TOML heredoc highlighting. Further language grammars and embedded-language
-support need the same resource checks. Code line numbers are enabled for standalone code
-and available for Markdown blocks, with numbered source lines and unnumbered
-wrapped continuations. SGF fences reuse
-the native shared parser and board renderer, with main-line game/move selection,
-bounded previews and source fallback; see [SGF support](sgf.md). Interactive
-move/variation navigation and legacy text encodings remain follow-up work.
-
-Alerts, inert bounded front matter, an expanded details/summary subset, and
-validated clickable links are implemented. See [Markdown extensions](markdown-extensions.md)
-for coverage and limits; broaden HTML/detail forms only with source-preservation
-checks. Preserve source-based
-exports and benchmark absent, disabled, and enabled feature paths. Large inputs
-and local measurement outputs stay outside the repository.
-
-Track binary/dependency growth, helper processes, and encoded output as well as
-latency and RSS. [Rendering optimizations](performance-optimizations.md) remove
-retained event copies and reduce text-rendering allocations. Continue reducing
-parser/layout memory beyond the CLI's completed-block streaming path. Bounded
-math-raster caching and compressed graphics transport are implemented; evaluate
-terminal-side image reuse separately. Current measurements are not resource ceilings.
-
-ASCII wrapping and the benchmark's empty-selector timing fix are implemented;
-see [text performance](text-performance.md) for measurements and validation.
-Tall Mermaid diagrams now use readable width-based fitting and contiguous bands;
-see [Mermaid support](mermaid.md). Routing optimizations ship through published
-`document-graphics` 0.1.3 and its Mermaid backend 0.1.3.
-Math transport now avoids added transparent cell padding while retaining native
-pixels, baselines, and pager clipping. Pager reloads reuse bounded math/Mermaid
-caches, and cancellation reaches the diagram worker; see [pager details](pager.md).
-Further experiments include direct display-list rasterization in `katex-native`
-and reducing repeated geometry work in dense flowchart routing. Validate live
-Ghostty/Kitty placement alongside the protocol and pixel-equivalence checks.
-
-## Deferred: native ABC music notation
-
-ABC engraving is parked and does not block the initial release. Keep `abc`
-fences as source. [Native ABC design](abc-native-design.md) records native parser
-and renderer candidates, a possible standalone library, conformance fixtures,
-and performance/resource requirements. Resume with a bounded native-library
-evaluation and licensed reference corpus before selecting or forking a backend.
-JavaScript is not part of the runtime plan.
+This tracks remaining work. Current behavior and limits are in the
+[README](../README.md) and [feature references](README.md#feature-references).
+The [architecture](architecture.md) and [design decisions](feature-design.md)
+define contracts that changes must preserve.
 
 ## Reproducible builds and distribution
 
-Shared rendering dependencies now come from crates.io: `document-graphics` 0.1.9,
-its `document-graphics-mermaid` 0.2.1 backend, and `katex-native` 0.1.0. Registry
-lockfiles require no local overrides. Keep shared API and resource checks covered
-by both terminal and GUI integration tests.
-
-Clean-checkout CI is configured for Linux, macOS, and Windows, with formatting,
-Clippy, Rust tests, Unix pseudo-terminal tests, a Rust 1.90 check, and package
-verification. The tag-triggered release workflow reuses those checks before
-publishing `gloss-cli`. [Releasing](releasing.md) records the initial publication,
-Trusted Publisher configuration, and Homebrew handoff.
-
-- Complete the first hosted matrix run and registry publication, then add the
-  `gloss` formula to the separate Homebrew tap.
+- Complete the first hosted CI matrix and registry publication, then add the
+  `gloss` formula to the separate Homebrew tap. The [release guide](releasing.md)
+  covers the prepared workflows, Trusted Publishing, and package checks.
 - Establish platform and terminal coverage before adding prebuilt binaries or
   broader distribution. Windows pager/watch support remains separate work.
-- Keep library releases independently versioned. Release from a clean checkout
-  without local dependency overrides or machine-specific configuration.
+- Keep shared libraries independently versioned and validate their API/resource
+  changes in consumers. Release from a clean checkout with registry dependencies
+  and no machine-local overrides.
+
+## Rendering coverage
+
+- Extend [syntax highlighting](syntax-highlighting.md) and embedded-language
+  support only after checking grammar size, startup, query cost, and fallbacks.
+- Broaden [local SVG/font support](images.md) and evaluate images inside tables.
+- Expand [native Mermaid coverage](mermaid.md) where there is demand: additional
+  scripts, timeline sections, and diagram families. [Gantt](gantt.md) follow-ups
+  include timezones, other date formats, and advanced calendar options. An
+  optional official-renderer adapter needs a separate runtime/resource evaluation.
+- Add [SGF](sgf.md) move/variation navigation and evaluate legacy text encodings.
+- Broaden HTML/details forms only with source-preservation checks; see
+  [Markdown extensions](markdown-extensions.md).
+
+## Performance
+
+Continue reducing parser/layout memory beyond completed-block streaming.
+Evaluate direct display-list rasterization in `katex-native`, repeated geometry
+work in dense flowchart routing, and terminal-side image reuse in direct output.
+Pager changes must retain bounded caches, cancellation, and idle resource use.
+
+Measure absent, disabled, and enabled feature paths against the previous version
+and [fixed baseline](performance-baseline.md). Track latency, first output, RSS,
+binary/dependency size, helper processes, and encoded output separately; see the
+[review thresholds](feature-design.md#resource-and-performance-requirements).
+Keep generated inputs and local results outside the repository. Pair protocol
+and pixel checks with live-terminal validation.
 
 ## Terminal integration
 
-- Add bounded capability queries and explicit override behavior while preserving
-  document stdin and user input. Retain text fallbacks when queries fail.
-- Add actual theme/color and geometry queries when input ownership permits.
-  Environment theme hints, reported/environment geometry, `--theme`, and
-  `--cell-size` overrides are implemented; see [terminal discovery](terminal-detection.md).
+- Add bounded capability, theme/color, and geometry queries when input ownership
+  permits. Preserve document stdin and navigation input, and retain fallbacks
+  when queries fail. See [terminal discovery](terminal-detection.md).
 - Validate inline baselines, image placement, scrolling, and selection in Ghostty
-  and Kitty across fonts, zoom levels, and narrow windows. Record tested versions
-  and any terminal-specific limitations.
-- Add multiplexer passthrough and additional graphics protocols only with
-  capability handling and placement tests for each supported route.
+  and Kitty across fonts, zoom levels, and narrow windows. Record terminal
+  versions and limitations.
+- Add multiplexer passthrough or additional graphics protocols only with
+  capability handling and placement checks for each route.
 
 ## Markdown and equation layout
 
-- Refine mixed nesting of lists, quotes, code, and display math. Improve tables
-  and code layout through the ordered work above.
-- Backslash-parenthesis and backslash-bracket math delimiters are implemented
-  within bounded paragraph/table-cell spans, with escaping and code exclusions.
-  Broaden supported contexts only with source-range and resource checks.
-- Refine equation tag placement and the treatment of oversized formulas.
-  Preserve individual source fallbacks and bounded raster allocation.
+- Refine mixed nesting of lists, quotes, code, tables, and display math.
+- Broaden backslash-math contexts beyond the supported paragraph/table-cell
+  spans, preserving escapes, code exclusions, and bounded source-range handling.
+- Refine equation tags and oversized formulas while retaining source fallbacks
+  and bounded raster allocation.
 - Consider library-side raster limits and a reusable body/tag raster result in
-  `katex-native` when shared semantics justify extraction. Keep general images,
-  highlighting, terminal fitting, and placement policy in their own layers.
+  `katex-native` when shared semantics justify it. Keep terminal policy separate.
 
 ## Interactive viewing and copying
 
-- The optional Unix pager implements navigation, literal search, resize reflow,
-  bounded image reuse, and debounced file watching. See [pager implementation](pager.md).
-  Add heading navigation and evaluate Windows terminal support separately.
-  Keep direct output and pipe behavior available.
+- Add heading navigation to the [pager](pager.md), and evaluate Windows terminal
+  support separately. Preserve direct output and pipes.
 - Add an in-view source toggle and copying of Markdown or TeX from the document
-  model. Refine source mappings where decoded entities prevent exact selection.
-- Evaluate improvements to native mouse selection in Ghostty without making
-  image-to-text recovery a requirement for reading or exporting documents.
+  model. Refine mappings where decoded entities prevent exact selection.
+- Improve native mouse selection in Ghostty where possible; reading and exporting
+  must remain useful without recovering text from image pixels.
+
+## Deferred: native ABC music notation
+
+ABC engraving does not block the initial release. Keep `abc` fences as source.
+The [native ABC design](abc-native-design.md) preserves parser/renderer research,
+standalone library boundaries, conformance strategy, and resource requirements.
+Resume with a bounded native-library evaluation and licensed reference corpus
+before choosing or forking a backend. JavaScript is not part of the runtime plan.

@@ -82,7 +82,7 @@ an extra input-poll delay without increasing the idle polling rate.
 
 | Resource | Limit |
 | --- | --- |
-| UTF-8 text input (Markdown, Mermaid or SGF) | 64 MiB |
+| UTF-8 text input (Markdown, code, Mermaid or SGF) | 64 MiB |
 | Row and graphics spools combined | 256 MiB |
 | Indexed rendered rows | 1,000,000 |
 | Graphics records | 32,768 |

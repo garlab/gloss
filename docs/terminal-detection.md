@@ -18,8 +18,9 @@ baselines, image fitting, and cell padding. It does not change the actual window
 size or terminal font. `--font-size` independently overrides equation font size.
 A font baseline is still estimated at 78% of the cell height.
 
-Geometry is captured once per invocation. Resize-driven reflow belongs to a
-future interactive viewer; existing scrollback output is not redrawn.
+Direct output captures geometry once and does not redraw existing scrollback.
+The [pager](pager.md) refreshes geometry before redraws and during idle polling,
+and reflows the document when the available size changes.
 
 ## Theme
 
@@ -42,8 +43,9 @@ No extra subprocess, startup timeout, or terminal-query traffic is introduced.
 
 Active capability, cell-size, and OSC color queries remain future work. A
 short-lived scrollback writer cannot portably restore unrelated keypresses to
-the shell after reading a terminal reply. A future input-owning pager can
-separate bounded replies from user input and retain that input for navigation.
+the shell after reading a terminal reply. The pager owns terminal input and is
+the appropriate place to add reply handling, but does not query capabilities yet.
+It would need to separate bounded replies from navigation input.
 Queries must preserve document stdin, have strict byte/time limits, restore
 terminal state, and fall back when a terminal does not answer.
 

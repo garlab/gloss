@@ -215,8 +215,8 @@ even though the source-model path is unchanged. Native image paths bypass URL
 decoding while reusing the existing bounded file loader and codecs.
 [Pager implementation](pager.md) defines the limits and interaction contract.
 
-The [feature design](feature-design.md) describes additional rendering features
-and math-library extraction boundaries.
+The [feature design](feature-design.md) records rendering decisions, performance
+requirements, and shared-library boundaries.
 
 ## Contracts to preserve
 

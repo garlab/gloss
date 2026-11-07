@@ -1,182 +1,123 @@
 # Rich Markdown rendering
 
-This document records the implementation direction. Features described here are
-planned unless the [README](../README.md) says otherwise. The
-[architecture](architecture.md) defines existing contracts; the
-[performance baseline](performance-baseline.md) supplies the initial measurements.
+This document records rendering decisions and requirements for future changes.
+The [README](../README.md) describes supported behavior; the
+[architecture](architecture.md) defines module boundaries and output contracts.
+The [roadmap](roadmap.md) lists remaining work.
 
-## Priorities
+## Rendering choices
 
-| Order | Feature | Useful first version |
+| Area | Decision | Implementation reference |
 | --- | --- | --- |
-| 1 | Code syntax highlighting | Language-aware fenced blocks, dark/light token colors, complete uncolored fallback. |
-| 2 | Tables | Retained cell structure, column alignment, and wrapping within the reading width. |
-| 3 | Images | Bounded local PNG, JPEG, and SVG decoding through a shared image placement path. |
-| 4 | Mermaid | An optional renderer producing images through that same path, with a source fallback. |
+| Syntax highlighting | Native grammars, semantic token spans, complete uncolored fallback. | [Highlighting](syntax-highlighting.md) |
+| Tables | Retain cells and alignment; wrap within the reading width with bounded measurement. | [Tables](tables.md) |
+| Images | Decode local PNG/JPEG/SVG with explicit limits and shared raster placement. | [Images](images.md) |
+| Mermaid | Use a native worker for the supported subset; retain complete source on failure. | [Mermaid](mermaid.md) |
 
-Task lists, strikethrough, basic footnotes, and native TeX math already work.
-GitHub alerts, inert front matter, an expanded details subset, validated terminal
-links, and backslash math delimiters are implemented; see
-[Markdown extensions](markdown-extensions.md) for current coverage. Opt-in paging,
-literal text search, resize reflow, and file watching are implemented separately
-from direct output; see [pager design and limits](pager.md). Heading navigation
-remains a follow-up.
-
-Every step must retain fast ordinary-document rendering, readable output on
+Changes must retain fast ordinary-document rendering, readable output on
 terminals without graphics, and source-based copying and export. The core viewer
 must remain usable without a browser or optional renderer installation.
 
 ## Syntax highlighting
 
-The first implementation uses a focused Tree-sitter adapter in `src/highlight/`.
-It reuses semantic capture mapping and language/query conventions, with a new
-bounded interval algorithm in place of per-byte color storage. There is no
-editor dependency or extra checkout. Native grammar support and cooperative
-parse/query cancellation favored this choice over introducing a second syntax
-engine. [Implementation notes and measurements](syntax-highlighting.md) record
-the selected language set, limits, and dependency cost.
+Tree-sitter supplies native grammars and cooperative parse/query cancellation.
+The adapter in `src/highlight/` maps semantic captures to bounded byte ranges;
+it does not allocate a color slot for every input byte. Preserve fence language
+labels and source ranges, and highlight before wrapping so multiline strings and
+comments keep their state. ANSI styling belongs in the terminal renderer.
 
-Preserve fenced-block language labels and source ranges in the document/layout
-model. Highlight the logical code block before wrapping so multiline strings and
-comments keep their state. Map semantic token kinds to the existing ANSI theme;
-the parsing layer must not produce terminal escapes or GUI colors.
+Bound source size, captures, query work, and cached state. Parse cancellation
+alone does not bound highlight queries. Validate spans against UTF-8 boundaries
+and preserve control-character filtering. Unknown languages, invalid input, and
+exhausted budgets retain all code as ordinary text. Plain/source export,
+disabled color, and documents without code must not initialize highlighting.
 
-A portable Tree-sitter core is a promising reuse option: language lookup, cached
-queries, cancellable parsing, and semantic byte-range output can be isolated
-from an editor. A lightweight lexical fallback is also useful, but a line-local
-lexer must be called per line and must not be presented as a full grammar parser.
-[Syntect](https://docs.rs/syntect/latest/syntect/highlighting/index.html) remains
-an alternative if future measurements or language coverage justify reconsidering
-the engine; no direct Syntect benchmark has been performed.
-
-Evaluate startup, first highlighted output, peak RSS, binary size, grammar
-coverage, minimum Rust version, and license notices. Start with commonly used
-languages and explicit aliases; avoid loading every grammar or compiling every
-query on startup. If the core needs a shared crate, give it an independent
-manifest and focused API. Do not introduce an editor framework or an additional
-private checkout requirement.
-
-The highlighter needs bounds on source size, captures, query work, and cached
-state. Parse cancellation alone does not bound highlight queries. Avoid
-allocating a token slot for every input byte or retaining every capture for an
-unbounded block. Validate spans against UTF-8 boundaries and preserve the
-renderer’s control-character filtering.
-
-Unknown languages, invalid input, and exhausted budgets retain all code as
-ordinary text. Plain/source export and disabled color bypass highlighting.
-Documents without code must not initialize highlighting resources. Code line
-numbers are implemented as renderer-only decoration, independent of token
-parsing and plain/source exports. Language labels remain a possible presentation
-option.
+Evaluate additional grammars and embedded languages against startup, first
+output, peak RSS, binary size, minimum Rust version, and licensing. Keep grammar
+and query initialization lazy. Extract a shared core only when its language
+lookup, parsing, and semantic-span contracts are useful independently of the
+terminal application. Code line numbers remain renderer-only decoration.
 
 ## Tables
 
-The initial implementation is in `src/layout/table.rs` and `src/render/table.rs`.
-[Table rendering](tables.md) records the width, row, and raster limits,
-numbered-cell fallback, export compatibility, and measurements.
+Retain rows, cells, and alignment markers. Measure terminal-cell widths using
+the existing Unicode and inline-math rules, and wrap without splitting graphemes
+or images. Bound width estimation and the temporary storage used for one table.
 
-Retain rows, cells, and alignment markers instead of flattening them into text.
-Measure terminal-cell widths using the existing Unicode and inline-math rules.
-Choose columns within the reading width and wrap cell contents without splitting
-graphemes or images.
-
-Bound the rows/cells examined for width estimation and the working memory needed
-to lay out one table. A narrow terminal or excessive column count should use a
-readable row-based fallback. All cell content must survive the fallback; a
-measurement budget must not silently truncate the document.
-
-Plain export should remain readable and independent of viewport width. Define
-its table representation with tests before changing current output.
+Narrow terminals and excessive column counts use a readable row-based fallback.
+All content must survive; a measurement budget must not truncate cells. Plain
+export remains independent of viewport width. Define any change to its table
+representation with compatibility tests.
 
 ## Shared images
 
-The initial implementation uses `src/raster.rs` for dimensions and straight RGBA
-pixels, `src/images.rs` for local-file policy and caches over shared bounded decoding, and the existing line painter
-and Kitty transport for placement. Math retains its baseline and equation
-metadata separately. [Local images](images.md) records the supported SVG subset,
-resource limits, cache behavior, and measurements.
+`document-graphics` owns bounded PNG/JPEG/SVG decoding. Gloss owns local-file
+policy, fitting, invocation budgets, and caches. Math retains its baseline and
+equation metadata separately while sharing image placement and transport.
 
-Start with local PNG, JPEG, and SVG references resolved relative to the Markdown
-file. Preserve alt text and source references when images cannot be displayed.
-Define the base directory explicitly for stdin. Remote retrieval is a separate,
-opt-in feature; rendering a document must not imply fetching every URL.
+Resolve local references relative to the document, with an explicit base for
+stdin. Preserve alt text and source references on fallback. Remote retrieval
+would need a separate opt-in design; rendering must not implicitly fetch URLs.
 
-Check encoded byte size and dimensions before decoding. Bound decoded pixels,
-intermediate allocations, SVG complexity/work, and cache bytes. Reject nested or
-external SVG resource loading. The initial implementation lazily registers a
-small set of already bundled fonts for SVG text; it does not scan system fonts.
-Any broader font discovery must remain lazy and be measured separately.
+Check encoded bytes and dimensions before decoding. Bound decoded pixels,
+intermediate allocations, SVG complexity, and cache bytes. Reject nested or
+external SVG resources. Bundled SVG fonts load lazily; broader font support
+needs its own startup, footprint, and compatibility measurements.
 
-Cache keys must describe content, size, and any theme/font inputs that affect
-pixels. Persistent caches also need the renderer version; the current cache is
-invocation-local, with fixed fonts and no recoloring. Use byte-accounted
-eviction, reject entries larger than the cache budget, and avoid simultaneous copies of raw, padded, and encoded
-pixels where possible. Pipes, plain export, source export, and text-only
-fallbacks must not decode images.
+Cache identity must include content and fitting bounds, plus any theme/font
+inputs that affect pixels. Persistent caches would also need renderer versions.
+Use byte-accounted eviction and avoid simultaneous raw, padded, and encoded
+copies. Pipes and text/source exports must not decode images.
 
 ## Mermaid
 
-The native implementation uses `document-graphics` with a pinned
-`document-graphics-mermaid` backend and its CLI/PNG features disabled, running in
-one lazy worker from the gloss executable.
-[Mermaid support](mermaid.md) records the selected subset, compatibility limits,
-bounded worker/cache behavior, and native/official renderer measurements.
-Broader dialect support remains future work.
+`document-graphics` uses a pinned `document-graphics-mermaid` backend with its
+CLI/PNG features disabled. One lazy child of the Gloss executable handles native
+rendering. Recognize Mermaid before generic code highlighting and reuse the
+shared image path. Unsupported syntax, terminals, errors, and resource limits
+retain complete source.
 
-Recognize Mermaid fences before generic code rendering. Rendered output uses the
-shared image path; unsupported terminals, missing renderers, errors, and limits
-fall back to the complete fenced source.
+The official [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) is a possible
+optional adapter for broader compatibility. Its Node.js/browser runtime would
+need separate startup, process-memory, installation-size, and compatibility
+measurements before adoption. No such adapter is required by the native path.
 
-The official
-[Mermaid CLI](https://github.com/mermaid-js/mermaid-cli) produces SVG/PNG using a
-Node.js and Puppeteer/browser stack. An optional adapter remains a compatibility
-option; the native implementation avoids that installation and process cost for
-the supported subset. Recheck startup, process memory, installation size, and
-compatibility before adding another backend.
+Start a worker only on an eligible cache miss. Bound execution time, request and
+response sizes, and aggregate work. Reuse it within a render and release it when
+done; cancellation must kill and reap in-flight work. Do not add a persistent
+background service by default.
 
-If using a helper, start it only for a cache miss requiring a diagram. Bound
-execution time and output size, process diagrams with one worker initially,
-reuse the worker within an invocation where supported, and terminate it when
-done. Do not create a persistent background service by default. Cancellation
-must clean up descendants and temporary files.
-
-Cache by diagram source, renderer version, configuration, and theme. Measure
-cold startup, repeated diagrams, and cache hits separately. Report the complete
-helper process tree's memory alongside process-reported RSS. The benchmark
-runner's optional `--process-tree` sampler records concurrent descendant RSS;
-run timing separately because process sampling adds overhead and can miss brief
-allocation peaks.
+Cache keys include source, fitting bounds, scale, and appearance. Measure cold
+startup, repeated diagrams, and cache hits separately. Report process-tree RSS
+alongside process-reported RSS. Run the benchmark's optional `--process-tree`
+sampler separately from timing: sampling adds overhead and can miss brief peaks.
 
 ## ABC music notation (deferred)
 
-Native engraving of `abc` fences is a future feature, independent of the initial
-release. [Native ABC design](abc-native-design.md) records the parser/layout
-reuse candidates, standalone library boundaries, reference-suite strategy, and
-resource gates. Evaluate existing Rust rendering before choosing a parser fork
-and new engraver. ABC remains ordinary fenced source until that work resumes;
-the runtime design excludes JavaScript.
+Native engraving of `abc` fences is independent of the initial release.
+[Native ABC design](abc-native-design.md) records parser/layout candidates,
+standalone library boundaries, reference suites, and resource requirements.
+Evaluate existing native rendering before choosing a parser fork and new
+engraver. ABC remains ordinary fenced source; the runtime plan excludes
+JavaScript.
 
 ## Other Markdown extensions
 
-- **Alerts:** recognize the common
-  [GitHub alert forms](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#alerts)
-  as styled quotes with textual labels that also work without color.
-- **Front matter:** recognize leading metadata, starting with the
-  [YAML convention](https://jekyllrb.com/docs/step-by-step/03-front-matter/).
-  Keep it distinguishable from a thematic break. Use bounded parsing with inert
-  tags/aliases and source fallback for malformed or oversized input; do not
-  execute metadata or silently discard it.
-- **Details:** display
-  [details/summary sections](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/organizing-information-with-collapsed-sections)
-  expanded initially. Folding requires an interactive viewer and should not hide
-  content in direct terminal output or exports.
-- **Math delimiters:** add `\(...\)` and `\[...\]` with explicit escaping rules;
-  never recognize them inside code spans or fences.
-- **Links:** consider clickable terminal labels using a validated URI policy.
-  Preserve readable targets in text export and reject terminal control injection.
+[Markdown extensions](markdown-extensions.md) documents the implemented alerts,
+front matter, expanded details, clickable links, and backslash math delimiters.
+Preserve these contracts when broadening coverage:
 
-This remains a Markdown viewer, not an HTML browser. Extensions should preserve
-source and degrade to readable text without executing document content.
+- Keep alert meaning readable without color.
+- Treat front matter as inert source, distinguish it from thematic breaks, and
+  retain malformed or oversized content. Never execute metadata or discard it.
+- Keep details content visible in direct output and exports. Interactive folding
+  needs a separate presentation design.
+- Preserve math source ranges and escaping; do not recognize delimiters in code.
+- Validate hyperlink targets, retain readable text exports, and reject terminal
+  control injection.
+
+HTML extensions must preserve source and readable fallbacks without executing
+content.
 
 ## Resource and performance requirements
 
@@ -204,19 +145,16 @@ For every feature:
    Budget exhaustion removes decoration, never source content. Verify disabled
    paths do not launch helpers or initialize decoders/highlighters.
 
-The initial 10 MiB mixed document reaches about 332 MiB peak RSS; 5,000 equations
-produce about 184 MiB of graphics output. These are optimization targets, not
-acceptable resource ceilings. The CLI now streams completed blocks, caches bounded math rasters, and compresses
-beneficial graphics payloads. The [initial rendering optimizations](performance-optimizations.md)
-remain a historical reference. Source, optional extension projections, parser
-working storage, and whole code/table blocks still scale with input. Continue
-evaluating those costs and terminal-side duplicate image reuse against memory,
-latency, scrollback behavior, and output volume.
+The [fixed baseline](performance-baseline.md) records about 332 MiB peak RSS for
+10 MiB of mixed Markdown and about 184 MiB of output for 5,000 equations before
+later optimizations. These observations are not resource ceilings. Completed-block
+streaming, bounded raster caches, and compression reduce costs, but source,
+parser storage, and whole code/table blocks still scale with input.
 
-The PTY baseline excludes terminal image decoding, GPU work, and scrollback.
-Graphics changes also need real-terminal checks for scrolling, selection,
-responsiveness, and terminal-process memory. Keep renderer and emulator
-measurements distinct.
+PTY measurements exclude emulator image decoding, GPU work, and scrollback.
+Graphics changes also need real-terminal checks for responsiveness, selection,
+scrolling, and terminal-process memory. Keep renderer and emulator measurements
+separate.
 
 ## Dependency boundaries
 
@@ -224,16 +162,14 @@ Keep highlighting, Markdown parsing, front matter, general image loading, Mermai
 terminal capability handling, ANSI styles, and Kitty transport outside
 `katex-native`.
 
-Two math-specific improvements are reasonable shared-library candidates:
+Two math-specific improvements remain shared-library candidates:
 
 - Raster dimension/allocation limits enforced before expensive work, with clear
-  errors. Caller-side fitting remains useful, but every consumer benefits from
-  library-side bounds.
-- A body/tag raster result helper that preserves each baseline and avoids
-  duplicated rasterization plumbing. Return the pieces without deciding terminal
+  errors. Caller-side fitting remains useful alongside library-side bounds.
+- A body/tag raster helper that preserves each baseline without deciding terminal
   margins or tag placement.
 
-Document equation-numbering state, terminal fitting, placement choices, and cache
-budgets stay with the viewer. Move a helper only when its semantics are shared
-and the library can test it independently. General SVG loading does not belong
-in the math library simply because both paths use a rasterizer.
+Equation numbering, terminal fitting, placement, and cache budgets stay with the
+viewer. Move a helper only when its semantics are shared and independently
+testable. General SVG loading does not belong in the math library simply because
+both paths use a rasterizer.
