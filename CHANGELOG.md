@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (2026-11-07)
+
+- Publish each version as an immutable GitHub release with a source archive,
+  checksums, and build provenance.
+- Install with Homebrew from the `garlab/tap` tap. Bottles cover Apple Silicon on
+  macOS 26 or newer and Linux x86-64.
+
+Application behavior is unchanged.
+
 ## 0.1.0 (2026-11-07)
 
 - Render Markdown with colors, readable margins, bounded line widths, tables,
