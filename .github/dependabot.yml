@@ -1,0 +1,15 @@
+# The workflows' actions are pinned by commit: their versions only change
+# through these pull requests.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # A new release waits a week before it's proposed, so that a compromised
+    # one has time to be found and pulled first.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
