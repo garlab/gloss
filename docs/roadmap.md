@@ -7,9 +7,6 @@ define contracts that changes must preserve.
 
 ## Reproducible builds and distribution
 
-- Complete the first Homebrew bottle publication in the separate tap and verify
-  installation and upgrade. Registry publication is available; the
-  [release guide](releasing.md) covers the automated tap updates and tag workflow.
 - Broaden prebuilt distribution only with platform and terminal coverage.
   Windows pager/watch support remains separate work.
 - Keep shared libraries independently versioned and validate their API/resource
