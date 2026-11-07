@@ -20,9 +20,16 @@ library and its native `document-graphics-mermaid` backend. Cargo downloads thes
 dependencies from crates.io. gloss enables the library's
 `images` and `sgf` features; native image codecs and image workers remain disabled.
 
-The first crates.io release is being prepared. From the `gloss` directory,
-install locally and try the included examples. Cargo's binary directory must
-be on your `PATH`; building also requires a C compiler for the syntax grammars.
+Install the `gloss-cli` package to get the `gloss` executable. Cargo's binary
+directory must be on your `PATH`; building also requires a C compiler for the
+syntax grammars.
+
+```sh
+cargo install gloss-cli --locked
+```
+
+To build from a checkout and try the included examples, run these commands from
+the `gloss` directory:
 
 ```sh
 cargo install --path . --locked
