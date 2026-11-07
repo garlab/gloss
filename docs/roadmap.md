@@ -24,7 +24,9 @@ define contracts that changes must preserve.
   optional official-renderer adapter needs a separate runtime/resource evaluation.
 - Add [SGF](sgf.md) move/variation navigation and evaluate legacy text encodings.
 - Broaden HTML/details forms only with source-preservation checks; see
-  [Markdown extensions](markdown-extensions.md).
+  [Markdown extensions](markdown-extensions.md). HTML image candidates include
+  `<picture>` light/dark selection, `width`/`height` hints, and standalone
+  wrapper lines.
 
 ## Performance
 

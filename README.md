@@ -187,6 +187,9 @@ Local PNG, JPEG, and SVG images render in graphics-capable sessions. Paths are
 relative to the Markdown file, or the working directory for stdin; `--base-dir`
 overrides that directory. Every image retains a selectable `[image: alt] (path)`
 caption. Missing, unsupported, or over-limit images keep that reference.
+HTML `<img>` markup, alone or inside `<p>`, `<div>`, `<a>`, or `<picture>`, renders
+the same way; other HTML stays as source. See
+[HTML images](docs/markdown-extensions.md#html-images).
 
 Images fit the reading column and viewport without enlargement. Inline image
 references become separate blocks; images inside tables remain text references.
@@ -347,7 +350,8 @@ change the clipboard itself.
 - `$...$` / `\(...\)` inline math, `$$...$$` / `\[...\]` display math, and fenced `math` blocks.
 - GitHub alerts, inert front matter, expanded details, and validated terminal links.
 - Equation tags and automatic numbering, with tags placed after the formula.
-- Bounded local PNG/JPEG/SVG images with selectable captions and text fallbacks.
+- Bounded local PNG/JPEG/SVG images, from Markdown or HTML `<img>`, with selectable
+  captions and text fallbacks.
 - Native rendering of supported Mermaid fences, with optional selectable source.
 - Unicode-aware terminal wrapping, preserving graphemes and keeping
   equations whole.
@@ -359,7 +363,8 @@ Math support follows the KaTeX subset implemented by `katex-native`.
 Complex combinations of nested blocks still need layout improvements.
 Embedded-language highlighting is currently limited to Dockerfile shell commands
 and the supported heredocs above; unsupported fences remain uncolored.
-Remote image URLs remain text references. HTML is not executed.
+Remote image URLs remain text references, including in HTML. Other HTML is shown
+as source and never executed.
 
 ## Development
 

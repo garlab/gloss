@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Render HTML `<img>` markup like Markdown images, including inside `<p>`,
+  `<div>`, `<a>`, and `<picture>`. Local images display; remote ones keep their
+  reference and are never fetched. Other HTML still shows as source.
+
 ## 0.1.1 (2026-11-07)
 
 - Publish each version as an immutable GitHub release with a source archive,

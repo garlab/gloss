@@ -40,6 +40,7 @@ flate2 = "1.1"
 clap = { version = "4", features = ["derive"] }
 katex-native = { version = "=0.1.0", features = ["raster"] }
 pulldown-cmark = { version = "0.13", default-features = false }
+html5gum = { version = "0.8.4", default-features = false }
 tree-sitter = "0.27"
 tree-sitter-bash = "0.25"
 tree-sitter-containerfile = "0.9.2"

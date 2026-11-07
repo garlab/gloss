@@ -38,6 +38,43 @@ Each section is limited to 256 KiB and 16 nesting levels, with a total budget of
 Code spans, fenced/indented code, comments, and other HTML blocks are excluded.
 This is not an HTML renderer; it never executes scripts or retrieves resources.
 
+## HTML images
+
+An `<img>` element renders like the equivalent Markdown image. A local file is
+drawn under the [local image](images.md) rules; any other source, including a
+remote URL, keeps its `[image: alt] (src)` reference. Nothing is fetched. This
+covers HTML blocks, such as a centered logo, and runs of adjacent inline tags,
+such as a linked badge:
+
+```html
+<p align="center">
+  <a href="https://example.com"><img src="docs/logo.png" alt="Logo" width="200"></a>
+</p>
+```
+
+A fragment converts only when it contains an image and otherwise only `<p>`,
+`<div>`, `<a>`, `<picture>`, `<source>`, `<br>`, comments, and text. `<p>` and
+`<div>` separate paragraphs, `<a href>` becomes a link, `<br>` a line break, and
+comments are hidden. Text follows HTML whitespace rules, with entities decoded;
+it is not Markdown. Exports match the equivalent Markdown, and exact source
+export is unchanged. Inline wrappers must close within their run of tags.
+
+Any other element, a missing or empty `src`, or malformed markup leaves the whole
+fragment as source. `width`, `height`, and `align` are ignored, so images keep the
+usual fitting. A `<picture>` shows its `<img>`; light and dark `<source>`
+alternatives are not selected. A wrapper on its own, such as a
+`<div align="center">` line around Markdown, still shows as source.
+
+Each fragment is limited to 256 KiB, 32,768 tokens, 16 KiB per attribute value,
+and 128 nested wrappers; larger fragments keep their source. Fragments without
+an `<img` tag skip tokenization. On the benchmark corpora, which contain no HTML,
+output is byte-identical; plain export of the 10 MiB mixed document measured
+98.2 ms against 95.4 ms before (medians of five alternating seven-sample runs,
+Apple M2 Pro, Rust 1.99). A 2.2 MB document with 12,000 image fragments exports
+about 33 ms more slowly, mostly in tokenization. The `html5gum` tokenizer, used
+without optional features, adds no further dependencies and grows the release
+executable by 231,952 bytes (1.3%).
+
 ## Backslash math
 
 `\(...\)` denotes inline math and `\[...\]` denotes display math. Both share the

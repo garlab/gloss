@@ -2,8 +2,10 @@
 //! terminal styling and image placement. Copying must never depend on pixels.
 
 mod extensions;
+mod html;
 
 use std::{
+    collections::VecDeque,
     ops::Range,
     path::{Path, PathBuf},
 };
@@ -83,7 +85,12 @@ impl Document {
         let mut parsed = matches!(self.kind, Kind::Markdown)
             .then(|| Parser::new_ext(input, options).into_offset_iter());
         let mut stage = 0;
+        // Events read ahead with an HTML fragment.
+        let mut queued = VecDeque::new();
         std::iter::from_fn(move || {
+            if let Some(item) = queued.pop_front() {
+                return Some(item);
+            }
             if !matches!(self.kind, Kind::Markdown) {
                 let event = match (&self.kind, stage) {
                     (Kind::Code(language), 0) => Event::Start(Tag::CodeBlock(
@@ -113,17 +120,12 @@ impl Document {
                 });
             }
             let parsed = parsed.as_mut()?;
-            let (mut event, range) = parsed.next()?;
+            let (event, range) = parsed.next()?;
             let range = self.prepared.original_range(range);
-            if matches!(event, Event::InlineMath(_) | Event::DisplayMath(_))
-                && let Some(tex) = self.prepared.math(&range)
-            {
-                event = if matches!(event, Event::InlineMath(_)) {
-                    Event::InlineMath(tex.into())
-                } else {
-                    Event::DisplayMath(tex.into())
-                };
+            if matches!(event, Event::Start(Tag::HtmlBlock) | Event::InlineHtml(_)) {
+                return self.html(event, range, parsed, &mut queued);
             }
+            let event = self.math(event, &range);
             // A fenced `math` block has the same rendering semantics as $$...$$,
             // but its source range still includes the original fence.
             if matches!(&event, Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
@@ -150,6 +152,46 @@ impl Document {
                 })
             }
         })
+    }
+
+    /// Restores TeX that a syntax projection replaced with a placeholder.
+    #[inline]
+    fn math<'a>(&'a self, event: Event<'a>, range: &Range<usize>) -> Event<'a> {
+        if matches!(event, Event::InlineMath(_) | Event::DisplayMath(_))
+            && let Some(tex) = self.prepared.math(range)
+        {
+            return if matches!(event, Event::InlineMath(_)) {
+                Event::InlineMath(tex.into())
+            } else {
+                Event::DisplayMath(tex.into())
+            };
+        }
+        event
+    }
+
+    /// Kept out of line, so documents without HTML take the same path as before.
+    #[inline(never)]
+    fn html<'a>(
+        &'a self,
+        event: Event<'a>,
+        source: Range<usize>,
+        parsed: &mut impl Iterator<Item = (Event<'a>, Range<usize>)>,
+        queued: &mut VecDeque<SpannedEvent<'a>>,
+    ) -> Option<SpannedEvent<'a>> {
+        let pull = || {
+            parsed.next().map(|(event, range)| SpannedEvent {
+                event,
+                source: self.prepared.original_range(range),
+            })
+        };
+        // The event ending an inline run is inline content, never a code fence.
+        if let Some(next) = html::read(SpannedEvent { event, source }, pull, queued) {
+            queued.push_back(SpannedEvent {
+                event: self.math(next.event, &next.source),
+                source: next.source,
+            });
+        }
+        queued.pop_front()
     }
 
     /// Returns the exact Markdown for a source range, including delimiters.

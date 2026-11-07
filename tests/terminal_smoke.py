@@ -408,8 +408,11 @@ class TerminalSmoke(unittest.TestCase):
         fixture = Path(__file__).resolve().parent / "fixtures/images.md"
         output, error = terminal(file=fixture, cwd="/", args=("--show-math-source",))
         self.assertFalse(error)
-        self.assertEqual(len(screen(output, 80)), 6)
+        self.assertEqual(len(screen(output, 80)), 7)
         self.assertIn("[image: A blue color grid]", plain(output))
+        self.assertIn("[image: A centered grid] (assets/color-grid.png)", plain(output))
+        self.assertIn("[image: Remote banner] (https://example.com/banner.gif)", plain(output))
+        self.assertNotIn("<img", plain(output))
         self.assertIn("assets/gradient.jpg", plain(output))
         self.assertIn("Remote example", plain(output))
         self.assertNotIn("TeX:", plain(output))
@@ -462,10 +465,12 @@ class TerminalSmoke(unittest.TestCase):
         self.assertEqual(len(screen(output, 80)), 1)
         for label in ("Missing", "Remote", "Cell", "Good", "After."):
             self.assertIn(label, plain(output))
-        control = "![a\x1b[2J](missing.png)\n"
-        output, error = terminal(control)
-        self.assertFalse(error)
-        self.assertNotIn(b"\x1b[2J", output)
+        for control in ("![a\x1b[2J](missing.png)\n", '<img src="missing.png" alt="a&#x1b;[2J">\n',
+                        '<img src="missing.png" alt="a\x1b[2J">\n', '<p><img src="missing.png" alt="a\x9b2J"></p>\n'):
+            output, error = terminal(control)
+            self.assertFalse(error)
+            self.assertNotIn(b"\x1b[2J", output)
+            self.assertNotIn("\x9b".encode(), output)
 
     def test_mermaid_native_subset_and_selectable_source(self):
         fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"

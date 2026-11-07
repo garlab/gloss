@@ -22,7 +22,8 @@ Paths resolve relative to the Markdown file, or the working directory for stdin.
 `--base-dir` overrides that base. Percent-encoded UTF-8 paths are accepted.
 Only regular local files with `.png`, `.jpg`, `.jpeg`, or `.svg` extensions are
 opened. URLs, data URIs, query/fragment suffixes, and nested SVG resources are
-unsupported; rendering never fetches a remote image.
+unsupported; rendering never fetches a remote image. HTML `<img>` references follow
+the same rules; see [HTML images](markdown-extensions.md#html-images).
 
 Images shrink to fit the reading column and viewport while preserving aspect
 ratio; they are never enlarged. JPEG orientation is applied before fitting.

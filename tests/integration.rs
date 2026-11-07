@@ -1155,3 +1155,127 @@ fn many_openers_before_protected_code_keep_source_without_math() {
     );
     assert_eq!(export::source(&document), source);
 }
+
+#[test]
+fn html_images_match_their_markdown_and_other_markup_keeps_its_source() {
+    let images = |document: &Document| -> Vec<(String, String, String)> {
+        layout::with_images(document)
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                layout::Block::Image(image) => Some((
+                    image.target.clone(),
+                    image.alt.clone(),
+                    document
+                        .source_slice(image.source.clone())
+                        .unwrap()
+                        .to_owned(),
+                )),
+                _ => None,
+            })
+            .collect()
+    };
+    for (html, markdown) in [
+        (
+            "<p align=\"center\">\n  <img src=\"https://example.com/a.gif\" height=\"100\" />\n</p>\n",
+            "![](https://example.com/a.gif)\n",
+        ),
+        (
+            "<div>\n<img src=\"assets/a%20b.png?x=1&amp;y=2\" alt=\"A &amp; B\" title=\"T\">\n</div>",
+            "![A & B](<assets/a%20b.png?x=1&y=2> \"T\")",
+        ),
+        (
+            "<p align=\"center\">\n  <a href=\"https://example.com/a\"><img src=\"a.png\" alt=\"A\"></a>\n  <a href=\"https://example.com/b\"><img src=\"b.png\" alt=\"B\"></a>\n</p>",
+            "[![A](a.png)](https://example.com/a) [![B](b.png)](https://example.com/b)",
+        ),
+        (
+            "<picture>\n  <source media=\"(prefers-color-scheme: dark)\" srcset=\"dark.png\">\n  <img src=\"light.png\" alt=\"Project\n  logo\">\n</picture>",
+            "![Project logo](light.png)",
+        ),
+        (
+            "<p>Made by <!-- note --> people<br>\n<img src=\"a.png\"></img></p>",
+            "Made by people\\\n![](a.png)",
+        ),
+        (
+            "Inline <img src=\"a.png\" alt=\"one\"> and <a href=\"https://example.com\"><img src=\"b.png\" alt=\"two\"></a> here.",
+            "Inline ![one](a.png) and [![two](b.png)](https://example.com) here.",
+        ),
+    ] {
+        let document = Document::parse(html.into());
+        let expected = Document::parse(markdown.into());
+        assert_eq!(export::source(&document), html);
+        assert_eq!(export::text(&document), export::text(&expected), "{html}");
+        let found = images(&document);
+        assert_eq!(
+            found
+                .iter()
+                .map(|(target, alt, _)| (target, alt))
+                .collect::<Vec<_>>(),
+            images(&expected)
+                .iter()
+                .map(|(target, alt, _)| (target, alt))
+                .collect::<Vec<_>>(),
+            "{html}"
+        );
+        assert!(
+            found
+                .iter()
+                .all(|(_, _, source)| source.starts_with("<img"))
+        );
+    }
+
+    // The event after an inline run keeps its ordinary processing.
+    let document =
+        Document::parse("Before <img src=\"a.png\"> \\(x^2\\) and <img src=\"b.png\">$y$.".into());
+    let maths: Vec<_> = document
+        .events()
+        .filter_map(|item| match item.event {
+            Event::InlineMath(tex) => Some(tex.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(maths, ["x^2", "y"]);
+    assert_eq!(images(&document).len(), 2);
+    assert_eq!(
+        export::text(&document),
+        "Before [image: ] (a.png) \\(x^2\\) and [image: ] (b.png)$y$.\n\n"
+    );
+
+    // Image source ranges skip the quote markers between HTML lines.
+    let document =
+        Document::parse("> <p align=\"center\">\n>   <img\n>     src=\"a.png\">\n> </p>\n".into());
+    assert_eq!(
+        images(&document),
+        [(
+            "a.png".to_owned(),
+            String::new(),
+            "<img\n>     src=\"a.png\">".to_owned()
+        )]
+    );
+
+    // Anything outside the image subset, or without an image, keeps its source.
+    for html in [
+        "<p><b>bold</b> <img src=\"a.png\"></p>",
+        "<p align=\"center\">\n<h1>Title</h1>\n<img src=\"a.png\">\n</p>",
+        "<div align=\"center\">\n\nCentered\n\n</div>",
+        "<a href=\"https://example.com\">plain link</a>",
+        "<a href=\"https://example.com\"><img src=\"a.png\"> then</a>",
+        "<!-- <img src=\"a.png\"> -->",
+        "<img alt=\"no source\">",
+        "<img src=\"  \">",
+        "<img src=\"a.png\"alt=\"x\">",
+        "<script><img src=\"a.png\"></script>",
+        "<details><summary>A</summary><img src=\"a.png\"></details>",
+        &format!("<img src=\"a.png\" alt=\"{}\">", "x".repeat(17 * 1024)),
+        &format!(
+            "<p>\n<img src=\"a.png\">\n{}\n</p>",
+            "x ".repeat(130 * 1024)
+        ),
+    ] {
+        let document = Document::parse(html.to_owned());
+        assert!(images(&document).is_empty(), "{html}");
+        let text = export::text(&document);
+        assert!(text.contains('<'), "{text}");
+        assert_eq!(export::source(&document), html);
+    }
+}

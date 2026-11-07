@@ -18,7 +18,15 @@ A JPEG:
 
 - ![Image in a list](assets/color-grid.png)
 
-Remote references stay as text:
+HTML image markup renders like the equivalent Markdown:
+
+<p align="center">
+  <img src="assets/color-grid.png" alt="A centered grid" width="120">
+</p>
+
+Remote references stay as text, including in HTML:
+
+<img src="https://example.com/banner.gif" alt="Remote banner">
 
 ![Remote example](https://example.com/image.png)
 

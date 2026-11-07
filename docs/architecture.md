@@ -39,7 +39,8 @@ image files. Text and exact source exports bypass all image decoding.
 `Document::events()` parses on iteration and borrows text from the source or an
 optional syntax projection. Each call starts a fresh parser. Extension candidates
 can require preliminary range discovery and an offset map; exact source bytes
-remain untouched. There is no retained event vector.
+remain untouched. HTML image fragments are read ahead and replaced by equivalent
+image and link events; other HTML passes through. There is no retained event vector.
 
 `layout::visit()` emits completed blocks. The CLI renders with one-block lookahead
 for quote rails, then releases each block. Plain export writes completed blocks
@@ -56,6 +57,7 @@ The full source and parser working storage still scale with input.
 | `src/input.rs` | Resolve input formats/languages, build standalone documents, and read bounded regular text files for code, diagrams, and reloads. |
 | `src/document.rs` | CommonMark or literal input events, original source, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
+| `src/document/html.rs` | Convert bounded HTML image fragments into Markdown image/link events; leave other HTML as source. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
 | `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
