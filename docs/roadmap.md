@@ -7,11 +7,11 @@ define contracts that changes must preserve.
 
 ## Reproducible builds and distribution
 
-- Complete the first hosted CI matrix and registry publication, then add the
-  `gloss` formula to the separate Homebrew tap. The [release guide](releasing.md)
-  covers the prepared workflows, Trusted Publishing, and package checks.
-- Establish platform and terminal coverage before adding prebuilt binaries or
-  broader distribution. Windows pager/watch support remains separate work.
+- Complete the first Homebrew bottle publication in the separate tap and verify
+  installation and upgrade. Registry publication is available; the
+  [release guide](releasing.md) covers the automated tap updates and tag workflow.
+- Broaden prebuilt distribution only with platform and terminal coverage.
+  Windows pager/watch support remains separate work.
 - Keep shared libraries independently versioned and validate their API/resource
   changes in consumers. Release from a clean checkout with registry dependencies
   and no machine-local overrides.

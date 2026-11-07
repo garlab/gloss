@@ -1,11 +1,12 @@
 # Releasing Gloss
 
 The GitHub repository is `garlab/gloss`, the crates.io package is `gloss-cli`, and
-the executable and planned Homebrew formula are `gloss`. Application and shared
-library versions are independent. The initial application version is `0.1.0`.
+the executable and Homebrew formula are `gloss`. Application and shared
+library versions are independent. The first published application version is `0.1.0`.
 
-This setup publishes source to crates.io. Prebuilt executables and Homebrew
-bottles are separate follow-up work.
+The release workflow publishes source to crates.io. The separate
+[`garlab/homebrew-tap`](https://github.com/garlab/homebrew-tap) follows the registry
+and builds Homebrew bottles automatically.
 
 ## Checks before a release
 
@@ -51,60 +52,24 @@ This is the configured matrix, not a claim that a hosted run has already passed.
 Require all jobs to pass for the release commit. Protocol tests do not replace
 visual checks in real terminal emulators. The pager and watch mode require Unix.
 
-## First publication
+## One-time release configuration
 
-1. Create the public `garlab/gloss` GitHub repository with `main` as its default
-   branch. If this checkout has no remote, add it:
+Enable GitHub Actions in `garlab/gloss`. Create an environment named `release`,
+allowing deployment from `v*` tags. In the `gloss-cli` crate's settings, configure
+[Trusted Publishing](https://crates.io/docs/trusted-publishing):
 
-   ```sh
-   git remote add origin git@github.com:garlab/gloss.git
-   ```
+| Setting | Value |
+| --- | --- |
+| Repository owner | `garlab` |
+| Repository | `gloss` |
+| Workflow filename | `release.yml` |
+| Environment | `release` |
 
-2. Review the `0.1.0` changelog, replace its `unreleased` marker with the release
-   date, and replace the README's first-release notice with the registry install
-   command below. Commit the reviewed tree, push `main`, and wait for CI to pass.
-   Enable Actions if the repository's settings disable workflows.
+The initial `0.1.0` crate has been published. No long-lived registry credential
+belongs in the repository or workflow configuration. Homebrew uses credentials
+configured in the tap; it requires no additional secret in this repository.
 
-   ```sh
-   cargo install gloss-cli --locked
-   ```
-
-3. Publish the first version manually from that exact clean commit. Use your
-   local crates.io authentication, then run:
-
-   ```sh
-   cargo publish -p gloss-cli --locked --dry-run
-   cargo publish -p gloss-cli --locked
-   ```
-
-   Check `git status --short` before publishing and confirm the manifest version
-   is `0.1.0`. The first manual release creates the crate so its owner can
-   configure [Trusted Publishing](https://crates.io/docs/trusted-publishing).
-   No registry credential belongs in the repository or workflow configuration.
-
-4. Create a GitHub environment named `release`, allowing deployment from `v*`
-   tags. On the crate's settings page, add a GitHub Trusted Publisher with:
-
-   | Setting | Value |
-   | --- | --- |
-   | Repository owner | `garlab` |
-   | Repository | `gloss` |
-   | Workflow filename | `release.yml` |
-   | Environment | `release` |
-
-5. Tag the published commit and push that tag:
-
-   ```sh
-   git tag -s v0.1.0 -m 'Release 0.1.0'
-   git push origin v0.1.0
-   ```
-
-   The release workflow verifies the tag and reruns CI. Because `0.1.0` already
-   exists, it skips authentication and upload. Later versions use Trusted
-   Publishing. Confirm installation from the registry with
-   `cargo install gloss-cli --version 0.1.0 --locked`, then `gloss --version`.
-
-## Subsequent releases
+## Publishing a version
 
 Update the package version in `Cargo.toml`, refresh `Cargo.lock` with
 `cargo check`, and add dated release notes in `CHANGELOG.md`. Run the checks
@@ -129,33 +94,40 @@ gh workflow run release.yml --ref vX.Y.Z
 Manual runs against a branch are rejected. Fix code failures with a new version
 once a version has been published; do not replace an existing release tag.
 
-## Homebrew handoff
+## Homebrew bottles
 
-Keep the formula in the separate tap. Once the source tag exists, use its archive
-URL, `https://github.com/garlab/gloss/archive/refs/tags/vX.Y.Z.tar.gz`, and compute
-its actual SHA-256. The formula class is `Gloss`. Use Homebrew's
-[Cargo helpers](https://docs.brew.sh/Language-Specific-Formulae#rust), which retain
-the lockfile and separate dependency fetching from installation:
+The tap checks the crates.io index on its existing hourly schedule. After a
+stable, non-yanked `gloss-cli` version appears, it downloads the `.crate` archive,
+verifies its SHA-256 against the index, and opens a formula-update PR. The source
+includes `Cargo.lock`; Homebrew's Cargo helpers fetch dependencies separately
+and install with the lockfile and network access disabled during the build.
 
-```ruby
-depends_on "rust" => :build
+The tap builds and tests bottles on Apple Silicon macOS 26 and Linux x86-64.
+Its publisher checks that the PR contains only the expected formula and release
+receipt, validates both bottle artifacts, publishes them, and updates the tap.
+Other supported platforms use a source build. Homebrew installs the executable
+as `gloss`:
 
-def fetch
-  system "cargo", "fetch", *std_cargo_fetch_args
-end
-
-def install
-  system "cargo", "install", *std_cargo_args
-end
-
-test do
-  assert_match version.to_s, shell_output("#{bin}/gloss --version")
-  (testpath/"sample.md").write("# Hello\n\nA **small** document.\n")
-  assert_match "Hello", shell_output("#{bin}/gloss --output text sample.md")
-end
+```sh
+brew install garlab/tap/gloss
 ```
 
-This is an excerpt, not a complete formula: supply the description, homepage,
-archive URL, checksum, and MIT license in the tap. Test the formula there before
-advertising its installation command. This release setup does not change the
-tap or create bottles.
+The scheduled updater also covers versions published manually with
+`cargo publish`. GitHub schedules can be delayed; to start an update immediately,
+run **Update formulae** in the tap's Actions tab with formula `gloss`, or use:
+
+```sh
+gh workflow run autobump.yml --repo garlab/homebrew-tap --ref main \
+  -f formula=gloss -f tag=vX.Y.Z
+```
+
+Omit `tag` to select the latest stable version. For the initial setup, push the
+tap automation and run it with `tag=v0.1.0`; the bot creates the first formula
+from a reviewed template and publishes its bottles. No new Gloss version or
+replacement tag is needed. Wait for that tap run to finish before announcing
+Homebrew availability. A retry reuses only matching release assets; it does not
+overwrite different bottle bytes.
+
+Formula build instructions, supported bottle platforms, credentials, and
+recovery steps belong in the [tap's documentation](https://github.com/garlab/homebrew-tap#readme).
+Keep formula changes there rather than maintaining another copy in this repo.

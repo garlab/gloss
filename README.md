@@ -1,6 +1,6 @@
 # gloss
 
-The Cargo package is `gloss-cli`; the executable and planned Homebrew formula
+The Cargo package is `gloss-cli`; the executable and Homebrew formula
 are named `gloss`.
 
 A terminal viewer for Markdown, math, diagrams, images, and code. Math is laid
@@ -10,6 +10,19 @@ browser, Node.js, or external TeX installation is needed at runtime.
 gloss prints into terminal scrollback and exits by default. Use `--pager` for
 interactive reading or `--watch` for live file updates. Kitty graphics have text
 fallbacks on other terminals.
+
+## Install
+
+With Homebrew, once the tap's initial bottle publication is complete:
+
+```sh
+brew install garlab/tap/gloss
+```
+
+Bottles cover Apple Silicon on macOS 26 or newer and Linux x86-64. Other
+supported platforms build from source. The
+[tap](https://github.com/garlab/homebrew-tap) follows stable crates.io releases
+automatically.
 
 ## Build and run
 
@@ -371,8 +384,8 @@ selection behavior.
 [CI](.github/workflows/ci.yml) runs Rust checks on Linux, macOS, and Windows,
 Unix pseudo-terminal checks on Linux and macOS, and minimum-Rust and package
 verification on Linux. The pager and `--watch` require Unix; Windows uses direct
-output. See [releasing](docs/releasing.md) for the first crates.io publication,
-tag-triggered releases, and the Homebrew handoff. Hosted platform checks must
+output. See [releasing](docs/releasing.md) for publishing to crates.io,
+tag-triggered releases, and automated Homebrew bottles. Hosted platform checks must
 pass before publication.
 
 The [documentation index](docs/README.md) separates feature references, contributor
