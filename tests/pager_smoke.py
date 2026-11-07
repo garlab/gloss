@@ -508,15 +508,34 @@ class PagerSmoke(unittest.TestCase):
                 p.close(key="\x03" if sig is None else "")
 
     def test_suspend_and_resume(self):
-        p = self.pager("Suspend $x$\n")
-        p.ready("Suspend")
-        os.write(p.master, b"\x1a")
-        p.until(lambda: p.screen.left)
-        self.assertEqual(terminal_settings(p.slave), p.saved)
-        p.screen.left = False
-        p.process.send_signal(signal.SIGCONT)
-        p.until(lambda: p.screen.alt and bool(p.screen.placements))
-        p.close()
+        for sig in (None, signal.SIGTSTP):
+            with self.subTest(signal=sig):
+                p = self.pager("Suspend $x$\n")
+                p.ready("Suspend")
+                if sig is None:
+                    os.write(p.master, b"\x1a")
+                else:
+                    p.process.send_signal(sig)
+                p.until(lambda: p.screen.left)
+
+                def stopped():
+                    pid, status = os.waitpid(p.process.pid, os.WUNTRACED | os.WNOHANG)
+                    if pid == 0:
+                        return False
+                    self.assertTrue(os.WIFSTOPPED(status), f"pager exited before suspension: {status}")
+                    self.assertEqual(os.WSTOPSIG(status), signal.SIGSTOP)
+                    return True
+
+                # The screen-exit bytes are flushed before termios restoration.
+                # Wait for the kernel stop event, as a shell would, so neither
+                # the attribute check nor SIGCONT can race the actual suspend.
+                p.until(stopped)
+                self.assertEqual(terminal_settings(p.slave), p.saved)
+                self.assertFalse(p.screen.images or p.screen.placements)
+                p.screen.left = False
+                p.process.send_signal(signal.SIGCONT)
+                p.until(lambda: p.screen.alt and bool(p.screen.placements))
+                p.close()
 
     def test_existing_rich_fixtures(self):
         for name in ("style", "code", "tables", "math", "extensions", "mermaid", "gantt", "gantt-time"):
