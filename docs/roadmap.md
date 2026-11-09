@@ -72,6 +72,13 @@ and pixel checks with live-terminal validation.
 - Improve native mouse selection in Ghostty where possible; reading and exporting
   must remain useful without recovering text from image pixels.
 
+## Planned: LaTeX preview
+
+Render `.tex` documents natively instead of as Markdown, with a LaTeX parser
+shared with Plastext. Begin with the parser spike in the
+[LaTeX preview design](latex-design.md), which records the research,
+measurements, and suggested approach.
+
 ## Deferred: native ABC music notation
 
 ABC engraving does not block the initial release. Keep `abc` fences as source.
