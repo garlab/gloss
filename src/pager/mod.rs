@@ -57,7 +57,14 @@ fn max_top(page: &Page, screen: Geometry) -> usize {
 }
 
 /// Relocate a source anchor past insertions/deletions outside the edited region.
+/// Rows recorded before the first page shows: two screens, so scrolling a
+/// little works before the rest arrives.
+fn preview_rows(screen: Geometry) -> usize {
+    usize::from(screen.rows) * 2
+}
+
 fn relocate(old: &str, new: &str, anchor: u32) -> u32 {
+    let anchor = anchor.min(old.len() as u32);
     let prefix = old
         .bytes()
         .zip(new.bytes())
@@ -229,6 +236,8 @@ struct View {
     forward: bool,
     search: Option<Search>,
     loading: bool,
+    /// The page holds only the first rows while the rest renders.
+    partial: bool,
     watch: bool,
     title: String,
     warning: usize,
@@ -263,10 +272,11 @@ impl View {
                 || "0/0".into(),
                 |p| {
                     format!(
-                        "{}-{}/{}",
+                        "{}-{}/{}{}",
                         self.top + 1,
                         (self.top + height).min(p.rows.len()),
-                        p.rows.len()
+                        p.rows.len(),
+                        if self.partial { "+" } else { "" }
                     )
                 },
             );
@@ -396,6 +406,8 @@ pub fn run(
     let mut tty = Session::open()?;
     let (screen, mut current_options) = prepare(options());
     let mut source = Arc::new(source);
+    // What row anchors index, when it differs from `source`.
+    let mut text: Option<Arc<str>> = None;
     let path = &input.path;
     let mut watcher = watch.then(|| watch::Watch::new(path.as_ref().unwrap()));
     let mut view = View {
@@ -409,6 +421,7 @@ pub fn run(
         forward: true,
         search: None,
         loading: true,
+        partial: false,
         watch,
         title: path
             .as_ref()
@@ -421,6 +434,7 @@ pub fn run(
         input: input.clone(),
         options: current_options.clone(),
         force: true,
+        preview: Some(preview_rows(view.screen)),
     });
     let mut dirty = true;
     let mut checked = Instant::now();
@@ -434,20 +448,29 @@ pub fn run(
             dirty = true;
         }
         if let Some(result) = worker.result() {
-            view.loading = false;
+            view.loading = result.partial;
             match result.page {
                 Ok(Some(page)) => {
                     view.graphics.clear(tty.out())?;
                     if let Some(previous) = &view.page {
-                        let at_end = view.top > 0
+                        // A provisional page's last row is not the document's end.
+                        let at_end = !view.partial
+                            && view.top > 0
                             && view.top
                                 >= previous
                                     .rows
                                     .len()
                                     .saturating_sub(usize::from(previous.geometry.rows));
                         let (mut anchor, offset) = previous.location(view.top);
-                        if !Arc::ptr_eq(&source, &result.source) {
-                            anchor = relocate(&source, &result.source, anchor);
+                        let same_text = match (&text, &result.text) {
+                            (None, None) => Arc::ptr_eq(&source, &result.source),
+                            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                            _ => false,
+                        };
+                        if !same_text {
+                            let old = text.as_deref().unwrap_or(source.as_str());
+                            let new = result.text.as_deref().unwrap_or(result.source.as_str());
+                            anchor = relocate(old, new, anchor);
                         }
                         view.top = if at_end {
                             max_top(&page, view.screen)
@@ -456,7 +479,12 @@ pub fn run(
                                 .min(max_top(&page, view.screen))
                         };
                     }
+                    view.partial = result.partial;
                     source = result.source;
+                    text = result.text;
+                    if let Some(watcher) = &mut watcher {
+                        watcher.track(&result.dependencies);
+                    }
                     view.page = Some(page);
                     view.search = None;
                     view.message.clear();
@@ -470,8 +498,10 @@ pub fn run(
         }
         let mut reload = false;
         let mut force = false;
-        if let (Some(watcher), Some(path)) = (&mut watcher, &path) {
-            reload |= watcher.poll(path);
+        if let Some(dependency) = watcher.as_mut().and_then(watch::Watch::poll) {
+            reload = true;
+            // The source alone may be unchanged when an included file changes.
+            force |= dependency;
         }
         if let (Some(search), Some(page)) = (&mut view.search, &mut view.page) {
             if let Some(found) = search.step(page, &view.query)? {
@@ -526,11 +556,14 @@ pub fn run(
                 .page
                 .as_ref()
                 .is_none_or(|p| Some(p.geometry) != current_options.terminal);
+            // Reloads keep showing the previous page instead of a preview.
+            let preview = view.page.is_none().then(|| preview_rows(view.screen));
             worker.submit(Request {
                 source: Arc::clone(&source),
                 input: input.clone(),
                 options: current_options.clone(),
                 force,
+                preview,
             });
             view.loading = true;
             view.message.clear();
@@ -550,6 +583,8 @@ mod tests {
         assert_eq!(relocate("a\nb\nc\n", "intro\na\nb\nc\n", 4), 10);
         assert_eq!(relocate("intro\na\nb\nc\n", "a\nb\nc\n", 10), 4);
         assert_eq!(relocate("abc", "abcXYZ", 1), 1);
+        // Anchors past the old text, from a differently expanded document.
+        assert_eq!(relocate("abc", "xbc", 9), 3);
         assert_eq!(safe("a\x1b\n界é", 4), "a界é");
         assert_eq!(safe("e\u{301}界", 2), "e\u{301}");
     }

@@ -77,6 +77,44 @@ impl Loader {
         self.load_file(&path, Some(format), width, height)
     }
 
+    /// LaTeX `\includegraphics`: a name without an extension tries each
+    /// supported one, and `\graphicspath` directories follow the base. Only
+    /// existing files count toward the open-attempt budget.
+    pub fn load_graphic(
+        &mut self,
+        base: &Path,
+        target: &str,
+        search: &[String],
+        width: u32,
+        height: u32,
+    ) -> Result<Arc<Raster>, Error> {
+        const EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "svg", "PNG", "JPG", "JPEG"];
+        // graphicx treats the text after the last dot as the extension.
+        let named = Path::new(target).extension().is_some();
+        if named && Self::format(Path::new(target)).is_none() {
+            return Err(Error::Unsupported);
+        }
+        for dir in std::iter::once("").chain(search.iter().map(String::as_str)) {
+            // LaTeX concatenates `\graphicspath` entries with the name.
+            let name = format!("{dir}{target}");
+            let candidates: Vec<String> = if named {
+                vec![name]
+            } else {
+                EXTENSIONS
+                    .iter()
+                    .map(|ext| format!("{name}.{ext}"))
+                    .collect()
+            };
+            for candidate in candidates {
+                let path = local_path(base, &candidate)?;
+                if std::fs::metadata(&path).is_ok_and(|m| m.is_file()) {
+                    return self.load(base, &candidate, width, height);
+                }
+            }
+        }
+        Err(Error::Io)
+    }
+
     /// Explicit CLI paths are not URLs. Preserve spaces, percent signs and native
     /// path characters; unknown extensions may be sniffed within the same limits.
     pub(crate) fn load_path(
@@ -312,6 +350,35 @@ mod tests {
             .write_to(&mut bytes, image::ImageFormat::Png)
             .unwrap();
         bytes.into_inner()
+    }
+
+    #[test]
+    fn latex_graphics_try_extensions_and_graphics_paths() {
+        let dir = Temp::new();
+        std::fs::create_dir(dir.0.join("figures")).unwrap();
+        dir.write("figures/plot.png", &png(2, 2, [0, 0, 255, 255]));
+        dir.write("figure.pdf", b"%PDF");
+        let mut loader = Loader::default();
+        let search = ["figures/".to_owned()];
+        let found = loader
+            .load_graphic(&dir.0, "plot", &search, 100, 100)
+            .unwrap();
+        assert_eq!((found.width, found.height), (2, 2));
+        assert!(
+            loader
+                .load_graphic(&dir.0, "figures/plot", &[], 100, 100)
+                .is_ok()
+        );
+        assert!(matches!(
+            loader.load_graphic(&dir.0, "figure.pdf", &search, 100, 100),
+            Err(Error::Unsupported)
+        ));
+        assert!(matches!(
+            loader.load_graphic(&dir.0, "absent", &search, 100, 100),
+            Err(Error::Io)
+        ));
+        // Probing missing candidates opens no files.
+        assert_eq!(loader.loads, 2);
     }
 
     #[test]

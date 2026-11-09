@@ -7,9 +7,9 @@ implementation.
 ## Data flow
 
 ```text
-Markdown / code / diagram text / image path
+Markdown / LaTeX / code / diagram text / image path
 ├── exact source output
-└── Document: original source → optional syntax projection → events + original ranges
+└── Document: original source → optional syntax projection or LaTeX index → events + original ranges
     └── Completed blocks: text + code + table cells + math + local images
         ├── plain text export with source TeX
         └── reading column + semantic styles + cell-aware lines
@@ -58,12 +58,13 @@ The full source and parser working storage still scale with input.
 | `src/document.rs` | CommonMark or literal input events, original source, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
 | `src/document/html.rs` | Convert bounded HTML image fragments into Markdown image/link events; leave other HTML as source. |
+| `src/document/latex.rs` | Map `latex-reader` events onto the CommonMark events the layout renders: headings, lists, theorem heads, tables, footnotes, and source fallbacks. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
 | `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
 | `src/highlight/` | Lazily compile bundled language queries and produce bounded semantic UTF-8 token spans. |
 | `src/layout/lines.rs` | Wrap borrowed word fragments at grapheme boundaries and measure inline baselines, independently of escape sequences. |
-| `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache fitted rasters within a byte budget. |
+| `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache compressed fitted rasters within a byte budget. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, enforce invocation budgets, and cache fitted shared-library rasters by content. |
 | `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
@@ -82,10 +83,21 @@ The full source and parser working storage still scale with input.
 | `src/pager/record.rs` | Record the renderer's own styled rows, source anchors, and image payloads in bounded anonymous temporary files. |
 | `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
 | `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
-| `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation. |
-| `src/pager/watch.rs` | Debounced metadata polling, including atomic replacement. |
+| `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation and a provisional first-screen page for initial renders. |
+| `src/pager/watch.rs` | Debounced metadata polling of the named file and its included files, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
+`latex-reader` owns reading LaTeX documents: macro scoping, numbering, labels,
+checkpoints, formulas prepared for KaTeX, and splicing included files into the
+text it reads. It reads no files itself: `src/input.rs` supplies them under the
+text input limits (regular files, nonblocking opens, 64 MiB in total), relative
+to the same base as images. A LaTeX `Document` keeps the original source for
+exact exports, plus the expanded text that event ranges index, its index, and
+the included paths that watch polls. The adapter keeps gloss's event
+vocabulary, so layout, rendering, exports, and the pager are shared with
+Markdown. Each formula's macro context comes from the index
+at its source offset; the math engine builds a KaTeX macro map per context and
+renders each formula with local definitions confined to it.
 `document-graphics` is a separate library repository. Its optional `images`
 module owns bounded PNG/JPEG thumbnail decoding; gloss does not enable its
 native image codecs or image worker. The strict `svg` entry point retains
@@ -175,9 +187,14 @@ each painted span. Source, optional projections, parser working storage, large
 individual blocks, and very long logical lines can still scale with input; this
 is not a constant-memory document reader.
 
-Math rasters use an 8 MiB/64-entry LRU cache. Keys include TeX, inline/display
-mode, font size, color, bounds, and equation-numbering state. Shared pixels avoid
-cache-hit copies; numbering is advanced exactly as on a miss. The pager retains
+Equations are always transmitted whole at native size, so their pixels are
+zlib-compressed once, right after rasterization, and kept only in that form.
+An LRU cache of at most 4,096 entries holds the compressed bytes within 8 MiB,
+indexed by a hash of its key; entries are compared in full. Keys include TeX,
+inline/display mode, font size, color, bounds, equation-numbering state, and the
+hash of the visible LaTeX macro bindings. A hit shares the compressed bytes, so
+it neither rasterizes nor compresses again; numbering is advanced exactly as on
+a miss. The pager retains
 this cache and the bounded Mermaid/SGF caches between renders, but resets equation
 numbering and all per-document work/output budgets. File-image loaders remain
 fresh so manual reloads still reread changed assets.

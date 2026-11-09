@@ -1,0 +1,58 @@
+\documentclass{article}
+\usepackage{amsmath,amsthm}
+\newcommand{\R}{\mathbb{R}}
+\DeclareMathOperator{\tr}{tr}
+\newtheorem{theorem}{Theorem}[section]
+\title{A Short Note on Quadratic Forms}
+\author{A. Author}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study quadratic forms $q(x) = x^\top A x$ on $\R^n$.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+Let $A \in \R^{n \times n}$ be \emph{symmetric}. % a comment
+The trace $\tr A$ is \textbf{invariant}\footnote{Under similarity.}; see
+Section~\ref{sec:main} and~\cite{book}.
+
+\begin{equation}\label{eq:energy}
+  E(x) = \frac{1}{2} x^\top A x - b^\top x
+\end{equation}
+
+\subsection{Main result}\label{sec:main}
+\begin{itemize}
+  \item First point, with $\lambda_1 \le \dots \le \lambda_n$.
+  \item Second point, using \texttt{numpy}.
+\end{itemize}
+
+\begin{theorem}[Rayleigh]\label{thm:rayleigh}
+For all $x \ne 0$, $\lambda_1 \le \frac{x^\top A x}{x^\top x} \le \lambda_n$; compare \eqref{eq:energy}.
+\end{theorem}
+
+\begin{proof}
+Diagonalize $A$.
+\end{proof}
+
+\begin{align}
+  a &= b + c \notag \label{eq:pending} \\
+  d &= e
+\end{align}
+
+\begin{verbatim}
+x = { $ % literal
+\end{verbatim}
+
+\begin{tabular}{lr}
+Name & Value \\ \hline
+alpha & 1 \\
+\end{tabular}
+
+Unknown \foo{kept} and Theorem~\ref{thm:rayleigh}, equation~\eqref{eq:pending}.
+
+\begin{thebibliography}{9}
+\bibitem{book} A. Writer. \emph{A Book}.
+\end{thebibliography}
+\end{document}

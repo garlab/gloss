@@ -50,6 +50,9 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
         ("script.sh", Format::Code),
         ("script.bash", Format::Code),
         ("notes.md", Format::Markdown),
+        ("paper.tex", Format::Latex),
+        ("paper.LaTeX", Format::Latex),
+        ("paper.ltx", Format::Latex),
         ("README", Format::Markdown),
         ("notes.unknown", Format::Markdown),
     ] {
@@ -804,19 +807,22 @@ fn native_math_fits_bounds_includes_tags_and_validates_dimensions() {
         a: 255,
     };
     let mut engine = MathEngine::default();
-    let body = engine.render_display("x", 24., color, 800, 400).unwrap();
+    let body = engine
+        .render_display("x", None, 24., color, 800, 400)
+        .unwrap();
     let tagged = engine
-        .render_display(r"x\tag{42}", 24., color, 800, 400)
+        .render_display(r"x\tag{42}", None, 24., color, 800, 400)
         .unwrap();
     assert!(tagged.width > body.width);
     assert!(tagged.baseline > 0.);
     assert_eq!(
-        tagged.rgba.len(),
+        tagged.decompress().unwrap().len(),
         (tagged.width * tagged.height * 4) as usize
     );
     let wide = engine
         .render_display(
             r"\underbrace{a+b+c+d+e+f+g+h+i+j}_{\text{wide formula}}",
+            None,
             96.,
             color,
             120,
@@ -826,10 +832,14 @@ fn native_math_fits_bounds_includes_tags_and_validates_dimensions() {
     assert!(wide.width <= 120 && wide.height <= 80);
     assert!(
         engine
-            .render_display("x", f64::NAN, color, 800, 400)
+            .render_display("x", None, f64::NAN, color, 800, 400)
             .is_err()
     );
-    assert!(engine.render_display("x", 24., color, 0, 400).is_err());
+    assert!(
+        engine
+            .render_display("x", None, 24., color, 0, 400)
+            .is_err()
+    );
 }
 
 #[test]
@@ -892,19 +902,19 @@ fn inline_layout_does_not_advance_display_equation_numbers() {
     let formula = r"\begin{equation}x=1\end{equation}";
     let mut engine = MathEngine::default();
     engine
-        .render_inline(r"\frac{x}{y}", 24., color, 800, 400)
+        .render_inline(r"\frac{x}{y}", None, 24., color, 800, 400)
         .unwrap();
     let actual = engine
-        .render_display(formula, 24., color, 800, 400)
+        .render_display(formula, None, 24., color, 800, 400)
         .unwrap();
     let expected = MathEngine::default()
-        .render_display(formula, 24., color, 800, 400)
+        .render_display(formula, None, 24., color, 800, 400)
         .unwrap();
     assert_eq!(
         (actual.width, actual.height),
         (expected.width, expected.height)
     );
-    assert_eq!(actual.rgba, expected.rgba);
+    assert_eq!(actual.decompress().unwrap(), expected.decompress().unwrap());
 }
 
 #[test]
@@ -1278,4 +1288,166 @@ fn html_images_match_their_markdown_and_other_markup_keeps_its_source() {
         assert!(text.contains('<'), "{text}");
         assert_eq!(export::source(&document), html);
     }
+}
+
+const LATEX: &str = include_str!("fixtures/latex.tex");
+
+#[test]
+fn latex_documents_export_readable_text_and_exact_source() {
+    let text = cli(&["--output", "text", "--input-format", "latex", "-"], LATEX);
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    for expected in [
+        "A Short Note on Quadratic Forms\n\nA. Author\n",
+        "1 Introduction\n",
+        "Let $A \\in \\R^{n \\times n}$ be symmetric. The trace $\\tr A$ is invariant[^1]; see Section\u{a0}1.1 and\u{a0}[1].",
+        "1.1 Main result\n\n- First point,",
+        "Theorem 1.1 (Rayleigh). For all",
+        "compare (1).",
+        "x = { $ % literal\n",
+        "Unknown \\foo{kept} and Theorem\u{a0}1.1, equation\u{a0}(2).",
+        "- [1] A. Writer. A Book.",
+        "[^1]: Under similarity.",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    // Plain export keeps original formulas, including labels.
+    assert!(text.contains("\\begin{equation}\\label{eq:energy}"));
+    assert!(!text.contains("documentclass"));
+    let source = cli(
+        &["--output", "source", "--input-format", "latex", "-"],
+        LATEX,
+    );
+    assert_eq!(source.stdout, LATEX.as_bytes());
+}
+
+#[test]
+fn latex_headings_and_lists_match_equivalent_markdown() {
+    let latex = Document::latex(
+        "\\title{T}\\begin{document}\\maketitle\\section*{Intro}\\begin{itemize}\\item One\\item Two\\end{itemize}\\end{document}"
+            .into(),
+    );
+    let markdown = Document::parse("# T\n\n## Intro\n\n- One\n- Two\n".into());
+    let plain = |document: &Document| -> Vec<(String, layout::Role)> {
+        layout::layout(document)
+            .blocks
+            .iter()
+            .flat_map(|block| match block {
+                layout::Block::Text(runs) => runs
+                    .iter()
+                    .filter(|run| !run.text.trim().is_empty())
+                    .map(|run| (run.text.trim().to_owned(), run.style.role))
+                    .collect(),
+                _ => Vec::new(),
+            })
+            .collect()
+    };
+    assert_eq!(plain(&latex), plain(&markdown));
+}
+
+#[test]
+fn latex_formulas_render_with_document_macros_and_numbers() {
+    let document = Document::latex(LATEX.into());
+    let mut output = Vec::new();
+    let options = render::Options {
+        kitty: Some(Geometry::default()),
+        ..Default::default()
+    };
+    let warnings =
+        render::write(&mut output, &document, &layout::layout(&document), &options).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let maths: Vec<String> = document
+        .events()
+        .filter_map(|item| match item.event {
+            Event::InlineMath(tex) | Event::DisplayMath(tex) => Some(tex.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert!(maths.iter().any(|tex| tex.ends_with("\\tag*{(1)}")));
+    assert!(
+        maths
+            .iter()
+            .any(|tex| tex.starts_with("\\begin{align*}") && tex.contains("\\tag*{(2)}"))
+    );
+    assert!(maths.iter().all(|tex| !tex.contains("\\label")));
+}
+
+#[cfg(unix)]
+#[test]
+fn latex_included_files_render_in_place_and_source_export_keeps_the_main_file() {
+    use gloss_cli::input::{Format, Input};
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("sections")).unwrap();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+    let main = "\\documentclass{article}\n\\newcommand{\\code}{src}\n\\begin{document}\n\\input{sections/intro}\nSee \\cite{k} and Section~\\ref{s}, $\\R$.\n\\lstinputlisting[firstline=2]{\\code/demo.py}\n\\input{missing}\n\\bibliography{refs}\n\\end{document}\n";
+    let path = dir.path().join("paper.tex");
+    std::fs::write(&path, main).unwrap();
+    std::fs::write(
+        dir.path().join("sections/intro.tex"),
+        "\\newcommand{\\R}{\\mathbb{R}}\n\\section{Intro}\\label{s}\nIncluded text.\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("src/demo.py"), "skipped\nprint(1)\n").unwrap();
+    std::fs::write(
+        dir.path().join("paper.bbl"),
+        "\\begin{thebibliography}{1}\n\\bibitem{k} K. Writer.\n\\end{thebibliography}\n",
+    )
+    .unwrap();
+    let text = cli(&["--output", "text", path.to_str().unwrap()], "");
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    for expected in [
+        // A file's end is a line end, so the paragraph continues.
+        "1 Intro\n\nIncluded text. See [1] and Section\u{a0}1, $\\R$.\n",
+        "print(1)\n",
+        "\\input{missing}",
+        "- [1] K. Writer.",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    assert!(!text.contains("skipped"));
+    let source = cli(&["--output", "source", path.to_str().unwrap()], "");
+    assert_eq!(source.stdout, main.as_bytes());
+
+    // Formulas from included files see their macros; watch sees the files read.
+    let input = Input::new(Some(path.clone()), Format::Auto, None).unwrap();
+    let document = input.document(input.read(false).unwrap());
+    assert_eq!(
+        document.dependencies(),
+        [
+            dir.path().join("sections/intro.tex"),
+            dir.path().join("src/demo.py"),
+            dir.path().join("paper.bbl")
+        ]
+    );
+    let options = render::Options {
+        kitty: Some(Geometry::default()),
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    let warnings =
+        render::write(&mut output, &document, &layout::layout(&document), &options).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[test]
+fn latex_macro_scopes_reach_each_formula() {
+    let source =
+        "\\newcommand{\\w}{\\alpha}\n$\\w$ {\\renewcommand{\\w}{\\undefinedmacro} $\\w$} $\\w$\n";
+    let document = Document::latex(source.into());
+    let mut output = Vec::new();
+    let options = render::Options {
+        kitty: Some(Geometry::default()),
+        ..Default::default()
+    };
+    let warnings =
+        render::write(&mut output, &document, &layout::layout(&document), &options).unwrap();
+    // Only the formula inside the group sees the broken redefinition.
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let inside = source.find("} $").unwrap() + 2;
+    assert!(
+        warnings[0].contains(&format!("byte {inside}:")),
+        "{warnings:?}"
+    );
 }

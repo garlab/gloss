@@ -72,6 +72,18 @@ and pixel checks with live-terminal validation.
 - Improve native mouse selection in Ghostty where possible; reading and exporting
   must remain useful without recovering text from image pixels.
 
+## LaTeX preview
+
+`.tex` documents render natively through
+[`latex-reader`](https://crates.io/crates/latex-reader); see
+[LaTeX documents](latex.md). Remaining work:
+
+- Score output against reference PDFs from a pinned corpus of public papers.
+- Consider showing reader diagnostics, for example as pager warnings.
+- Rasterize formulas directly from the display list in `katex-native` if
+  formula-dense documents or resizing need it: SVG parsing and drawing dominate
+  formula rendering time.
+
 ## Deferred: native ABC music notation
 
 ABC engraving does not block the initial release. Keep `abc` fences as source.

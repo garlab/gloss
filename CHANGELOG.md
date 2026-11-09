@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Render LaTeX documents (`.tex`, `.latex`, `.ltx`, or `--input-format latex`)
+  natively: sections, lists, theorems, tables, footnotes, references, and math
+  with amsmath numbering and scoped document macros. Included files, listings,
+  `.bbl` bibliographies, and figures without extensions are read in place, and
+  `--watch` follows included files. Unknown commands stay visible as source. No
+  TeX installation is needed.
+- Show the pager's first screen as soon as it is rendered, before the rest of a
+  long document; the footer marks the row count with `+` until it completes.
+- Reload documents with many equations much faster in the pager and with
+  `--watch`: rendered equations are cached compressed, so up to 4,096 of them
+  (previously 64) are reused within the same 8 MiB.
 - Render HTML `<img>` markup like Markdown images, including inside `<p>`,
   `<div>`, `<a>`, and `<picture>`. Local images display; remote ones keep their
   reference and are never fetched. Other HTML still shows as source.

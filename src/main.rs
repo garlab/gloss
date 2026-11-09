@@ -20,7 +20,7 @@ use gloss_cli::{
     about = "A terminal Markdown viewer with native inline and display equations"
 )]
 struct Args {
-    /// Markdown, code, Mermaid, SGF or image file; omit or use '-' for text stdin.
+    /// Markdown, LaTeX, code, Mermaid, SGF or image file; omit or use '-' for text stdin.
     file: Option<PathBuf>,
     /// Auto detects named-file extensions; stdin defaults to Markdown.
     #[arg(long, value_enum, default_value_t = Format::Auto)]
@@ -163,7 +163,8 @@ fn run() -> Result<(), Box<dyn Error>> {
         gloss_cli::mermaid::worker_main()?;
         return Ok(());
     }
-    let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?;
+    let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?
+        .with_base_dir(args.base_dir.clone());
     let input_format = input.format;
     let named_file = input.path.as_deref();
     if input.format == Format::Image && args.output == Output::Source {

@@ -11,6 +11,7 @@ pub enum Format {
     #[default]
     Auto,
     Markdown,
+    Latex,
     Code,
     Mermaid,
     Sgf,
@@ -22,6 +23,8 @@ pub struct Input {
     pub format: Format,
     pub path: Option<PathBuf>,
     language: Option<String>,
+    /// Overrides the directory that LaTeX included files resolve against.
+    base_dir: Option<PathBuf>,
 }
 
 impl Input {
@@ -64,6 +67,7 @@ impl Input {
                 Some("sgf") => Format::Sgf,
                 Some("png" | "jpg" | "jpeg" | "svg") => Format::Image,
                 Some("md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn") => Format::Markdown,
+                Some("tex" | "latex" | "ltx") => Format::Latex,
                 _ if detected_language.is_some() => Format::Code,
                 _ => Format::Markdown,
             }
@@ -81,7 +85,15 @@ impl Input {
             format,
             path,
             language,
+            base_dir: None,
         })
+    }
+
+    /// Resolve LaTeX included files against `base_dir` instead of the
+    /// document's directory, like image paths.
+    pub fn with_base_dir(mut self, base_dir: Option<PathBuf>) -> Self {
+        self.base_dir = base_dir;
+        self
     }
 
     pub fn read(&self, paging: bool) -> io::Result<String> {
@@ -125,6 +137,22 @@ impl Input {
             Format::Mermaid => Document::code(source, "mermaid"),
             Format::Sgf => Document::code(source, "sgf"),
             Format::Image => Document::image(self.path.as_ref().unwrap().clone()),
+            Format::Latex => {
+                // LaTeX resolves included files from the main file's directory.
+                let base = self.base_dir.clone().unwrap_or_else(|| {
+                    self.path
+                        .as_deref()
+                        .and_then(Path::parent)
+                        .unwrap_or(Path::new(""))
+                        .to_path_buf()
+                });
+                let jobname = self
+                    .path
+                    .as_deref()
+                    .and_then(Path::file_stem)
+                    .and_then(|stem| stem.to_str());
+                Document::latex_with_files(source, &base, jobname)
+            }
             Format::Auto | Format::Markdown => Document::parse(source),
         }
     }
@@ -155,6 +183,32 @@ pub fn read(mut input: impl Read) -> io::Result<String> {
         ));
     }
     Ok(source)
+}
+
+/// Reads a file that a LaTeX document includes: a regular file within the
+/// text input limit. Invalid UTF-8 is replaced rather than rejected.
+pub(crate) fn read_included(path: &Path, exists_only: bool) -> Option<String> {
+    let mut options = File::options();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    let file = options.open(path).ok()?;
+    let metadata = file.metadata().ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_SOURCE {
+        return None;
+    }
+    if exists_only {
+        return Some(String::new());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_SOURCE + 1).read_to_end(&mut bytes).ok()?;
+    Some(match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => String::from_utf8_lossy(error.as_bytes()).into_owned(),
+    })
 }
 
 pub fn read_file(path: &Path) -> io::Result<String> {

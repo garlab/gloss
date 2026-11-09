@@ -12,7 +12,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::{
     layout::{
         Role, Run, Style,
-        lines::{self, Line, Part},
+        lines::{self, Line, Part, Picture},
     },
     math::MathEngine,
 };
@@ -347,17 +347,19 @@ pub(super) fn prepare_parts(
             let math = engine.get_or_insert_with(MathEngine::default);
             match math.render_inline(
                 tex,
+                run.source.map(|source| source.start),
                 options.font_size,
                 options.theme().ink(run.style),
                 width as u32 * cell_width,
                 height,
             ) {
                 Ok(image) => {
-                    *remaining = remaining.saturating_sub(image.rgba.len());
+                    let pixels = image.width as usize * image.height as usize * 4;
+                    *remaining = remaining.saturating_sub(pixels);
                     parts.push(Part::Image {
                         columns: image.width.div_ceil(cell_width) as usize,
                         baseline: image.baseline,
-                        image: image.pixels,
+                        image: Picture::Compressed(image.pixels),
                         source: Some(run.text),
                     });
                     continue;
@@ -453,7 +455,7 @@ pub(super) fn write_picture(
             Part::Image {
                 baseline: image.height as f64
                     - (cell_height as f64 - (cell_height as f64 * 0.78).floor()),
-                image,
+                image: Picture::Pixels(image),
                 columns,
                 source: None,
             },
@@ -590,22 +592,27 @@ pub(super) fn write_line(
                 image,
                 columns,
                 baseline,
-                source,
+                ..
             } => {
                 painter.finish(out)?;
                 let y = (metrics.baseline - baseline).ceil().max(0.) as u32;
-                // Only equations carry TeX source. Ordinary images keep their
+                // Equations are placed natively. Ordinary images keep their
                 // cell-aligned band transport and shared output accounting.
-                let native = source.is_some();
                 let cell_height = u32::from(geometry.cell_height.max(1));
-                let image_row = if native { y / cell_height } else { 0 };
+                let image_row = match image {
+                    Picture::Compressed(_) => y / cell_height,
+                    Picture::Pixels(_) => 0,
+                };
                 move_rows(out, metrics.text_row, image_row)?;
-                if native {
-                    kitty::transmit_native(out, image, y % cell_height)?;
-                } else {
-                    let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
-                    let image = kitty::pad(image, width, height, 0, y)?;
-                    kitty::transmit(out, &image, *columns as u32, metrics.rows)?;
+                match image {
+                    Picture::Compressed(image) => {
+                        kitty::transmit_native(out, image, y % cell_height)?;
+                    }
+                    Picture::Pixels(image) => {
+                        let width = *columns as u32 * u32::from(geometry.cell_width.max(1));
+                        let image = kitty::pad(image, width, height, 0, y)?;
+                        kitty::transmit(out, &image, *columns as u32, metrics.rows)?;
+                    }
                 }
                 move_rows(out, image_row, metrics.text_row)?;
                 write!(out, "\x1b[{columns}C")?;
