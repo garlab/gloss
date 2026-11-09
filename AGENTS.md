@@ -16,7 +16,8 @@ Treat all project content as public.
   configuration out of version control.
 - Review changed content for accidental personal or internal information before
   delivering changes.
-- Keep user-facing behavior in README.md, module boundaries and output contracts
+- Keep user-facing behavior in README.md (written for users first), the
+  contributor workflow in CONTRIBUTING.md, module boundaries and output contracts
   in docs/architecture.md, planned feature decisions in docs/feature-design.md,
   and remaining implementation work in docs/roadmap.md.
 - Preserve docs/performance-baseline.md and its raw samples as a fixed reference.

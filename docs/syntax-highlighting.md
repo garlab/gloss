@@ -3,7 +3,18 @@
 Fenced code now retains its language and source span as a separate layout block.
 Colored terminal output highlights one logical code block before wrapping it.
 This preserves multiline syntax while avoiding a whole-document token model.
-The [README](../README.md#terminal-rendering) lists supported languages and aliases.
+The [README](../README.md#markdown-and-math) lists supported languages. Fence
+labels also accept common aliases such as `rs`, `py`, `js`, `ts`, `sh`, `yml`,
+and `docker`, without case sensitivity. `--no-highlight` keeps the theme and
+code panels while disabling syntax colors.
+
+Line numbers default to `--line-numbers auto`: on for standalone code files and
+off for Markdown blocks. `on` numbers every code block and `off` hides them. Each
+block starts at 1, blank lines count, and wrapped continuations leave the number
+column empty; very narrow views omit the column. Numbers stay visible with
+`--no-highlight` or `NO_COLOR`, and pipes, `--output text`, and `--output source`
+omit them. Use `--line-numbers off` to select code with the mouse without the
+numbers.
 
 The dependency-cost and performance-comparison sections below describe the
 initial highlighting implementation.

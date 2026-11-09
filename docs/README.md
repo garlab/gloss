@@ -1,7 +1,8 @@
 # Documentation
 
 Start with the [project README](../README.md) for installation, command-line
-options, supported inputs, terminal compatibility, and copying.
+options, supported inputs, terminal compatibility, and copying, and with
+[CONTRIBUTING.md](../CONTRIBUTING.md) to build and change gloss.
 
 ## Feature references
 

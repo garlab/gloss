@@ -1,15 +1,21 @@
 # gloss
 
-The Cargo package is `gloss-cli`; the executable and Homebrew formula
-are named `gloss`.
+[crates.io](https://crates.io/crates/gloss-cli) ·
+[releases](https://github.com/garlab/gloss/releases) ·
+[Homebrew tap](https://github.com/garlab/homebrew-tap)
 
-A terminal viewer for Markdown, math, diagrams, images, and code. Math is laid
-out by `katex-native`; surrounding prose stays selectable terminal text. No
-browser, Node.js, or external TeX installation is needed at runtime.
+A terminal viewer for Markdown, LaTeX, math, diagrams, images, and code.
+Equations, Mermaid diagrams, Go boards, and local images render as graphics in
+Ghostty and Kitty, while prose stays selectable terminal text; other terminals
+and pipes get readable text with the original source. No browser, Node.js, or
+TeX installation is needed.
 
-gloss prints into terminal scrollback and exits by default. Use `--pager` for
-interactive reading or `--watch` for live file updates. Kitty graphics have text
-fallbacks on other terminals.
+```sh
+gloss notes.md              # print into the terminal's scrollback
+gloss --pager paper.tex     # read interactively
+gloss --watch notes.md      # re-render whenever the file is saved
+cat notes.md | gloss -      # read stdin
+```
 
 ## Install
 
@@ -19,264 +25,149 @@ With Homebrew:
 brew install garlab/tap/gloss
 ```
 
-Bottles cover Apple Silicon on macOS 26 or newer and Linux x86-64. Other
-supported platforms build from source. The
-[tap](https://github.com/garlab/homebrew-tap) follows stable GitHub releases
-automatically.
+Bottles cover Apple Silicon on macOS 26 or newer and Linux x86-64; other
+platforms build from source. The tap follows stable releases automatically.
 
-## Build and run
-
-A Rust 1.90 or newer toolchain is required. Math uses the published
-[`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
-rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library and its native `document-graphics-mermaid` backend. LaTeX documents are
-read by the [`latex-reader`](https://crates.io/crates/latex-reader) crate. Cargo
-downloads these dependencies from crates.io. gloss enables the library's
-`images` and `sgf` features; native image codecs and image workers remain
-disabled.
-
-Install the `gloss-cli` package to get the `gloss` executable. Cargo's binary
-directory must be on your `PATH`; building also requires a C compiler for the
-syntax grammars.
+With Cargo (Rust 1.90 or newer and a C compiler):
 
 ```sh
 cargo install gloss-cli --locked
 ```
 
-To build from a checkout and try the included examples, run these commands from
-the `gloss` directory:
+The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
+`--watch` need a Unix terminal, including macOS; Windows uses direct output.
 
-```sh
-cargo install --path . --locked
-gloss tests/fixtures/math.md
-gloss --show-math-source tests/fixtures/inline.md
-gloss tests/fixtures/style.md
-gloss tests/fixtures/code.md
-gloss tests/fixtures/tables.md
-gloss tests/fixtures/images.md
-gloss tests/fixtures/mermaid.md
-gloss tests/fixtures/gantt-time.md
-gloss tests/fixtures/sgf.md
-gloss tests/fixtures/extensions.md
-gloss tests/fixtures/latex.tex
-```
+## What gloss renders
 
-To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
-argument or pass `-` to read Markdown from stdin.
+### Markdown and math
 
-To develop a shared library alongside gloss, place its checkout beside gloss
-and add an override to an untracked `.cargo/config.toml` (merging with any
-existing settings):
+- Headings, emphasis, lists, quotes, code, links, task lists, strikethrough,
+  footnotes, and aligned, wrapped tables.
+- `$...$` / `\(...\)` inline math, `$$...$$` / `\[...\]` display math, and fenced
+  `math` blocks, with equation tags and automatic numbering.
+- GitHub alerts, inert front matter, expanded details, and terminal hyperlinks.
+- Local PNG, JPEG, and SVG images, from Markdown or HTML `<img>`, with
+  selectable captions.
+- Mermaid diagrams and SGF Go boards in fenced blocks.
+- Syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX, JSON,
+  Bash/shell, Go, TOML, YAML, and Dockerfile/Containerfile.
 
-```toml
-[patch.crates-io]
-latex-reader = { path = "../latex-reader" }
-document-graphics = { path = "../document-graphics" }
-document-graphics-mermaid = { path = "../document-graphics-mermaid" }
-```
+Math follows the KaTeX subset implemented by
+[`katex-native`](https://crates.io/crates/katex-native). A formula that cannot
+render falls back to its source without interrupting the document. Other HTML is
+shown as source and never executed, and remote images are never fetched.
 
-Run Cargo from the gloss root so it reads the local override. To return to
-published dependencies, remove the overrides and run `cargo check` to restore
-registry sources and checksums in `Cargo.lock`.
+### LaTeX documents
 
-## Standalone inputs
+`.tex`, `.latex`, and `.ltx` files are read natively by
+[`latex-reader`](https://crates.io/crates/latex-reader) for a fast, approximate
+preview; no TeX installation or PDF is involved. Equivalent constructs look like
+Markdown: `\section` renders as a heading, `itemize` as a list, and math through
+the same renderer.
 
-Named `.mmd` / `.mermaid` files render as Mermaid, `.sgf` files as Go records,
-`.tex` / `.latex` / `.ltx` files as [LaTeX documents](#latex-documents), and
-`.png` / `.jpg` / `.jpeg` / `.svg` files as images. Code files reuse the fenced
-code renderer, so comments, Markdown delimiters, and math stay literal:
+- `\maketitle` with `\title`, `\author`, and `\date`; `abstract`; numbered
+  sections by document class, including chapters and `\appendix`.
+- Emphasis, bold, monospace, links, footnotes, lists, quotes, and `tabular`
+  tables with column alignment; a first row followed by a rule becomes the
+  header.
+- Theorems from `\newtheorem`, rendered as a bold "Theorem 2 (Name)." before the
+  body; proofs end with ∎.
+- `\ref`, `\eqref`, and `\cite` resolved against labels and the bibliography.
+- Math numbered as amsmath numbers it, row by row, with `\notag` and `\tag`.
+- Macros from `\newcommand`, `\def`, `\let`, and `\DeclareMathOperator`, with
+  TeX's scoping: a redefinition affects only later formulas.
+- `verbatim`, `lstlisting`, `minted`, and `\verb` stay literal; `comment` and
+  `\iffalse` blocks are hidden.
+- Included files, read relative to the document's directory (or `--base-dir`):
+  `\input`, `\include`, `\subfile`, and `\import`; `\lstinputlisting`,
+  `\VerbatimInput`, and `\inputminted` as code; `\bibliography` from the
+  document's `.bbl` file; and `\includegraphics` for PNG, JPEG, and SVG, with or
+  without an extension and searching `\graphicspath`.
 
-| Language | File extensions |
+Unknown commands and environments stay visible as source, around their readable
+arguments; TikZ pictures and PDF figures keep their source or reference.
+`--watch` also reloads when an included file changes. See
+[LaTeX documents](docs/latex.md) for details and limits.
+
+### Code, diagrams, and images
+
+Named files are detected by extension; anything else, and stdin, is Markdown.
+
+| Input | Extensions |
 | --- | --- |
-| YAML | `.yaml`, `.yml` |
-| TOML | `.toml` |
-| JSON | `.json` |
-| Rust | `.rs` |
-| Python | `.py`, `.pyi`, `.pyw` |
-| JavaScript / JSX | `.js`, `.jsx`, `.mjs`, `.cjs` |
-| TypeScript | `.ts`, `.mts`, `.cts` |
-| TSX | `.tsx` |
-| Go | `.go` |
+| LaTeX | `.tex`, `.latex`, `.ltx` |
+| Mermaid | `.mmd`, `.mermaid` |
+| SGF Go records | `.sgf` |
+| Images | `.png`, `.jpg`, `.jpeg`, `.svg` |
+| YAML, TOML, JSON | `.yaml`, `.yml`, `.toml`, `.json`, and `Cargo.lock` |
+| Rust, Python, Go | `.rs`, `.py`, `.pyi`, `.pyw`, `.go` |
+| JavaScript, TypeScript | `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.tsx` |
 | Bash / shell | `.sh`, `.bash` |
-
-Extensions are case insensitive; other files and stdin default to Markdown.
-All input formats work with `--pager` and named files support `--watch`.
-`Cargo.lock` uses TOML highlighting. `Dockerfile`, `Dockerfile.dev`,
-`build.Dockerfile`, and equivalent `Containerfile` names are recognized as code.
-Dockerfile and Containerfile inputs share syntax colors, including shell commands
-and supported heredocs.
+| Dockerfile | `Dockerfile`, `Dockerfile.dev`, `build.Dockerfile`, and `Containerfile` names |
 
 ```sh
 gloss diagram.mmd
-gloss --watch diagram.mermaid
 gloss picture.png
-gloss --pager record.sgf
 gloss --sgf-move 42 record.sgf
 gloss config.yaml
-gloss --watch config.toml
-gloss Cargo.lock
-gloss Dockerfile
 gloss --input-format code settings.conf
 cat config.yaml | gloss --language yaml -
-cat diagram.mmd | gloss --input-format mermaid -
 ```
 
-Use `--input-format markdown|latex|code|mermaid|sgf|image` to override detection.
-`--language` selects code mode and overrides the detected syntax language; it
-also works for stdin and extensionless files. Use it with automatic detection or
-explicit code mode. Unknown languages use an uncolored code panel. Explicit code
-mode always keeps source literal, including Mermaid/SGF files.
+`--input-format markdown|latex|code|mermaid|sgf|image` overrides detection, and
+`--language` selects code mode with a syntax language, also for stdin and files
+without an extension. Code mode keeps source literal, including Mermaid and SGF.
+Extensions are case insensitive. Text inputs must be UTF-8; images need a named
+local file.
 
-Standalone code is one block and uses the same highlighting limits as fenced
-code: files above 128 KiB retain all content without syntax colors. Code,
-Mermaid, SGF, and pager text inputs are limited to 64 MiB.
+Mermaid covers flowcharts, sequence, class and state diagrams, ER tables, pie
+charts, mind maps, timelines, user journeys, quadrant charts, and
+[Gantt schedules](docs/gantt.md), natively and without full Mermaid.js
+compatibility. SGF boards show the final position of the first game's main line
+by default; `--sgf-game` and `--sgf-move`, or fence attributes such as
+`sgf game=2 move=12`, select others. Unsupported or over-limit content keeps its
+source. See [Mermaid](docs/mermaid.md), [SGF](docs/sgf.md), and
+[local images](docs/images.md).
 
-Image input requires a named local file; explicit image mode can recognize PNG/JPEG/SVG
-without a recognized extension. `--base-dir` applies to Markdown image references,
-while standalone image paths are used directly. Text inputs must be UTF-8.
+## Terminal output
 
-Pipes and text-only terminals retain code/diagram source or an image reference.
-`--output source` preserves standalone code/Mermaid/SGF text exactly. It rejects image
-inputs; use the original image file for binary copying. Image stdin is not supported.
+Graphics are used in sessions identified as Ghostty or Kitty by `TERM` or
+`TERM_PROGRAM`, without probing the terminal. Other terminals, tmux, screen,
+Zellij, `TERM=dumb`, and very small windows keep equations as selectable TeX,
+and diagrams, boards, and images as code or references. Each kind of graphics
+can be forced or disabled independently.
 
-## Terminal rendering
-
-Terminal output uses distinct heading levels, tinted inline
-code, shaded code blocks, and colored links and list markers. Lists and quotes
-keep their indentation when lines wrap. The default theme uses `COLORFGBG` when
-available and otherwise selects dark. Use `--theme light` (or `--light`) and
-`--theme dark` to choose explicitly.
-
-GitHub alerts retain colored labels. Leading YAML/TOML-style front matter stays
-visible as inert metadata. Supported details/summary sections expand, and
-`\(...\)` / `\[...\]` join the existing math delimiters. Web/mail links are
-clickable in recognized Ghostty/Kitty sessions, with visible targets retained.
-Use `--links off` to disable hyperlinks. See [Markdown extensions](docs/markdown-extensions.md)
-for syntax, limits, and fallback behavior.
-
-Fenced code uses syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX,
-JSON, Bash/shell, Go, TOML, YAML, and Dockerfile/Containerfile. Common aliases such
-as `rs`, `py`, `js`, `ts`, `sh`, `yml`, and `docker` are accepted without case
-sensitivity. Multiline comments and strings retain their context before the code
-is wrapped.
-
-Dockerfile shell commands and `RUN` heredocs use Bash highlighting. `COPY` heredocs
-targeting JSON, YAML, or TOML files use those grammars. Embedded regions share the
-outer block's highlighting budget, with at most 128 regions; exhausted limits
-keep the complete block uncolored. See [syntax highlighting](docs/syntax-highlighting.md).
-
-Use `--no-highlight` to keep the rest of the theme while disabling syntax colors.
-Unknown languages and indented code retain the normal code panel. Highlighting
-has bounded work: oversized or expensive blocks fall back to uncolored code
-without losing content. No grammar downloads or helper processes are needed.
-
-Code line numbers default to `--line-numbers auto`: enabled for standalone code
-and disabled for Markdown blocks. Use `--line-numbers on` to number all code
-blocks or `--line-numbers off` to hide them. Each block starts at 1; blank source
-lines count, and wrapped continuations leave the number column empty. Very narrow
-views omit the number column to preserve space for code.
-
-Numbers remain visible with `--no-highlight` or `NO_COLOR`. Pipes, `--output text`,
-and `--output source` omit them. Use `--line-numbers off` for mouse selection
-without the number column.
-
-Tables retain left, center, and right alignment and wrap cells within the reading
-column. Headers use accent colors; inline styles and equations remain supported.
-Narrow windows or excessive column counts use numbered cells, with blank lines
-between rows. Oversized rows use the same fallback, preserving all content and
-selectable source TeX. Width estimation and temporary row storage have explicit
-limits; see [table rendering](docs/tables.md).
-
-Local PNG, JPEG, and SVG images render in graphics-capable sessions. Paths are
-relative to the Markdown file, or the working directory for stdin; `--base-dir`
-overrides that directory. Every image retains a selectable `[image: alt] (path)`
-caption. Missing, unsupported, or over-limit images keep that reference.
-HTML `<img>` markup, alone or inside `<p>`, `<div>`, `<a>`, or `<picture>`, renders
-the same way; other HTML stays as source. See
-[HTML images](docs/markdown-extensions.md#html-images).
-
-Images fit the reading column and viewport without enlargement. Inline image
-references become separate blocks; images inside tables remain text references.
-SVG supports bounded shapes, gradients, clipping, and text using bundled fonts.
-Filters, masks, reusable elements, nested images, external resources, and text
-with unavailable glyphs fall back to the reference. No network requests, system
-font scans, or helper processes are used. See [local images](docs/images.md) for
-the supported subset and resource limits.
-
-Mermaid fences render flowcharts, sequence, class and state diagrams, ER tables,
-pie charts, mind maps, timelines, user journeys, quadrant charts and
-[Gantt schedules with date and sub-day timing](docs/gantt.md). Embedded fonts
-cover Latin (including accents), Greek and Cyrillic labels.
-Diagrams use a transparent canvas and scale labels to terminal cell height,
-including high-density displays, then shrink to fit the reading column.
-Tall diagrams continue down the page in contiguous image bands, including inside
-the pager, instead of shrinking to a single screen; raster and output limits still apply.
-`--show-mermaid-source` keeps selectable code beneath the diagram;
-`--mermaid off` keeps the code alone. Unsupported syntax, missing glyphs,
-errors, and limits retain the complete code panel. The native
-backend uses one lazy worker from the same executable, with no additional
-installation. It does not provide full Mermaid.js compatibility. See
-[Mermaid support](docs/mermaid.md) for the limits and measurements.
-
-SGF fences render native Go boards, including setup stones, captures and board
-annotations. By default they show the final position of the first game's main
-line. `--sgf-game` and `--sgf-move` select another game or earlier move; fence
-attributes such as `sgf game=2 move=12` override those defaults per board.
-Move `0` selects the root, and `move=last` selects the final main-line node.
-Every board has a selectable game/move caption. Use `--show-sgf-source` to retain
-the record below it or `--sgf off` to show code alone. Invalid, unsupported or
-over-limit records retain source. See [SGF support](docs/sgf.md).
-
-The reading column is at most 80 cells wide, with two-column horizontal margins.
-Text and equations share that column in both graphics and TeX modes. The width
-fits the terminal, and margins shrink automatically in narrow windows.
-
-```sh
-gloss --width 100 --margin 3 notes.md
-gloss --width 0 --margin 0 notes.md  # Use the available terminal width.
-```
-
-The default `--math auto` enables graphics in sessions identified as Ghostty or
-Kitty by `TERM` or `TERM_PROGRAM`. This uses environment hints, assumes graphics
-are enabled, and does not probe the terminal or read keyboard input.
-`--images auto` uses the same detection independently of the math setting.
-`--mermaid auto` and `--sgf auto` independently apply it to diagram fences and
-standalone records.
-
-Other terminals use selectable TeX. Recognized tmux, screen, and Zellij sessions,
-`TERM=dumb`, and very small windows also use TeX. Multiplexer graphics passthrough
-is not implemented.
+The reading column is at most 80 cells wide, with two-column margins that shrink
+in narrow windows. Equations follow the terminal's cell height and shrink to
+fit; images and diagrams fit the column without enlargement, and tall diagrams
+continue down the page. Tables wrap within the column, and narrow windows show
+numbered cells instead. The theme follows `COLORFGBG` when available and is dark
+otherwise. A nonempty `NO_COLOR` disables text styling but not images.
 
 | Option | Behavior |
 | --- | --- |
-| `--math tex` | Keep all equations as selectable source TeX. |
-| `--math kitty` | Enable graphics in another compatible terminal; pipe, multiplexer, and small-window restrictions still apply. |
+| `--math auto\|tex\|kitty` | Render equations as graphics, keep them as source TeX, or force graphics. |
 | `--show-math-source` | Print selectable TeX beneath rendered equations. |
-| `--images off` | Keep image references as text and skip image content reads and decoding. |
-| `--images kitty` | Enable local images in another compatible terminal, subject to the same graphics restrictions. |
-| `--base-dir <directory>` | Override the directory used to resolve local image paths. |
-| `--mermaid off` | Keep Mermaid fences as code and skip the diagram worker. |
-| `--mermaid kitty` | Enable supported diagrams in another compatible terminal, subject to the same graphics restrictions. |
-| `--show-mermaid-source` | Print selectable code beneath rendered Mermaid diagrams. |
-| `--sgf auto\|off\|kitty` | Select native Go board rendering, independently of other graphics. |
-| `--sgf-game <number>` | Select a one-based game in a collection; default `1`. |
-| `--sgf-move <number>` | Select a main-line move; `0` is the root, and omission selects the final position. |
+| `--images auto\|off\|kitty` | Local images; `off` keeps references and skips reading image files. |
+| `--base-dir <directory>` | Resolve local image and LaTeX file paths from another directory. |
+| `--mermaid auto\|off\|kitty` | Mermaid diagrams; `off` keeps the code. |
+| `--show-mermaid-source` | Print selectable code beneath rendered diagrams. |
+| `--sgf auto\|off\|kitty` | Go boards, independently of other graphics. |
+| `--sgf-game <number>` / `--sgf-move <number>` | Select a one-based game, or a main-line move (`0` is the root). |
 | `--show-sgf-source` | Print selectable SGF beneath rendered boards. |
-| `-w, --width <columns>` | Set the maximum content width, excluding margins; `0` uses available space. |
-| `--margin <columns>` | Set the horizontal margin, default `2`. |
-| `--theme auto\|dark\|light` | Select the palette; auto uses an optional `COLORFGBG` hint. |
-| `--light` | Alias for `--theme light`. |
-| `--cell-size <width>x<height>` | Override terminal cell dimensions in pixels, from 1 to 512 each. |
-| `--links auto\|off\|always` | Control validated OSC 8 hyperlinks; plain/source exports remain independent. |
-| `--no-highlight` | Disable code syntax colors while retaining the theme and layout. |
-| `--font-size <pixels>` | Override the equation font size, from 4 to 256 pixels. |
+| `-w, --width <columns>` | Maximum content width, excluding margins; `0` uses the available space. |
+| `--margin <columns>` | Horizontal margin, default `2`. |
+| `--theme auto\|dark\|light`, `--light` | Select the palette. |
+| `--line-numbers auto\|on\|off` | Code line numbers; `auto` numbers standalone code only. |
+| `--no-highlight` | Disable syntax colors, keeping the rest of the theme. |
+| `--links auto\|off\|always` | Terminal hyperlinks; visible targets are kept either way. |
+| `--cell-size <width>x<height>` | Override the terminal cell size in pixels. |
+| `--font-size <pixels>` | Override the equation font size. |
 
-Equation size follows the terminal cell height by default, and oversized equations
-shrink to fit. Cell dimensions are read on Unix when available, with an estimated
-fallback. Font baselines are estimated; appearance can vary by font and terminal.
-Theme hints are estimates and can be overridden. A nonempty `NO_COLOR` disables
-text styling without disabling images or hyperlinks. See
-[terminal discovery](docs/terminal-detection.md) for precedence and limitations.
+See [terminal discovery](docs/terminal-detection.md),
+[syntax highlighting](docs/syntax-highlighting.md),
+[tables](docs/tables.md), and [Markdown extensions](docs/markdown-extensions.md)
+for details and fallbacks.
 
 ## Pager and live updates
 
@@ -286,11 +177,11 @@ gloss --watch notes.md
 cat notes.md | gloss --pager -
 ```
 
-`-p` / `--pager` opens an alternate screen on Unix terminals (including macOS).
-The first screen appears as soon as it is rendered; the footer shows `+` and
-`rendering` until the rest of the document follows. Text reflows when the window
-changes size; equations, images, and diagrams scroll with it. The previous terminal screen is restored on exit. Keyboard input uses
-the controlling terminal, so piped Markdown remains usable.
+`-p` / `--pager` opens an alternate screen and restores the previous one on
+exit. The first screen appears as soon as it is rendered; the footer shows `+`
+and `rendering` until the rest of the document follows. Text reflows when the
+window changes size, and equations, images, and diagrams scroll with it.
+Keyboard input comes from the terminal, so piped documents work too.
 
 | Key | Action |
 | --- | --- |
@@ -305,149 +196,43 @@ the controlling terminal, so piped Markdown remains usable.
 | `q`, Escape, Ctrl-C | Quit; Escape first cancels an open search prompt. |
 | Ctrl-Z | Restore the terminal and suspend; `fg` resumes. |
 
-`--watch` implies the pager and requires a named regular file and interactive
-stdout. It detects in-place and atomic saves after a short debounce, retains the
-last good page through temporary read/render errors, and preserves the current
-source block when possible. Staying at the end follows newly appended content.
-Only the document and LaTeX included files are watched; press `r` after
-changing an image alone.
+`--watch` implies the pager and needs a named file. It reloads after in-place
+and atomic saves, keeps the last good page through temporary errors, and keeps
+your position; staying at the end follows appended content. The document and
+LaTeX included files are watched; press `r` after changing an image alone.
 
-Mouse tracking is disabled, preserving native text selection in Ghostty. Copying
-uses the same source options described below. Search covers terminal text, not
-letters inside rasterized equations or diagrams. Bracketed paste is ignored to
-avoid treating pasted text as commands.
-
-`--pager` is ignored for redirected output, `--output text`, `--output source`,
-and `TERM=dumb`. `--watch` rejects those modes. Ordinary scrollback output is
-unchanged. The pager has a 64 MiB input limit and bounded temporary storage;
-oversized inputs receive an error instead of being truncated. See
-[pager implementation](docs/pager.md) for resource limits and validation.
+Search covers terminal text, not letters inside equations or diagrams. Mouse
+tracking stays off, so native text selection works. `--pager` is ignored for
+pipes, `--output text`, `--output source`, and `TERM=dumb`. Inputs are limited
+to 64 MiB. See [pager](docs/pager.md) for limits and measurements.
 
 ## Copying and pipes
 
-Normal terminal selection copies prose. Selecting an equation image alone does
-not recover its TeX; use `--show-math-source` or `--math tex` when copying math.
-Image captions and source paths are selectable too; selecting pixels does not
-copy an image file or recover text drawn inside it.
-Use `--show-mermaid-source` or `--show-sgf-source` to copy diagram code through
-terminal selection.
-
 ```sh
-cat notes.md | gloss -
-gloss --output text notes.md
-gloss notes.md > notes.txt
+gloss --output text notes.md > notes.txt
 gloss --output source notes.md | pbcopy  # macOS
 ```
 
-Pipes receive readable text with source TeX, image references, and Mermaid/SGF code,
-even with forced graphics: no ANSI
-styles, graphics, added margins, or screen-width wrapping. `--output text`
-selects that representation on a terminal too. Diagnostics go to stderr.
+Pipes and `--output text` receive readable text without styles or graphics:
+equations as source TeX, images as references, and diagrams as code.
+`--output source` returns the original file byte for byte, without parsing.
 
-`--output source` preserves the original UTF-8 Markdown byte for byte, including
-line endings and final-newline state. It bypasses parsing and control-character
-filtering. Clipboard commands such as `pbcopy` are external; gloss does not
-change the clipboard itself.
+Terminal selection copies prose. Selecting an equation image does not recover
+its TeX: use `--show-math-source` or `--math tex` when copying math, and
+`--show-mermaid-source` or `--show-sgf-source` for diagrams. gloss never changes
+the clipboard itself.
 
-## Markdown and math
+## Documentation
 
-- Headings, emphasis, lists, quotes, code, links, task lists, strikethrough,
-  footnotes, and aligned, wrapped tables.
-- `$...$` / `\(...\)` inline math, `$$...$$` / `\[...\]` display math, and fenced `math` blocks.
-- GitHub alerts, inert front matter, expanded details, and validated terminal links.
-- Equation tags and automatic numbering, with tags placed after the formula.
-- Bounded local PNG/JPEG/SVG images, from Markdown or HTML `<img>`, with selectable
-  captions and text fallbacks.
-- Native rendering of supported Mermaid fences, with optional selectable source.
-- Unicode-aware terminal wrapping, preserving graphemes and keeping
-  equations whole.
-- Individual formula failures fall back to source TeX without interrupting the
-  rest of the document.
+The [documentation index](docs/README.md) lists the feature references: syntax
+highlighting, tables, images, Mermaid, SGF, Markdown extensions, LaTeX
+documents, the pager, and terminal discovery, with their limits and
+measurements.
 
-Math support follows the KaTeX subset implemented by `katex-native`.
+## Contributing
 
-Complex combinations of nested blocks still need layout improvements.
-Embedded-language highlighting is currently limited to Dockerfile shell commands
-and the supported heredocs above; unsupported fences remain uncolored.
-Remote image URLs remain text references, including in HTML. Other HTML is shown
-as source and never executed.
-
-## LaTeX documents
-
-LaTeX is read natively for a fast, approximate preview; no TeX installation or
-PDF is involved. Equivalent constructs look like Markdown: `\section` renders as
-a heading, `itemize` as a list, and math through the same native renderer.
-
-- `\maketitle` with `\title`, `\author`, and `\date`; `abstract`; numbered
-  sections by document class, including chapters and `\appendix`.
-- Emphasis, bold, monospace, links, footnotes, lists (`itemize`, `enumerate`,
-  `description`), quotes, and `tabular` tables with column alignment; a first
-  row followed by a rule becomes the header.
-- Theorems from `\newtheorem`, with shared and per-section counters, render as a
-  bold "Theorem 2 (Name)." followed by the body; proofs end with ∎.
-- `\ref`, `\eqref`, and `\cite` resolve against labels and `thebibliography`.
-- Inline and display math, with numbering that follows amsmath: one number per
-  row of `align`, `gather`, and `eqnarray` unless `\notag`; one for `equation`
-  and `multline`; explicit `\tag`. `multline`, `eqnarray`, and `flalign` are
-  rewritten to environments KaTeX supports.
-- Macros from `\newcommand`, `\def`, `\let`, and `\DeclareMathOperator` reach
-  formulas with TeX's scoping: a redefinition affects only later formulas, and a
-  definition inside a group ends with it. User macros also expand in text.
-- `verbatim`, `lstlisting`, `minted`, and `\verb` stay literal; `comment` and
-  `\iffalse` blocks are hidden.
-- Unknown commands and environments stay visible as source code, around their
-  readable arguments. TikZ pictures show as source.
-
-Included files are read in place, relative to the document's directory (or
-`--base-dir`), as LaTeX resolves them:
-
-- `\input`, `\include` with `\includeonly`, `\subfile`, and `\import`; file
-  names may use plain-text macros and `\IfFileExists`.
-- `\lstinputlisting`, `\VerbatimInput`, and `\inputminted` show the file as code,
-  with `firstline` and `lastline`.
-- `\bibliography` shows the document's `.bbl` file when BibTeX has produced one.
-- `\includegraphics` displays local PNG, JPEG, and SVG files, trying those
-  extensions when the name has none and searching `\graphicspath`. PDF and EPS
-  figures keep a reference.
-
-Missing files keep their command visible as source. `--watch` also reloads when
-an included file changes.
-
-`--output text` exports readable prose with included text and the original
-formulas; `--output source` returns the main `.tex` file exactly. See the
-[LaTeX documents](docs/latex.md) reference for formulas, limits, and validation.
-
-## Development
-
-```sh
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-cargo +1.90.0 check --locked --all-targets
-cargo build --locked
-python3 tests/terminal_smoke.py target/debug/gloss  # Unix, Python 3
-python3 tests/pager_smoke.py target/debug/gloss
-```
-
-Rust tests cover parsing, source preservation, wrapping, math, and output
-contracts. Pseudo-terminal tests cover graphics selection, fallbacks, narrow
-windows, Unicode, reading width, themes, and image/text placement. Pager tests
-also cover input, search, image cropping/reuse, resize, atomic saves, and terminal
-restoration. Visual checks
-in real terminals are still needed to assess font alignment, scrolling, and
-selection behavior.
-
-[CI](.github/workflows/ci.yml) runs Rust checks on Linux, macOS, and Windows,
-Unix pseudo-terminal checks on Linux and macOS, and minimum-Rust and package
-verification on Linux. The pager and `--watch` require Unix; Windows uses direct
-output. See [releasing](docs/releasing.md) for publishing to crates.io,
-tag-triggered releases, and automated Homebrew bottles. Hosted platform checks must
-pass before publication.
-
-The [documentation index](docs/README.md) separates feature references, contributor
-guides, and historical performance measurements. Start with the
-[architecture](docs/architecture.md), [design decisions](docs/feature-design.md),
-and [roadmap](docs/roadmap.md) when contributing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for building from a checkout, the checks
+to run, and where design decisions are recorded.
 
 ## License
 

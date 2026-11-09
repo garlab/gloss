@@ -78,8 +78,9 @@ scopes, and included files with listings, `.bbl` files, and missing files.
 `tests/pager_smoke.py` checks that editing an included file reloads a watched
 document. `tests/fixtures/latex.tex` exercises the common constructs.
 
-The reader itself is tested in its own repository, against pdfLaTeX for
-scoping and label placement, with a corpus of public arXiv papers.
+The reader itself is tested in [its repository](https://github.com/garlab/latex-reader),
+against pdfLaTeX for scoping and label placement, with a corpus of public arXiv
+papers.
 
 ## Measurements
 
