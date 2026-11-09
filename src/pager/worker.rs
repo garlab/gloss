@@ -10,6 +10,7 @@ use std::{
         fd::{AsRawFd, RawFd},
         unix::net::UnixStream,
     },
+    path::PathBuf,
     sync::{
         Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -25,6 +26,11 @@ pub(super) struct Request {
 }
 pub(super) struct Completed {
     pub source: Arc<String>,
+    /// The text that row anchors index, when it is not `source`: LaTeX with
+    /// included files.
+    pub text: Option<Arc<str>>,
+    /// Files read besides `source`, for watching.
+    pub dependencies: Vec<PathBuf>,
     pub page: io::Result<Option<Page>>,
 }
 #[derive(Default)]
@@ -65,6 +71,8 @@ impl Worker {
                         (state.pending.take().unwrap(), cancel)
                     };
                     let mut source = request.source;
+                    let mut text = None;
+                    let mut dependencies = Vec::new();
                     let page = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         if cancel.load(Ordering::Relaxed) {
                             return Err(io::ErrorKind::Interrupted.into());
@@ -80,6 +88,8 @@ impl Worker {
                             source = Arc::new(updated);
                         }
                         let document = request.input.document(source.as_ref().clone());
+                        text = document.expanded_text();
+                        dependencies = document.dependencies().to_vec();
                         record::build(&document, &request.options, Arc::clone(&cancel), &mut cache)
                             .map(Some)
                     }))
@@ -90,7 +100,12 @@ impl Worker {
                     let mut state = mutex.lock().unwrap();
                     state.running = None;
                     if !cancel.load(Ordering::Relaxed) && !state.shutdown {
-                        state.result = Some(Completed { source, page });
+                        state.result = Some(Completed {
+                            source,
+                            text,
+                            dependencies,
+                            page,
+                        });
                         // A full socket is already readable. Never block rendering
                         // or shutdown while the input thread handles other events.
                         let _ = notification.write(&[1]);

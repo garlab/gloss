@@ -84,13 +84,18 @@ The full source and parser working storage still scale with input.
 | `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
 | `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
 | `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation. |
-| `src/pager/watch.rs` | Debounced metadata polling, including atomic replacement. |
+| `src/pager/watch.rs` | Debounced metadata polling of the named file and its included files, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
 `latex-preview` owns reading LaTeX documents: macro scoping, numbering, labels,
-checkpoints, and formulas prepared for KaTeX. A LaTeX `Document` holds its index;
-the adapter keeps gloss's event vocabulary, so layout, rendering, exports, and the
-pager are shared with Markdown. Each formula's macro context comes from the index
+checkpoints, formulas prepared for KaTeX, and splicing included files into the
+text it reads. It reads no files itself: `src/input.rs` supplies them under the
+text input limits (regular files, nonblocking opens, 64 MiB in total), relative
+to the same base as images. A LaTeX `Document` keeps the original source for
+exact exports, plus the expanded text that event ranges index, its index, and
+the included paths that watch polls. The adapter keeps gloss's event
+vocabulary, so layout, rendering, exports, and the pager are shared with
+Markdown. Each formula's macro context comes from the index
 at its source offset; the math engine builds a KaTeX macro map per context and
 renders each formula with local definitions confined to it.
 `document-graphics` is a separate library repository. Its optional `images`

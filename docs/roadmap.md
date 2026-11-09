@@ -82,8 +82,8 @@ the [LaTeX preview design](latex-design.md). Remaining work:
 - Spill checkpoint records to disk past a resident cap, and split paragraphs or
   formulas larger than the replay budget.
 - Score output against reference PDFs from a pinned corpus of public papers.
-- Resolve `\includegraphics` paths without extensions, and decide how `\input`
-  and `\include` interact with `--watch`.
+- Rasterize formulas directly from the display list in `katex-native`: SVG
+  parsing and drawing dominate LaTeX rendering time.
 - Build the Plastext adapter and fast preview.
 
 ## Deferred: native ABC music notation

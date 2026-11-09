@@ -381,6 +381,22 @@ class PagerSmoke(unittest.TestCase):
                 self.assertEqual(p.screen.uploads, 0)
                 p.close()
 
+    def test_latex_watch_reloads_when_an_included_file_changes(self):
+        with tempfile.TemporaryDirectory() as root:
+            file = Path(root) / "paper.tex"
+            part = Path(root) / "part.tex"
+            file.write_text("\\begin{document}\n\\section{Main}\n\\input{part}\n\\end{document}\n")
+            part.write_text("Included original text.\n")
+            p = self.pager(file=file, args=["--watch"])
+            p.ready("Included original text.")
+            self.assertIn("1 Main", p.screen.text())
+            # Only the included file changes; the named file's bytes stay the same.
+            replacement = part.with_suffix(".new")
+            replacement.write_text("Included updated text.\n")
+            replacement.replace(part)
+            p.ready("Included updated text.")
+            p.close()
+
     def test_numbered_code_scrolls_reflows_and_reloads_without_renumbering_wraps(self):
         with tempfile.TemporaryDirectory() as root:
             file = Path(root) / "Dockerfile"

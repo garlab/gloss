@@ -44,7 +44,9 @@ Watch polls the named path's device, inode, size, and modification/change times
 every 250 ms. A change must remain stable for a subsequent poll before loading,
 so ordinary edits appear after roughly 250–500 ms plus rendering time. This
 detects atomic replacement and disappearance/recreation without directory-wide
-subscriptions. Unchanged text bytes skip rendering. Standalone Mermaid/SGF files
+subscriptions. LaTeX documents also poll the files their last successful render
+included, up to 63; a change there forces a render even though the named file's
+bytes are unchanged. Files that did not exist at that render are not polled. Unchanged text bytes skip rendering. Standalone Mermaid/SGF files
 retain their input format across reloads. Standalone images re-read their pixels
 after metadata changes; an unchanged filename does not suppress rendering.
 There is no content hashing,

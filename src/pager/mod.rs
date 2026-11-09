@@ -58,6 +58,7 @@ fn max_top(page: &Page, screen: Geometry) -> usize {
 
 /// Relocate a source anchor past insertions/deletions outside the edited region.
 fn relocate(old: &str, new: &str, anchor: u32) -> u32 {
+    let anchor = anchor.min(old.len() as u32);
     let prefix = old
         .bytes()
         .zip(new.bytes())
@@ -396,6 +397,8 @@ pub fn run(
     let mut tty = Session::open()?;
     let (screen, mut current_options) = prepare(options());
     let mut source = Arc::new(source);
+    // What row anchors index, when it differs from `source`.
+    let mut text: Option<Arc<str>> = None;
     let path = &input.path;
     let mut watcher = watch.then(|| watch::Watch::new(path.as_ref().unwrap()));
     let mut view = View {
@@ -446,8 +449,15 @@ pub fn run(
                                     .len()
                                     .saturating_sub(usize::from(previous.geometry.rows));
                         let (mut anchor, offset) = previous.location(view.top);
-                        if !Arc::ptr_eq(&source, &result.source) {
-                            anchor = relocate(&source, &result.source, anchor);
+                        let same_text = match (&text, &result.text) {
+                            (None, None) => Arc::ptr_eq(&source, &result.source),
+                            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                            _ => false,
+                        };
+                        if !same_text {
+                            let old = text.as_deref().unwrap_or(source.as_str());
+                            let new = result.text.as_deref().unwrap_or(result.source.as_str());
+                            anchor = relocate(old, new, anchor);
                         }
                         view.top = if at_end {
                             max_top(&page, view.screen)
@@ -457,6 +467,10 @@ pub fn run(
                         };
                     }
                     source = result.source;
+                    text = result.text;
+                    if let Some(watcher) = &mut watcher {
+                        watcher.track(&result.dependencies);
+                    }
                     view.page = Some(page);
                     view.search = None;
                     view.message.clear();
@@ -470,8 +484,10 @@ pub fn run(
         }
         let mut reload = false;
         let mut force = false;
-        if let (Some(watcher), Some(path)) = (&mut watcher, &path) {
-            reload |= watcher.poll(path);
+        if let Some(dependency) = watcher.as_mut().and_then(watch::Watch::poll) {
+            reload = true;
+            // The source alone may be unchanged when an included file changes.
+            force |= dependency;
         }
         if let (Some(search), Some(page)) = (&mut view.search, &mut view.page) {
             if let Some(found) = search.step(page, &view.query)? {
@@ -550,6 +566,8 @@ mod tests {
         assert_eq!(relocate("a\nb\nc\n", "intro\na\nb\nc\n", 4), 10);
         assert_eq!(relocate("intro\na\nb\nc\n", "a\nb\nc\n", 10), 4);
         assert_eq!(relocate("abc", "abcXYZ", 1), 1);
+        // Anchors past the old text, from a differently expanded document.
+        assert_eq!(relocate("abc", "xbc", 9), 3);
         assert_eq!(safe("a\x1b\n界é", 4), "a界é");
         assert_eq!(safe("e\u{301}界", 2), "e\u{301}");
     }

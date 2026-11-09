@@ -1372,6 +1372,65 @@ fn latex_formulas_render_with_document_macros_and_numbers() {
     assert!(maths.iter().all(|tex| !tex.contains("\\label")));
 }
 
+#[cfg(unix)]
+#[test]
+fn latex_included_files_render_in_place_and_source_export_keeps_the_main_file() {
+    use gloss_cli::input::{Format, Input};
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("sections")).unwrap();
+    std::fs::create_dir(dir.path().join("src")).unwrap();
+    let main = "\\documentclass{article}\n\\newcommand{\\code}{src}\n\\begin{document}\n\\input{sections/intro}\nSee \\cite{k} and Section~\\ref{s}, $\\R$.\n\\lstinputlisting[firstline=2]{\\code/demo.py}\n\\input{missing}\n\\bibliography{refs}\n\\end{document}\n";
+    let path = dir.path().join("paper.tex");
+    std::fs::write(&path, main).unwrap();
+    std::fs::write(
+        dir.path().join("sections/intro.tex"),
+        "\\newcommand{\\R}{\\mathbb{R}}\n\\section{Intro}\\label{s}\nIncluded text.\n",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("src/demo.py"), "skipped\nprint(1)\n").unwrap();
+    std::fs::write(
+        dir.path().join("paper.bbl"),
+        "\\begin{thebibliography}{1}\n\\bibitem{k} K. Writer.\n\\end{thebibliography}\n",
+    )
+    .unwrap();
+    let text = cli(&["--output", "text", path.to_str().unwrap()], "");
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    for expected in [
+        // A file's end is a line end, so the paragraph continues.
+        "1 Intro\n\nIncluded text. See [1] and Section\u{a0}1, $\\R$.\n",
+        "print(1)\n",
+        "\\input{missing}",
+        "- [1] K. Writer.",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    assert!(!text.contains("skipped"));
+    let source = cli(&["--output", "source", path.to_str().unwrap()], "");
+    assert_eq!(source.stdout, main.as_bytes());
+
+    // Formulas from included files see their macros; watch sees the files read.
+    let input = Input::new(Some(path.clone()), Format::Auto, None).unwrap();
+    let document = input.document(input.read(false).unwrap());
+    assert_eq!(
+        document.dependencies(),
+        [
+            dir.path().join("sections/intro.tex"),
+            dir.path().join("src/demo.py"),
+            dir.path().join("paper.bbl")
+        ]
+    );
+    let options = render::Options {
+        kitty: Some(Geometry::default()),
+        ..Default::default()
+    };
+    let mut output = Vec::new();
+    let warnings =
+        render::write(&mut output, &document, &layout::layout(&document), &options).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
 #[test]
 fn latex_macro_scopes_reach_each_formula() {
     let source =

@@ -64,6 +64,7 @@ struct Prefix<'a> {
 }
 
 pub(super) struct Adapter<'a> {
+    source: &'a str,
     events: lp::Events<'a>,
     queue: VecDeque<SpannedEvent<'a>>,
     stack: Vec<Open>,
@@ -81,6 +82,7 @@ pub(super) struct Adapter<'a> {
 impl<'a> Adapter<'a> {
     pub fn new(index: &'a lp::Index, source: &'a str) -> Self {
         Self {
+            source,
             events: index.events(source),
             queue: VecDeque::new(),
             stack: Vec::new(),
@@ -216,12 +218,12 @@ impl<'a> Adapter<'a> {
                 }
             }
             L::Include(include) => {
-                let command = match include.kind {
-                    lp::IncludeKind::Input => "input",
-                    lp::IncludeKind::Include => "include",
-                    lp::IncludeKind::Bibliography => "bibliography",
+                // A file that could not be read: show the command as written.
+                let command = match self.source.get(range.clone()) {
+                    Some(command) => command.trim_end().to_owned(),
+                    None => format!("\\input{{{}}}", include.path),
                 };
-                self.raw(format!("\\{command}{{{}}}", include.path), range);
+                self.raw(command, range);
             }
             L::Raw(text) => self.raw(text.into_owned(), range),
             L::LineBreak => self.out(Event::HardBreak, range),

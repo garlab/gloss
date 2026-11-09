@@ -29,16 +29,33 @@ pub struct Document {
 
 enum Kind {
     Markdown,
-    Latex(Arc<latex_preview::Index>),
+    Latex(Latex),
     Code(String),
     Image(PathBuf),
+}
+
+/// A LaTeX document read with its included files.
+struct Latex {
+    index: Arc<latex_preview::Index>,
+    /// The source with included files in place, when there were any. Event
+    /// ranges refer to this text.
+    expanded: Option<Arc<str>>,
+    /// Included files that were read, for watching.
+    files: Vec<PathBuf>,
+    /// Directories from `\graphicspath`, relative to the image base.
+    graphics: Vec<String>,
 }
 
 impl std::fmt::Debug for Kind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Kind::Markdown => f.write_str("Markdown"),
-            Kind::Latex(index) => write!(f, "Latex({} checkpoints)", index.checkpoints().len()),
+            Kind::Latex(latex) => write!(
+                f,
+                "Latex({} checkpoints, {} included files)",
+                latex.index.checkpoints().len(),
+                latex.files.len()
+            ),
             Kind::Code(language) => f.debug_tuple("Code").field(language).finish(),
             Kind::Image(path) => f.debug_tuple("Image").field(path).finish(),
         }
@@ -65,26 +82,110 @@ impl Document {
     }
 
     /// LaTeX is read once into an index of events, numbers, and macro scopes.
+    /// Included files are not read; their commands stay visible as source.
     pub fn latex(source: String) -> Self {
+        Self::latex_with(source, None, |_, _| None)
+    }
+
+    /// Reads LaTeX with the files that `\input` and similar commands name,
+    /// relative to `base` as LaTeX resolves them. `jobname` locates the `.bbl`
+    /// bibliography.
+    pub fn latex_with_files(source: String, base: &Path, jobname: Option<&str>) -> Self {
+        Self::latex_with(source, jobname, |name, kind| {
+            crate::input::read_included(&base.join(name), kind == latex_preview::InputKind::Exists)
+        })
+        .with_base(base)
+    }
+
+    fn latex_with(
+        source: String,
+        jobname: Option<&str>,
+        mut read: impl FnMut(&str, latex_preview::InputKind) -> Option<String>,
+    ) -> Self {
+        let limits = latex_preview::InputLimits {
+            max_bytes: crate::input::MAX_SOURCE as usize,
+            ..Default::default()
+        };
+        let expanded = latex_preview::expand(&source, jobname, &limits, &mut read);
+        let files: Vec<PathBuf> = expanded.files.iter().map(PathBuf::from).collect();
+        let expanded = match expanded.text {
+            std::borrow::Cow::Borrowed(_) => None,
+            std::borrow::Cow::Owned(text) => Some(Arc::<str>::from(text)),
+        };
         let index = latex_preview::index(
-            &source,
+            expanded.as_deref().unwrap_or(&source),
             &latex_preview::Options::default(),
             &AtomicBool::new(false),
         )
         .expect("indexing without a cancellation request completes");
+        let graphics = index.graphics_path().to_vec();
         Self {
             source,
             prepared: Default::default(),
-            kind: Kind::Latex(Arc::new(index)),
+            kind: Kind::Latex(Latex {
+                index: Arc::new(index),
+                expanded,
+                files,
+                graphics,
+            }),
         }
+    }
+
+    /// Makes included file paths relative to the working directory.
+    fn with_base(mut self, base: &Path) -> Self {
+        if let Kind::Latex(latex) = &mut self.kind {
+            for file in &mut latex.files {
+                *file = base.join(&*file);
+            }
+        }
+        self
     }
 
     /// The index of a LaTeX document, for macro contexts at formula offsets.
     pub(crate) fn latex_index(&self) -> Option<&Arc<latex_preview::Index>> {
-        if let Kind::Latex(index) = &self.kind {
-            Some(index)
+        if let Kind::Latex(latex) = &self.kind {
+            Some(&latex.index)
         } else {
             None
+        }
+    }
+
+    /// `\graphicspath` directories of a LaTeX document, or `None` for other
+    /// documents, whose image targets are exact.
+    pub(crate) fn graphics_path(&self) -> Option<&[String]> {
+        if let Kind::Latex(latex) = &self.kind {
+            Some(&latex.graphics)
+        } else {
+            None
+        }
+    }
+
+    /// Files read besides the source, such as LaTeX `\input` files.
+    pub fn dependencies(&self) -> &[PathBuf] {
+        if let Kind::Latex(latex) = &self.kind {
+            &latex.files
+        } else {
+            &[]
+        }
+    }
+
+    /// The expanded text of LaTeX with included files, shared without copying.
+    pub fn expanded_text(&self) -> Option<Arc<str>> {
+        match &self.kind {
+            Kind::Latex(latex) => latex.expanded.clone(),
+            _ => None,
+        }
+    }
+
+    /// The text that event ranges refer to: the source, or for LaTeX with
+    /// included files, the expanded text.
+    pub fn text(&self) -> &str {
+        match &self.kind {
+            Kind::Latex(Latex {
+                expanded: Some(text),
+                ..
+            }) => text,
+            _ => &self.source,
         }
     }
 
@@ -123,7 +224,7 @@ impl Document {
             .then(|| Parser::new_ext(input, options).into_offset_iter());
         let mut stage = 0;
         let mut latex = match &self.kind {
-            Kind::Latex(index) => Some(latex::Adapter::new(index, &self.source)),
+            Kind::Latex(latex) => Some(latex::Adapter::new(&latex.index, self.text())),
             _ => None,
         };
         // Events read ahead with an HTML fragment.
@@ -238,8 +339,9 @@ impl Document {
         queued.pop_front()
     }
 
-    /// Returns the exact Markdown for a source range, including delimiters.
+    /// Returns the exact Markdown or LaTeX for a source range, including
+    /// delimiters. LaTeX ranges index the text with included files in place.
     pub fn source_slice(&self, range: impl Into<Range<usize>>) -> Option<&str> {
-        self.source.get(range.into())
+        self.text().get(range.into())
     }
 }

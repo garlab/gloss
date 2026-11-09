@@ -218,7 +218,7 @@ and the large synthetic documents described under [Validation](#validation).
 | Formula layout and rasterization | `katex-native`, unchanged |
 | Macro map built from a context's bindings | Small `katex-native` helper, shared by both applications |
 | PNG/JPEG/SVG figures | `document-graphics`, already shared |
-| Root-document hints and `\input`/`\include` references | Text scanning in the shared crate; file access and path policy stay in each application |
+| Splicing `\input`, `\include`, listings, and `.bbl` files into the text | Text scanning in the shared crate, before indexing; file access and path policy stay in each application, through a callback |
 | Layout, styling, caches, and revision publication | Each application |
 
 `document-graphics` stays a rendering library without a document model, as its
@@ -288,9 +288,19 @@ pub struct Math<'a> {
 Each event carries the source range it came from. The model keeps LaTeX's
 meaning rather than a Markdown shape: a GUI uses section numbers, indentation,
 alignment, relative sizes, theorem styles, and table rules, and the terminal
-ignores what it cannot show. `\input` and `\include` are reported as references
-for the application to resolve. The crate has no file access and no KaTeX
+ignores what it cannot show. The crate has no file access and no KaTeX
 dependency, which avoids coupling another crate to the katex-rs version.
+
+Included files are spliced into the text before the first pass, not resolved
+afterwards. LaTeX reads `\input` while typesetting, so an included file shares
+the document's macros, counters, and labels; splicing gives the parser the same
+view, and checkpoints, windows, macro contexts, and source ranges then work on
+one text without per-file offsets. The expansion step uses the crate's lexer, so
+comments and verbatim content are skipped, and asks the application for each
+file through a callback. The application keeps the original source for exact
+exports and the expanded text for events, and watches the files it read. A
+command whose file cannot be read stays in the text and is reported as an
+`Include` event.
 
 ### Input classification and fallbacks
 
@@ -632,10 +642,10 @@ the exact mode.
 3. **Structure.** Cross-references for sections, theorems, figures, and tables;
    `tabular`; figures; theorems; and text-mode user macros. Then the Plastext
    adapter, with the fast preview alongside PDF compilation.
-4. **Later.** Resuming the first pass after edits, `\input`/`\include` (which
-   affects `--watch`), bibliographies (the
-   [`biblatex`](https://crates.io/crates/biblatex) crate is a candidate), and
-   broader package coverage. TikZ stays as source.
+4. **Later.** Resuming the first pass after edits, bibliographies without a
+   `.bbl` file (the [`biblatex`](https://crates.io/crates/biblatex) crate is a
+   candidate), and broader package coverage. TikZ stays as source. Included
+   files are now followed; see [Spike outcome](#spike-outcome).
 
 ### Spike outcome
 
@@ -661,9 +671,18 @@ against 215 ms on the parent commit, medians of seven alternating runs), and
 the release executable grows by 318,304 bytes (1.8%). Plain export of the 37 MB
 LaTeX input takes 687 ms with a 45 MiB peak.
 
+Included files followed. With the corpus archives extracted, expansion reads 7
+and 97 files with no diagnostics, and gloss renders each paper's main file to a
+100×40 PTY with 10×20-pixel cells in 54 ms and 184 ms. For the 474 formulas of
+`body.tex` at 18 pixels per em, KaTeX layout takes 4.4 ms, rasterization 25 ms
+(13 ms parsing the SVG that `katex-native` generates, 12 ms drawing it), and
+compression for Kitty graphics 6 ms. Rasterization dominates formula-dense
+documents.
+
 Not yet built: spilling checkpoint records to disk past a resident cap,
 splitting paragraphs or formulas larger than the replay budget, corpus scoring
-against reference PDFs, and the Plastext adapter.
+against reference PDFs, direct rasterization of the display list, and the
+Plastext adapter.
 
 Rough sizes, including tests: 5,000–6,000 lines for the shared crate, about 600
 lines plus documentation for the gloss adapter and its interface changes, and
@@ -722,8 +741,6 @@ GUI styling work is not sized.
 
 - The shared crate's name and repository. Avoid `latex-native`: unlike
   `katex-native`, it suggests a TeX engine.
-- Whether gloss resolves `\input` and `\include` relative to the document, and
-  how that interacts with `--watch`, which currently watches one file.
 - How gloss surfaces diagnostics: always, as a summary on stderr, or only on
   request.
 - Plastext's roadmap currently keeps document parsing within each application. A

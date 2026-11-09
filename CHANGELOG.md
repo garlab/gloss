@@ -4,8 +4,10 @@
 
 - Render LaTeX documents (`.tex`, `.latex`, `.ltx`, or `--input-format latex`)
   natively: sections, lists, theorems, tables, footnotes, references, and math
-  with amsmath numbering and scoped document macros. Unknown commands stay
-  visible as source. No TeX installation is needed.
+  with amsmath numbering and scoped document macros. Included files, listings,
+  `.bbl` bibliographies, and figures without extensions are read in place, and
+  `--watch` follows included files. Unknown commands stay visible as source. No
+  TeX installation is needed.
 - Render HTML `<img>` markup like Markdown images, including inside `<p>`,
   `<div>`, `<a>`, and `<picture>`. Local images display; remote ones keep their
   reference and are never fetched. Other HTML still shows as source.

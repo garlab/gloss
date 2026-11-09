@@ -163,7 +163,8 @@ fn run() -> Result<(), Box<dyn Error>> {
         gloss_cli::mermaid::worker_main()?;
         return Ok(());
     }
-    let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?;
+    let input = Input::new(args.file.clone(), args.input_format, args.language.clone())?
+        .with_base_dir(args.base_dir.clone());
     let input_format = input.format;
     let named_file = input.path.as_deref();
     if input.format == Format::Image && args.output == Output::Source {

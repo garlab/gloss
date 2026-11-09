@@ -375,6 +375,8 @@ impl<'a, W: Write> Renderer<'a, W> {
                         * u32::from(geometry.cell_height.max(1));
                     let pixels = if let Some(path) = document.image_path() {
                         loader.load_path(path, width, height)
+                    } else if let Some(search) = document.graphics_path() {
+                        loader.load_graphic(base, &image.target, search, width, height)
                     } else {
                         loader.load(base, &image.target, width, height)
                     };

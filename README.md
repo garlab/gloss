@@ -400,10 +400,23 @@ a heading, `itemize` as a list, and math through the same native renderer.
 - Unknown commands and environments stay visible as source code, around their
   readable arguments. TikZ pictures show as source.
 
-`--output text` exports readable prose with the original formulas;
-`--output source` returns the `.tex` file exactly. `\includegraphics` displays
-local PNG/JPEG/SVG files given with their extension; other figures keep a
-reference. `\input` and `\include` are shown but not followed. See the
+Included files are read in place, relative to the document's directory (or
+`--base-dir`), as LaTeX resolves them:
+
+- `\input`, `\include` with `\includeonly`, `\subfile`, and `\import`; file
+  names may use plain-text macros and `\IfFileExists`.
+- `\lstinputlisting`, `\VerbatimInput`, and `\inputminted` show the file as code,
+  with `firstline` and `lastline`.
+- `\bibliography` shows the document's `.bbl` file when BibTeX has produced one.
+- `\includegraphics` displays local PNG, JPEG, and SVG files, trying those
+  extensions when the name has none and searching `\graphicspath`. PDF and EPS
+  figures keep a reference.
+
+Missing files keep their command visible as source. `--watch` also reloads when
+an included file changes.
+
+`--output text` exports readable prose with included text and the original
+formulas; `--output source` returns the main `.tex` file exactly. See the
 [LaTeX preview design](docs/latex-design.md) for the model and its limits.
 
 ## Development
