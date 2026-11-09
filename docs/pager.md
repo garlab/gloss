@@ -95,7 +95,7 @@ an extra input-poll delay without increasing the idle polling rate.
 | Search query | 256 UTF-8 bytes |
 | Search work between input checks | Up to 512 rows or 5 ms |
 | Background rendering | One active request and one replaceable pending request |
-| Math cache retained between renders | 8 MiB / 64 entries |
+| Math cache retained between renders | 8 MiB of compressed pixels / 4,096 entries |
 | Mermaid cache retained between renders | 8 MiB / 32 entries |
 | SGF cache retained between renders | 8 MiB / 32 entries |
 
@@ -217,6 +217,28 @@ python3 bench/pager.py --binary target/release/gloss \
   --reloads 8 --resize-cycles 3 --watch-seconds 1
 ```
 
-Use a working set of at most 64 math entries / 32 diagram entries within the
+Use a working set of at most 4,096 math entries / 32 diagram entries within the
 8 MiB budgets to measure warm-cache behavior; also measure larger working sets
 to observe eviction. Changing fitting bounds produces distinct cache entries.
+
+### Compressed equation cache
+
+The math cache later kept compressed pixels instead of RGBA, raised its entry
+limit from 64 to 4,096 within the same 8 MiB, and gained a hash index.
+Equations are compressed once after rasterization, which transmission already
+required, so cache hits skip both rasterization and compression. Hardware,
+profile, and PTY geometry are as above; three fresh sessions per binary, each
+with four manual reloads, compared against the previous commit:
+
+| Input | First page before / after | Manual reload before / after | Peak viewer RSS before / after |
+| --- | ---: | ---: | ---: |
+| LaTeX corpus `body.tex` (374 KB, 474 formulas; see [bench/latex](../bench/latex)) | 61 / 59 ms | 57 / 26 ms | 12.4 / 11.6 MiB |
+| Markdown, 500 paragraphs with six distinct inline formulas and one display formula each | 625 / 628 ms | 612 / 20 ms | 13.5 / 16.6 MiB |
+
+The corpus's equations need 179 KiB compressed with 10×20-pixel cells and
+438 KiB with 20×40 cells, against 1 and 4 MiB as RGBA; its remaining reload time
+is text layout and page recording. The Markdown input now keeps all of its
+3,500 formulas, which accounts for its higher RSS. Direct styled output is
+byte-identical for both inputs at both cell sizes, with unchanged wall time
+(640 / 643 ms and 1,015 / 1,012 ms for the Markdown input) and peak RSS. The
+executable grew by 544 bytes.

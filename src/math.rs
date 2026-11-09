@@ -1,7 +1,11 @@
 //! Native math uses katex-native for layout and rasterization, independently
 //! of any terminal protocol.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    hash::{DefaultHasher, Hash, Hasher},
+    sync::Arc,
+};
 
 use katex_native::{
     Color,
@@ -9,38 +13,41 @@ use katex_native::{
     raster,
 };
 
-/// Math-specific baseline metadata around the shared pixel representation.
+/// Math-specific baseline metadata around compressed pixels. Equations are
+/// placed whole at native size, so their pixels are compressed once, right
+/// after rasterization, and cache hits transmit the same bytes.
 #[derive(Clone)]
 pub struct Raster {
-    pub pixels: Arc<crate::raster::Raster>,
+    pub pixels: Arc<crate::raster::Compressed>,
     pub baseline: f64,
 }
 
 impl std::ops::Deref for Raster {
-    type Target = crate::raster::Raster;
+    type Target = crate::raster::Compressed;
     fn deref(&self) -> &Self::Target {
         &self.pixels
     }
 }
 
-impl From<raster::Raster> for Raster {
-    fn from(value: raster::Raster) -> Self {
-        Self {
+impl TryFrom<raster::Raster> for Raster {
+    type Error = String;
+    fn try_from(value: raster::Raster) -> Result<Self, String> {
+        let pixels = crate::raster::Raster {
+            width: value.width,
+            height: value.height,
+            rgba: value.rgba,
+        };
+        Ok(Self {
             baseline: value.baseline,
-            pixels: Arc::new(crate::raster::Raster {
-                width: value.width,
-                height: value.height,
-                rgba: value.rgba,
-            }),
-        }
+            pixels: Arc::new(pixels.compress().map_err(|error| error.to_string())?),
+        })
     }
 }
 
 pub struct MathEngine {
     context: KatexContext,
     next_number: u32,
-    cache: VecDeque<Entry>,
-    cache_bytes: usize,
+    cache: Cache,
     /// A LaTeX document's index: formulas use the macros visible where they start.
     document: Option<Arc<latex_preview::Index>>,
     /// KaTeX macro maps built per visible-binding hash, most recent last.
@@ -49,11 +56,13 @@ pub struct MathEngine {
 
 const MACRO_MAPS: usize = 8;
 
+/// Compressed bytes, source, and a fixed overhead count toward the budget. A
+/// paper of about 900 formulas needs 1–2.5 MiB, depending on the font size.
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
-const CACHE_ENTRIES: usize = 64;
+const CACHE_ENTRIES: usize = 4096;
 const CACHE_SOURCE_BYTES: usize = 16 * 1024;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash)]
 struct Parameters {
     display: bool,
     font_size: u64,
@@ -70,6 +79,71 @@ struct Entry {
     raster: Raster,
     next_number: u32,
     bytes: usize,
+    /// When the entry was last used; older positions in `order` are stale.
+    used: u64,
+}
+
+/// Least-recently-used rasters, indexed by a hash of formula and parameters.
+/// A hash collision is a miss: entries are compared in full.
+#[derive(Default)]
+struct Cache {
+    entries: HashMap<u64, Entry>,
+    /// Uses in order, oldest first; an entry's latest use is the live one.
+    order: VecDeque<(u64, u64)>,
+    clock: u64,
+    bytes: usize,
+}
+
+impl Cache {
+    fn key(tex: &str, parameters: &Parameters) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        tex.hash(&mut hasher);
+        parameters.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn get(&mut self, key: u64, tex: &str, parameters: &Parameters) -> Option<(Raster, u32)> {
+        let entry = self.entries.get_mut(&key)?;
+        if entry.tex != tex || entry.parameters != *parameters {
+            return None;
+        }
+        self.clock += 1;
+        entry.used = self.clock;
+        let found = (entry.raster.clone(), entry.next_number);
+        self.order.push_back((key, self.clock));
+        // Repeated hits leave stale positions; drop them before they dominate.
+        if self.order.len() > 2 * self.entries.len() + 64 {
+            let entries = &self.entries;
+            self.order
+                .retain(|(key, used)| entries.get(key).is_some_and(|e| e.used == *used));
+        }
+        Some(found)
+    }
+
+    fn insert(&mut self, key: u64, mut entry: Entry) {
+        if let Some(old) = self.entries.remove(&key) {
+            self.bytes -= old.bytes;
+        }
+        while self.entries.len() >= CACHE_ENTRIES || self.bytes + entry.bytes > CACHE_BYTES {
+            let Some((key, used)) = self.order.pop_front() else {
+                break;
+            };
+            if self.entries.get(&key).is_some_and(|e| e.used == used) {
+                let old = self.entries.remove(&key).unwrap();
+                self.bytes -= old.bytes;
+            }
+        }
+        self.clock += 1;
+        entry.used = self.clock;
+        self.order.push_back((key, self.clock));
+        self.bytes += entry.bytes;
+        self.entries.insert(key, entry);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 impl Default for MathEngine {
@@ -77,8 +151,7 @@ impl Default for MathEngine {
         Self {
             context: KatexContext::default(),
             next_number: 1,
-            cache: VecDeque::new(),
-            cache_bytes: 0,
+            cache: Cache::default(),
             document: None,
             macro_maps: VecDeque::new(),
         }
@@ -198,15 +271,9 @@ impl MathEngine {
             number: self.next_number,
             macros: macros.as_ref().map_or(0, |m| m.hash()),
         };
-        if let Some(index) = self
-            .cache
-            .iter()
-            .position(|entry| entry.parameters == parameters && entry.tex == tex)
-        {
-            let entry = self.cache.remove(index).unwrap();
-            self.next_number = entry.next_number;
-            let raster = entry.raster.clone();
-            self.cache.push_back(entry);
+        let key = Cache::key(tex, &parameters);
+        if let Some((raster, next_number)) = self.cache.get(key, tex, &parameters) {
+            self.next_number = next_number;
             return Ok(raster);
         }
         let settings = match &macros {
@@ -251,26 +318,24 @@ impl MathEngine {
         if display {
             self.next_number = self.next_number.saturating_add(layout.equation_numbers);
         }
-        let result: Raster = result.into();
+        let result = Raster::try_from(result)?;
         let bytes = result
-            .rgba
+            .data
             .len()
             .saturating_add(tex.len())
             .saturating_add(256);
         if bytes <= CACHE_BYTES && tex.len() <= CACHE_SOURCE_BYTES {
-            while self.cache.len() >= CACHE_ENTRIES || self.cache_bytes + bytes > CACHE_BYTES {
-                if let Some(entry) = self.cache.pop_front() {
-                    self.cache_bytes -= entry.bytes;
-                }
-            }
-            self.cache.push_back(Entry {
-                tex: tex.into(),
-                parameters,
-                raster: result.clone(),
-                next_number: self.next_number,
-                bytes,
-            });
-            self.cache_bytes += bytes;
+            self.cache.insert(
+                key,
+                Entry {
+                    tex: tex.into(),
+                    parameters,
+                    raster: result.clone(),
+                    next_number: self.next_number,
+                    bytes,
+                    used: 0,
+                },
+            );
         }
         Ok(result)
     }
@@ -345,7 +410,7 @@ mod tests {
         let second = engine
             .render_display(formula, None, 24., color, 800, 400)
             .unwrap();
-        assert_ne!(numbered.rgba, second.rgba);
+        assert_ne!(numbered.data, second.data);
         assert_eq!(engine.next_number, 3);
         engine.begin_document();
         let restarted = engine
@@ -353,11 +418,60 @@ mod tests {
             .unwrap();
         assert!(Arc::ptr_eq(&numbered.pixels, &restarted.pixels));
         assert_eq!(engine.next_number, 2);
-        for index in 0..80 {
-            engine
-                .render_inline(&format!("x+{index}"), None, 24., color, 800, 400)
-                .unwrap();
+    }
+
+    #[test]
+    fn cache_evicts_least_recently_used_entries_within_both_budgets() {
+        let parameters = |number| Parameters {
+            display: false,
+            font_size: 0,
+            color: [0; 4],
+            width: 1,
+            height: 1,
+            number,
+            macros: 0,
+        };
+        let entry = |tex: &str, number, bytes| Entry {
+            tex: tex.into(),
+            parameters: parameters(number),
+            raster: Raster {
+                pixels: Arc::new(crate::raster::Compressed {
+                    width: 1,
+                    height: 1,
+                    data: Vec::new(),
+                    zlib: false,
+                }),
+                baseline: 0.,
+            },
+            next_number: number,
+            bytes,
+            used: 0,
+        };
+        let mut cache = Cache::default();
+        let kept = Cache::key("kept", &parameters(1));
+        cache.insert(kept, entry("kept", 1, 300));
+        for index in 0..CACHE_ENTRIES + 100 {
+            let tex = format!("x+{index}");
+            cache.insert(Cache::key(&tex, &parameters(1)), entry(&tex, 1, 300));
+            // Recently used entries survive eviction.
+            assert!(cache.get(kept, "kept", &parameters(1)).is_some());
+            assert!(cache.get(kept, "kept", &parameters(2)).is_none());
+            assert!(cache.order.len() <= 2 * cache.len() + 65);
         }
-        assert!(engine.cache.len() <= CACHE_ENTRIES && engine.cache_bytes <= CACHE_BYTES);
+        assert_eq!(cache.len(), CACHE_ENTRIES);
+        assert!(
+            cache
+                .get(Cache::key("x+0", &parameters(1)), "x+0", &parameters(1))
+                .is_none()
+        );
+        // Bytes bound the cache before the entry count does.
+        let large = CACHE_BYTES / 10;
+        for index in 0..20 {
+            let tex = format!("large {index}");
+            cache.insert(Cache::key(&tex, &parameters(1)), entry(&tex, 1, large));
+        }
+        assert!(cache.bytes <= CACHE_BYTES && cache.len() < 20);
+        let sum: usize = cache.entries.values().map(|e| e.bytes).sum();
+        assert_eq!(sum, cache.bytes);
     }
 }

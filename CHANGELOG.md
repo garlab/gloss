@@ -8,6 +8,9 @@
   `.bbl` bibliographies, and figures without extensions are read in place, and
   `--watch` follows included files. Unknown commands stay visible as source. No
   TeX installation is needed.
+- Reload documents with many equations much faster in the pager and with
+  `--watch`: rendered equations are cached compressed, so up to 4,096 of them
+  (previously 64) are reused within the same 8 MiB.
 - Render HTML `<img>` markup like Markdown images, including inside `<p>`,
   `<div>`, `<a>`, and `<picture>`. Local images display; remote ones keep their
   reference and are never fetched. Other HTML still shows as source.

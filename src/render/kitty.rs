@@ -6,13 +6,15 @@
 use std::io::{self, Write};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use flate2::{Compression, write::ZlibEncoder};
 
-use crate::{raster::Raster, terminal::Geometry};
+use crate::{
+    raster::{Compressed, Raster},
+    terminal::Geometry,
+};
 
 pub fn write_display(
     out: &mut impl Write,
-    raster: &Raster,
+    raster: &Compressed,
     geometry: Geometry,
     left: usize,
     content_width: usize,
@@ -48,44 +50,35 @@ pub(crate) fn transmit(
     columns: u32,
     rows: u32,
 ) -> io::Result<()> {
-    transmit_placement(out, raster, Some((columns, rows)), 0)
+    // Compress before base64, as specified by the graphics protocol.
+    transmit_placement(out, &raster.compress()?, Some((columns, rows)), 0)
 }
 
 /// Display native pixels without cell scaling. The caller moves to the starting
 /// cell and supplies a vertical offset smaller than that cell's height.
-pub(crate) fn transmit_native(out: &mut impl Write, raster: &Raster, y: u32) -> io::Result<()> {
+pub(crate) fn transmit_native(out: &mut impl Write, raster: &Compressed, y: u32) -> io::Result<()> {
     transmit_placement(out, raster, None, y)
 }
 
 fn transmit_placement(
     out: &mut impl Write,
-    raster: &Raster,
+    raster: &Compressed,
     cells: Option<(u32, u32)>,
     y: u32,
 ) -> io::Result<()> {
-    let expected = u64::from(raster.width) * u64::from(raster.height) * 4;
     if raster.width == 0
         || raster.height == 0
+        || raster.data.is_empty()
         || cells.is_some_and(|(columns, rows)| columns == 0 || rows == 0)
-        || expected != raster.rgba.len() as u64
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "invalid RGBA raster",
         ));
     }
-    // Compress before base64, as specified by the graphics protocol. Keep raw
-    // bytes when compression does not help. Encoding uses a fixed stack buffer
-    // instead of retaining another full-size copy of the image.
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(&raster.rgba)?;
-    let compressed = encoder.finish()?;
-    let (payload, compression) = if compressed.len() + 16 < raster.rgba.len() {
-        (compressed.as_slice(), ",o=z")
-    } else {
-        (raster.rgba.as_slice(), "")
-    };
-    let mut chunks = payload.chunks(3072).peekable();
+    // Encoding uses a fixed stack buffer instead of another full-size copy.
+    let compression = if raster.zlib { ",o=z" } else { "" };
+    let mut chunks = raster.data.chunks(3072).peekable();
     let mut first = true;
     let mut encoded = [0_u8; 4096];
     while let Some(chunk) = chunks.next() {

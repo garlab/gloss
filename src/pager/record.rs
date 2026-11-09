@@ -605,7 +605,8 @@ mod tests {
             height: 47,
             rgba: vec![255; 3 * 47 * 4],
         };
-        crate::render::kitty::transmit_native(&mut recorder, &image, 7).unwrap();
+        crate::render::kitty::transmit_native(&mut recorder, &image.compress().unwrap(), 7)
+            .unwrap();
         recorder.write_all(b"\x1b[4B\r").unwrap();
         let mut page = recorder.finish(vec![]).unwrap();
         assert_eq!(page.pictures[0].rows, 3);

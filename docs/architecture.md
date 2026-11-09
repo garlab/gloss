@@ -64,7 +64,7 @@ The full source and parser working storage still scale with input.
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
 | `src/highlight/` | Lazily compile bundled language queries and produce bounded semantic UTF-8 token spans. |
 | `src/layout/lines.rs` | Wrap borrowed word fragments at grapheme boundaries and measure inline baselines, independently of escape sequences. |
-| `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache fitted rasters within a byte budget. |
+| `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache compressed fitted rasters within a byte budget. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, enforce invocation budgets, and cache fitted shared-library rasters by content. |
 | `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
@@ -187,10 +187,14 @@ each painted span. Source, optional projections, parser working storage, large
 individual blocks, and very long logical lines can still scale with input; this
 is not a constant-memory document reader.
 
-Math rasters use an 8 MiB/64-entry LRU cache. Keys include TeX, inline/display
-mode, font size, color, bounds, equation-numbering state, and the hash of the
-visible LaTeX macro bindings. Shared pixels avoid
-cache-hit copies; numbering is advanced exactly as on a miss. The pager retains
+Equations are always transmitted whole at native size, so their pixels are
+zlib-compressed once, right after rasterization, and kept only in that form.
+An LRU cache of at most 4,096 entries holds the compressed bytes within 8 MiB,
+indexed by a hash of its key; entries are compared in full. Keys include TeX,
+inline/display mode, font size, color, bounds, equation-numbering state, and the
+hash of the visible LaTeX macro bindings. A hit shares the compressed bytes, so
+it neither rasterizes nor compresses again; numbering is advanced exactly as on
+a miss. The pager retains
 this cache and the bounded Mermaid/SGF caches between renders, but resets equation
 numbering and all per-document work/output budgets. File-image loaders remain
 fresh so manual reloads still reread changed assets.

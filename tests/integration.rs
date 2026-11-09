@@ -816,7 +816,7 @@ fn native_math_fits_bounds_includes_tags_and_validates_dimensions() {
     assert!(tagged.width > body.width);
     assert!(tagged.baseline > 0.);
     assert_eq!(
-        tagged.rgba.len(),
+        tagged.decompress().unwrap().len(),
         (tagged.width * tagged.height * 4) as usize
     );
     let wide = engine
@@ -914,7 +914,7 @@ fn inline_layout_does_not_advance_display_equation_numbers() {
         (actual.width, actual.height),
         (expected.width, expected.height)
     );
-    assert_eq!(actual.rgba, expected.rgba);
+    assert_eq!(actual.decompress().unwrap(), expected.decompress().unwrap());
 }
 
 #[test]

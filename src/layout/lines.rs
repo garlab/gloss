@@ -6,7 +6,10 @@ use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{raster::Raster, terminal::Geometry};
+use crate::{
+    raster::{Compressed, Raster},
+    terminal::Geometry,
+};
 
 use super::Style;
 
@@ -18,11 +21,35 @@ pub enum Part {
         target: Option<Arc<String>>,
     },
     Image {
-        image: Arc<Raster>,
+        image: Picture,
         baseline: f64,
         source: Option<String>,
         columns: usize,
     },
+}
+
+/// An image part's pixels. Equations arrive compressed and are placed at native
+/// size; pictures keep RGBA for cell padding and banding.
+#[derive(Clone)]
+pub enum Picture {
+    Pixels(Arc<Raster>),
+    Compressed(Arc<Compressed>),
+}
+
+impl Picture {
+    pub fn width(&self) -> u32 {
+        match self {
+            Self::Pixels(raster) => raster.width,
+            Self::Compressed(raster) => raster.width,
+        }
+    }
+
+    pub fn height(&self) -> u32 {
+        match self {
+            Self::Pixels(raster) => raster.height,
+            Self::Compressed(raster) => raster.height,
+        }
+    }
 }
 
 impl Part {
@@ -78,7 +105,7 @@ impl Line {
                     image,
                     baseline: image_baseline,
                     ..
-                } => Some((baseline - image_baseline).ceil() as u32 + image.height),
+                } => Some((baseline - image_baseline).ceil() as u32 + image.height()),
                 _ => None,
             })
             .fold((text_row + 1) * cell_height, u32::max);
@@ -371,11 +398,12 @@ mod tests {
 
     fn math(columns: usize, height: u32, baseline: f64) -> Part {
         Part::Image {
-            image: Arc::new(Raster {
+            image: Picture::Compressed(Arc::new(Compressed {
                 width: columns as u32 * 10,
                 height,
-                rgba: Vec::new(),
-            }),
+                data: Vec::new(),
+                zlib: false,
+            })),
             baseline,
             source: Some("$x$".into()),
             columns,
@@ -543,7 +571,7 @@ mod tests {
             {
                 let top = (metrics.baseline - baseline).ceil();
                 assert!(top >= 0.);
-                assert!(top + f64::from(image.height) <= f64::from(metrics.rows * 20));
+                assert!(top + f64::from(image.height()) <= f64::from(metrics.rows * 20));
             }
         }
     }
