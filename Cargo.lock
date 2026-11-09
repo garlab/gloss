@@ -548,6 +548,8 @@ dependencies = [
 [[package]]
 name = "latex-reader"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17b35e1894dd2805660b969d0049ac8ade4b0458dc1178502b6d457d773dfa25"
 
 [[package]]
 name = "libc"
