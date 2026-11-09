@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-09)
 
 - Render LaTeX documents (`.tex`, `.latex`, `.ltx`, or `--input-format latex`)
   natively: sections, lists, theorems, tables, footnotes, references, and math
