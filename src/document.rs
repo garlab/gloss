@@ -3,11 +3,13 @@
 
 mod extensions;
 mod html;
+mod latex;
 
 use std::{
     collections::VecDeque,
     ops::Range,
     path::{Path, PathBuf},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
@@ -25,11 +27,22 @@ pub struct Document {
     kind: Kind,
 }
 
-#[derive(Debug)]
 enum Kind {
     Markdown,
+    Latex(Arc<latex_preview::Index>),
     Code(String),
     Image(PathBuf),
+}
+
+impl std::fmt::Debug for Kind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Kind::Markdown => f.write_str("Markdown"),
+            Kind::Latex(index) => write!(f, "Latex({} checkpoints)", index.checkpoints().len()),
+            Kind::Code(language) => f.debug_tuple("Code").field(language).finish(),
+            Kind::Image(path) => f.debug_tuple("Image").field(path).finish(),
+        }
+    }
 }
 
 impl Document {
@@ -48,6 +61,30 @@ impl Document {
             source,
             prepared: Default::default(),
             kind: Kind::Code(language.into()),
+        }
+    }
+
+    /// LaTeX is read once into an index of events, numbers, and macro scopes.
+    pub fn latex(source: String) -> Self {
+        let index = latex_preview::index(
+            &source,
+            &latex_preview::Options::default(),
+            &AtomicBool::new(false),
+        )
+        .expect("indexing without a cancellation request completes");
+        Self {
+            source,
+            prepared: Default::default(),
+            kind: Kind::Latex(Arc::new(index)),
+        }
+    }
+
+    /// The index of a LaTeX document, for macro contexts at formula offsets.
+    pub(crate) fn latex_index(&self) -> Option<&Arc<latex_preview::Index>> {
+        if let Kind::Latex(index) = &self.kind {
+            Some(index)
+        } else {
+            None
         }
     }
 
@@ -85,9 +122,16 @@ impl Document {
         let mut parsed = matches!(self.kind, Kind::Markdown)
             .then(|| Parser::new_ext(input, options).into_offset_iter());
         let mut stage = 0;
+        let mut latex = match &self.kind {
+            Kind::Latex(index) => Some(latex::Adapter::new(index, &self.source)),
+            _ => None,
+        };
         // Events read ahead with an HTML fragment.
         let mut queued = VecDeque::new();
         std::iter::from_fn(move || {
+            if let Some(adapter) = latex.as_mut() {
+                return adapter.next();
+            }
             if let Some(item) = queued.pop_front() {
                 return Some(item);
             }

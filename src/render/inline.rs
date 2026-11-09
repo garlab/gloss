@@ -347,6 +347,7 @@ pub(super) fn prepare_parts(
             let math = engine.get_or_insert_with(MathEngine::default);
             match math.render_inline(
                 tex,
+                run.source.map(|source| source.start),
                 options.font_size,
                 options.theme().ink(run.style),
                 width as u32 * cell_width,

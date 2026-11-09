@@ -11,6 +11,7 @@ pub enum Format {
     #[default]
     Auto,
     Markdown,
+    Latex,
     Code,
     Mermaid,
     Sgf,
@@ -64,6 +65,7 @@ impl Input {
                 Some("sgf") => Format::Sgf,
                 Some("png" | "jpg" | "jpeg" | "svg") => Format::Image,
                 Some("md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn") => Format::Markdown,
+                Some("tex" | "latex" | "ltx") => Format::Latex,
                 _ if detected_language.is_some() => Format::Code,
                 _ => Format::Markdown,
             }
@@ -125,6 +127,7 @@ impl Input {
             Format::Mermaid => Document::code(source, "mermaid"),
             Format::Sgf => Document::code(source, "sgf"),
             Format::Image => Document::image(self.path.as_ref().unwrap().clone()),
+            Format::Latex => Document::latex(source),
             Format::Auto | Format::Markdown => Document::parse(source),
         }
     }

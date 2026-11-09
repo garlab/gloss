@@ -20,7 +20,7 @@ use gloss_cli::{
     about = "A terminal Markdown viewer with native inline and display equations"
 )]
 struct Args {
-    /// Markdown, code, Mermaid, SGF or image file; omit or use '-' for text stdin.
+    /// Markdown, LaTeX, code, Mermaid, SGF or image file; omit or use '-' for text stdin.
     file: Option<PathBuf>,
     /// Auto detects named-file extensions; stdin defaults to Markdown.
     #[arg(long, value_enum, default_value_t = Format::Auto)]

@@ -12,7 +12,10 @@ mod viewport;
 
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::{
     document::Document,
@@ -103,7 +106,16 @@ pub(crate) struct RenderCache {
 }
 
 impl RenderCache {
-    fn begin_document(&mut self) {
+    fn begin_document(&mut self, latex: Option<&Arc<latex_preview::Index>>) {
+        // LaTeX formulas need their document's macro scopes, so the engine
+        // exists before any formula asks for one.
+        if let Some(latex) = latex {
+            self.math
+                .get_or_insert_with(MathEngine::default)
+                .set_document(Some(Arc::clone(latex)));
+        } else if let Some(math) = &mut self.math {
+            math.set_document(None);
+        }
         if let Some(math) = &mut self.math {
             math.begin_document();
         }
@@ -130,6 +142,7 @@ pub fn write(
     options: &Options,
 ) -> io::Result<Vec<String>> {
     let mut cache = RenderCache::default();
+    cache.begin_document(document.latex_index());
     let cancel = AtomicBool::new(false);
     let mut renderer = Renderer::new(out, document, options, &mut cache, &cancel);
     for (index, block) in layout.blocks.iter().enumerate() {
@@ -174,7 +187,7 @@ pub(crate) fn write_document_with<W: Write>(
     cancel: &AtomicBool,
     mut before_block: impl FnMut(&mut W, &Block) -> io::Result<()>,
 ) -> io::Result<Vec<String>> {
-    cache.begin_document();
+    cache.begin_document(document.latex_index());
     let result = (|| {
         let mut renderer = Renderer::new(out, document, options, cache, cancel);
         let mut pending = None;
@@ -402,6 +415,7 @@ impl<'a, W: Write> Renderer<'a, W> {
                     let math = engine.get_or_insert_with(MathEngine::default);
                     match math.render_display(
                         tex,
+                        Some(source.start),
                         options.font_size,
                         options.theme().ink(*style),
                         width,

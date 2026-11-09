@@ -409,6 +409,7 @@ dependencies = [
  "html5gum",
  "image",
  "katex-native",
+ "latex-preview",
  "libc",
  "pulldown-cmark",
  "signal-hook",
@@ -543,6 +544,10 @@ dependencies = [
  "euclid",
  "smallvec",
 ]
+
+[[package]]
+name = "latex-preview"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

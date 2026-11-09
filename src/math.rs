@@ -5,7 +5,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 use katex_native::{
     Color,
-    katex::{KatexContext, Settings},
+    katex::{KatexContext, Settings, macro_expander::MacroMap, macros::MacroDefinition},
     raster,
 };
 
@@ -41,7 +41,13 @@ pub struct MathEngine {
     next_number: u32,
     cache: VecDeque<Entry>,
     cache_bytes: usize,
+    /// A LaTeX document's index: formulas use the macros visible where they start.
+    document: Option<Arc<latex_preview::Index>>,
+    /// KaTeX macro maps built per visible-binding hash, most recent last.
+    macro_maps: VecDeque<(u128, MacroMap)>,
 }
+
+const MACRO_MAPS: usize = 8;
 
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
 const CACHE_ENTRIES: usize = 64;
@@ -55,6 +61,7 @@ struct Parameters {
     width: u32,
     height: u32,
     number: u32,
+    macros: u128,
 }
 
 struct Entry {
@@ -72,6 +79,8 @@ impl Default for MathEngine {
             next_number: 1,
             cache: VecDeque::new(),
             cache_bytes: 0,
+            document: None,
+            macro_maps: VecDeque::new(),
         }
     }
 }
@@ -82,16 +91,66 @@ impl MathEngine {
         self.next_number = 1;
     }
 
+    /// Formulas of a LaTeX document see the macros visible at their offset.
+    pub(crate) fn set_document(&mut self, document: Option<Arc<latex_preview::Index>>) {
+        self.document = document;
+    }
+
+    /// Builds the visible bindings into a KaTeX macro map. Plain bodies go in
+    /// directly; other definitions are replayed with persistence enabled.
+    fn macro_map(&mut self, macros: &latex_preview::MacroContext) -> MacroMap {
+        if let Some(index) = self
+            .macro_maps
+            .iter()
+            .position(|(hash, _)| *hash == macros.hash())
+        {
+            let entry = self.macro_maps.remove(index).unwrap();
+            let map = entry.1.clone();
+            self.macro_maps.push_back(entry);
+            return map;
+        }
+        let settings = Settings::builder()
+            .global_group(true)
+            .max_expand(1000)
+            .build();
+        for binding in macros.bindings() {
+            match binding.simple_body() {
+                Some(body) => {
+                    settings.macros.borrow_mut().insert(
+                        binding.name.clone(),
+                        MacroDefinition::String(body.to_owned()),
+                    );
+                }
+                None => {
+                    if let Some(definition) = binding.katex_definition() {
+                        let _ = katex_native::katex::parse_tree::parse_tree(
+                            &self.context,
+                            &definition,
+                            &settings,
+                        );
+                    }
+                }
+            }
+        }
+        let map = settings.macros.into_inner();
+        if self.macro_maps.len() >= MACRO_MAPS {
+            self.macro_maps.pop_front();
+        }
+        self.macro_maps.push_back((macros.hash(), map.clone()));
+        map
+    }
+
     /// Rasterize an inline formula without advancing display equation numbering.
     pub fn render_inline(
         &mut self,
         tex: &str,
+        at: Option<usize>,
         font_size: f64,
         color: Color,
         max_width: u32,
         max_height: u32,
     ) -> Result<Raster, String> {
-        self.render(tex, false, font_size, color, max_width, max_height)
+        self.render(tex, at, false, font_size, color, max_width, max_height)
     }
 
     /// Rasterize display math, shrinking to fit the given pixel bounds.
@@ -99,17 +158,20 @@ impl MathEngine {
     pub fn render_display(
         &mut self,
         tex: &str,
+        at: Option<usize>,
         font_size: f64,
         color: Color,
         max_width: u32,
         max_height: u32,
     ) -> Result<Raster, String> {
-        self.render(tex, true, font_size, color, max_width, max_height)
+        self.render(tex, at, true, font_size, color, max_width, max_height)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render(
         &mut self,
         tex: &str,
+        at: Option<usize>,
         display: bool,
         font_size: f64,
         color: Color,
@@ -119,6 +181,14 @@ impl MathEngine {
         if !font_size.is_finite() || font_size <= 0. || max_width == 0 || max_height == 0 {
             return Err("invalid formula dimensions".into());
         }
+        let macros = match (&self.document, at) {
+            (Some(document), Some(at)) => Some(document.macro_context(at)),
+            _ => None,
+        };
+        if macros.as_ref().is_some_and(|m| m.is_incomplete()) {
+            return Err("a macro definition before this formula could not be applied".into());
+        }
+        let macros = macros.filter(|m| !m.is_empty());
         let parameters = Parameters {
             display,
             font_size: font_size.to_bits(),
@@ -126,6 +196,7 @@ impl MathEngine {
             width: max_width,
             height: max_height,
             number: self.next_number,
+            macros: macros.as_ref().map_or(0, |m| m.hash()),
         };
         if let Some(index) = self
             .cache
@@ -138,7 +209,13 @@ impl MathEngine {
             self.cache.push_back(entry);
             return Ok(raster);
         }
-        let settings = Settings::builder().display_mode(display).build();
+        let settings = match &macros {
+            Some(macros) => Settings::builder()
+                .display_mode(display)
+                .macros(self.macro_map(macros))
+                .build(),
+            None => Settings::builder().display_mode(display).build(),
+        };
         let layout = katex_native::layout_numbered(&self.context, tex, &settings, self.next_number)
             .map_err(|err| err.to_string())?;
         let tag_width = layout.tag.as_ref().map_or(0., |tag| 1. + tag.width);
@@ -246,33 +323,39 @@ mod tests {
             b: 200,
             a: 255,
         };
-        let first = engine.render_inline("x+1", 24., color, 800, 400).unwrap();
-        let repeated = engine.render_inline("x+1", 24., color, 800, 400).unwrap();
+        let first = engine
+            .render_inline("x+1", None, 24., color, 800, 400)
+            .unwrap();
+        let repeated = engine
+            .render_inline("x+1", None, 24., color, 800, 400)
+            .unwrap();
         assert!(Arc::ptr_eq(&first.pixels, &repeated.pixels));
-        let other = engine.render_inline("x+1", 24., color, 40, 400).unwrap();
+        let other = engine
+            .render_inline("x+1", None, 24., color, 40, 400)
+            .unwrap();
         assert!(!Arc::ptr_eq(&first.pixels, &other.pixels));
         let other = engine
-            .render_inline("x+1", 24., Color { r: 0, ..color }, 800, 400)
+            .render_inline("x+1", None, 24., Color { r: 0, ..color }, 800, 400)
             .unwrap();
         assert!(!Arc::ptr_eq(&first.pixels, &other.pixels));
         let formula = r"\begin{equation}x=1\end{equation}";
         let numbered = engine
-            .render_display(formula, 24., color, 800, 400)
+            .render_display(formula, None, 24., color, 800, 400)
             .unwrap();
         let second = engine
-            .render_display(formula, 24., color, 800, 400)
+            .render_display(formula, None, 24., color, 800, 400)
             .unwrap();
         assert_ne!(numbered.rgba, second.rgba);
         assert_eq!(engine.next_number, 3);
         engine.begin_document();
         let restarted = engine
-            .render_display(formula, 24., color, 800, 400)
+            .render_display(formula, None, 24., color, 800, 400)
             .unwrap();
         assert!(Arc::ptr_eq(&numbered.pixels, &restarted.pixels));
         assert_eq!(engine.next_number, 2);
         for index in 0..80 {
             engine
-                .render_inline(&format!("x+{index}"), 24., color, 800, 400)
+                .render_inline(&format!("x+{index}"), None, 24., color, 800, 400)
                 .unwrap();
         }
         assert!(engine.cache.len() <= CACHE_ENTRIES && engine.cache_bytes <= CACHE_BYTES);

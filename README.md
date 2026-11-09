@@ -29,9 +29,13 @@ automatically.
 A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
-library and its native `document-graphics-mermaid` backend. Cargo downloads these
-dependencies from crates.io. gloss enables the library's
-`images` and `sgf` features; native image codecs and image workers remain disabled.
+library and its native `document-graphics-mermaid` backend. LaTeX documents are
+read by the `latex-preview` crate. Cargo downloads these dependencies from
+crates.io. gloss enables the library's `images` and `sgf` features; native image
+codecs and image workers remain disabled.
+
+`latex-preview` is not published yet. Until it is, build with a checkout beside
+gloss and the local override described below.
 
 Install the `gloss-cli` package to get the `gloss` executable. Cargo's binary
 directory must be on your `PATH`; building also requires a C compiler for the
@@ -56,19 +60,22 @@ gloss tests/fixtures/mermaid.md
 gloss tests/fixtures/gantt-time.md
 gloss tests/fixtures/sgf.md
 gloss tests/fixtures/extensions.md
+gloss tests/fixtures/latex.tex
 ```
 
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
 
-To develop document-graphics alongside gloss, place its checkout beside
-gloss and add this optional override to an untracked `.cargo/config.toml`
-(merging with any existing settings):
+To build before `latex-preview` is published, or to develop document-graphics
+alongside gloss, place the checkouts beside gloss and add the overrides to an
+untracked `.cargo/config.toml` (merging with any existing settings):
 
 ```toml
 [patch.crates-io]
-document-graphics = { path = "../document-graphics" }
-# Optional while also developing the backend:
+# Required until latex-preview is published:
+latex-preview = { path = "../latex-preview" }
+# Optional while developing document-graphics and its backend:
+# document-graphics = { path = "../document-graphics" }
 # document-graphics-mermaid = { path = "../document-graphics-mermaid" }
 ```
 
@@ -79,7 +86,8 @@ registry sources and checksums in `Cargo.lock`.
 ## Standalone inputs
 
 Named `.mmd` / `.mermaid` files render as Mermaid, `.sgf` files as Go records,
-and `.png` / `.jpg` / `.jpeg` / `.svg` files as images. Code files reuse the fenced
+`.tex` / `.latex` / `.ltx` files as [LaTeX documents](#latex-documents), and
+`.png` / `.jpg` / `.jpeg` / `.svg` files as images. Code files reuse the fenced
 code renderer, so comments, Markdown delimiters, and math stay literal:
 
 | Language | File extensions |
@@ -117,7 +125,7 @@ cat config.yaml | gloss --language yaml -
 cat diagram.mmd | gloss --input-format mermaid -
 ```
 
-Use `--input-format markdown|code|mermaid|sgf|image` to override detection.
+Use `--input-format markdown|latex|code|mermaid|sgf|image` to override detection.
 `--language` selects code mode and overrides the detected syntax language; it
 also works for stdin and extensionless files. Use it with automatic detection or
 explicit code mode. Unknown languages use an uncolored code panel. Explicit code
@@ -365,6 +373,38 @@ Embedded-language highlighting is currently limited to Dockerfile shell commands
 and the supported heredocs above; unsupported fences remain uncolored.
 Remote image URLs remain text references, including in HTML. Other HTML is shown
 as source and never executed.
+
+## LaTeX documents
+
+LaTeX is read natively for a fast, approximate preview; no TeX installation or
+PDF is involved. Equivalent constructs look like Markdown: `\section` renders as
+a heading, `itemize` as a list, and math through the same native renderer.
+
+- `\maketitle` with `\title`, `\author`, and `\date`; `abstract`; numbered
+  sections by document class, including chapters and `\appendix`.
+- Emphasis, bold, monospace, links, footnotes, lists (`itemize`, `enumerate`,
+  `description`), quotes, and `tabular` tables with column alignment; a first
+  row followed by a rule becomes the header.
+- Theorems from `\newtheorem`, with shared and per-section counters, render as a
+  bold "Theorem 2 (Name)." followed by the body; proofs end with ∎.
+- `\ref`, `\eqref`, and `\cite` resolve against labels and `thebibliography`.
+- Inline and display math, with numbering that follows amsmath: one number per
+  row of `align`, `gather`, and `eqnarray` unless `\notag`; one for `equation`
+  and `multline`; explicit `\tag`. `multline`, `eqnarray`, and `flalign` are
+  rewritten to environments KaTeX supports.
+- Macros from `\newcommand`, `\def`, `\let`, and `\DeclareMathOperator` reach
+  formulas with TeX's scoping: a redefinition affects only later formulas, and a
+  definition inside a group ends with it. User macros also expand in text.
+- `verbatim`, `lstlisting`, `minted`, and `\verb` stay literal; `comment` and
+  `\iffalse` blocks are hidden.
+- Unknown commands and environments stay visible as source code, around their
+  readable arguments. TikZ pictures show as source.
+
+`--output text` exports readable prose with the original formulas;
+`--output source` returns the `.tex` file exactly. `\includegraphics` displays
+local PNG/JPEG/SVG files given with their extension; other figures keep a
+reference. `\input` and `\include` are shown but not followed. See the
+[LaTeX preview design](docs/latex-design.md) for the model and its limits.
 
 ## Development
 

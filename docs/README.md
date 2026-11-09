@@ -27,8 +27,8 @@ These describe implemented behavior, limits, fallbacks, and validation.
 - [Release guide](releasing.md): checks, registry publication, and Homebrew setup.
 - [Native ABC design](abc-native-design.md): deferred music-notation research;
   ABC rendering is not implemented.
-- [LaTeX preview design](latex-design.md): proposed native LaTeX front end
-  shared with Plastext; `.tex` files currently render as Markdown.
+- [LaTeX preview design](latex-design.md): research, measurements, and the
+  shared `latex-preview` crate behind gloss's LaTeX documents.
 
 ## Performance evidence
 

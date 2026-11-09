@@ -7,9 +7,9 @@ implementation.
 ## Data flow
 
 ```text
-Markdown / code / diagram text / image path
+Markdown / LaTeX / code / diagram text / image path
 ├── exact source output
-└── Document: original source → optional syntax projection → events + original ranges
+└── Document: original source → optional syntax projection or LaTeX index → events + original ranges
     └── Completed blocks: text + code + table cells + math + local images
         ├── plain text export with source TeX
         └── reading column + semantic styles + cell-aware lines
@@ -58,6 +58,7 @@ The full source and parser working storage still scale with input.
 | `src/document.rs` | CommonMark or literal input events, original source, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
 | `src/document/html.rs` | Convert bounded HTML image fragments into Markdown image/link events; leave other HTML as source. |
+| `src/document/latex.rs` | Map `latex-preview` events onto the CommonMark events the layout renders: headings, lists, theorem heads, tables, footnotes, and source fallbacks. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
 | `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
@@ -86,6 +87,12 @@ The full source and parser working storage still scale with input.
 | `src/pager/watch.rs` | Debounced metadata polling, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
+`latex-preview` owns reading LaTeX documents: macro scoping, numbering, labels,
+checkpoints, and formulas prepared for KaTeX. A LaTeX `Document` holds its index;
+the adapter keeps gloss's event vocabulary, so layout, rendering, exports, and the
+pager are shared with Markdown. Each formula's macro context comes from the index
+at its source offset; the math engine builds a KaTeX macro map per context and
+renders each formula with local definitions confined to it.
 `document-graphics` is a separate library repository. Its optional `images`
 module owns bounded PNG/JPEG thumbnail decoding; gloss does not enable its
 native image codecs or image worker. The strict `svg` entry point retains
@@ -176,7 +183,8 @@ individual blocks, and very long logical lines can still scale with input; this
 is not a constant-memory document reader.
 
 Math rasters use an 8 MiB/64-entry LRU cache. Keys include TeX, inline/display
-mode, font size, color, bounds, and equation-numbering state. Shared pixels avoid
+mode, font size, color, bounds, equation-numbering state, and the hash of the
+visible LaTeX macro bindings. Shared pixels avoid
 cache-hit copies; numbering is advanced exactly as on a miss. The pager retains
 this cache and the bounded Mermaid/SGF caches between renders, but resets equation
 numbering and all per-document work/output budgets. File-image loaders remain

@@ -1,8 +1,9 @@
 # Native LaTeX preview
 
-Status: proposed design. LaTeX documents are not interpreted yet: a `.tex` file
-currently renders as Markdown. No parser, crate, or dependency is selected by this
-document; the parser base is decided by the spike described under
+Status: in progress. The shared crate, `latex-preview`, uses a hand-written
+scanner, chosen from the measurements under [Spike outcome](#spike-outcome).
+gloss reads `.tex` files through it; the [README](../README.md#latex-documents)
+describes current behavior. Remaining work is listed under
 [Delivery](#delivery).
 
 The intended feature is a fast, approximate preview of LaTeX documents: headings,
@@ -46,10 +47,10 @@ previews TeX by compiling it to PDF.
 - Replacing PDF compilation where exact output matters. A GUI can keep it as an
   explicit "exact" mode.
 
-## Current behavior
+## Behavior before this design
 
-`.tex` has no input format of its own, so it falls through to Markdown. On a short
-article this produces:
+`.tex` had no input format of its own, so it fell through to Markdown. On a short
+article this produced:
 
 - The preamble (`\documentclass`, `\usepackage`, `\newcommand`) printed as text.
 - `\section{...}`, `\emph{...}`, and `\begin{itemize}` left literal, and `%`
@@ -635,6 +636,34 @@ the exact mode.
    affects `--watch`), bibliographies (the
    [`biblatex`](https://crates.io/crates/biblatex) crate is a candidate), and
    broader package coverage. TikZ stays as source.
+
+### Spike outcome
+
+The hand-written scanner was built first, with recovery, scoped macros,
+amsmath numbering, the fallback classes, cancellation, and checkpoints with
+fixed spacing and a cap. Its complete first pass, measured with the crate's
+`throughput` example on the corpus above (medians, same machine), already
+outperforms tree-sitter-latex's syntax-only parse by an order of magnitude:
+
+| Input | First pass | Events | Peak RSS |
+| --- | ---: | ---: | ---: |
+| 374 KB | 3.0 ms (125 MB/s) | 3.9 ms | — |
+| 37 MB | 236 ms (159 MB/s) | 305 ms | 41 MiB |
+
+Peak RSS includes the 36 MiB input. tree-sitter-latex needed 3.54 s and
+1,273 MiB to parse the same 37 MB without any semantics, so the tree-sitter half
+of the spike was not built: it cannot meet the throughput and memory goals.
+Window equivalence holds for every checkpoint of a synthetic document with
+checkpoints inside lists, verbatim blocks, and tables, including past the cap.
+
+In gloss, plain export of a 10 MiB Markdown document is unchanged (213 ms
+against 215 ms on the parent commit, medians of seven alternating runs), and
+the release executable grows by 318,304 bytes (1.8%). Plain export of the 37 MB
+LaTeX input takes 687 ms with a 45 MiB peak.
+
+Not yet built: spilling checkpoint records to disk past a resident cap,
+splitting paragraphs or formulas larger than the replay budget, corpus scoring
+against reference PDFs, and the Plastext adapter.
 
 Rough sizes, including tests: 5,000–6,000 lines for the shared crate, about 600
 lines plus documentation for the gloss adapter and its interface changes, and
