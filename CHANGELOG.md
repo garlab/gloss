@@ -8,6 +8,8 @@
   `.bbl` bibliographies, and figures without extensions are read in place, and
   `--watch` follows included files. Unknown commands stay visible as source. No
   TeX installation is needed.
+- Show the pager's first screen as soon as it is rendered, before the rest of a
+  long document; the footer marks the row count with `+` until it completes.
 - Reload documents with many equations much faster in the pager and with
   `--watch`: rendered equations are cached compressed, so up to 4,096 of them
   (previously 64) are reused within the same 8 MiB.

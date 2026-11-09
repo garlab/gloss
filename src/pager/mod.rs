@@ -57,6 +57,12 @@ fn max_top(page: &Page, screen: Geometry) -> usize {
 }
 
 /// Relocate a source anchor past insertions/deletions outside the edited region.
+/// Rows recorded before the first page shows: two screens, so scrolling a
+/// little works before the rest arrives.
+fn preview_rows(screen: Geometry) -> usize {
+    usize::from(screen.rows) * 2
+}
+
 fn relocate(old: &str, new: &str, anchor: u32) -> u32 {
     let anchor = anchor.min(old.len() as u32);
     let prefix = old
@@ -230,6 +236,8 @@ struct View {
     forward: bool,
     search: Option<Search>,
     loading: bool,
+    /// The page holds only the first rows while the rest renders.
+    partial: bool,
     watch: bool,
     title: String,
     warning: usize,
@@ -264,10 +272,11 @@ impl View {
                 || "0/0".into(),
                 |p| {
                     format!(
-                        "{}-{}/{}",
+                        "{}-{}/{}{}",
                         self.top + 1,
                         (self.top + height).min(p.rows.len()),
-                        p.rows.len()
+                        p.rows.len(),
+                        if self.partial { "+" } else { "" }
                     )
                 },
             );
@@ -412,6 +421,7 @@ pub fn run(
         forward: true,
         search: None,
         loading: true,
+        partial: false,
         watch,
         title: path
             .as_ref()
@@ -424,6 +434,7 @@ pub fn run(
         input: input.clone(),
         options: current_options.clone(),
         force: true,
+        preview: Some(preview_rows(view.screen)),
     });
     let mut dirty = true;
     let mut checked = Instant::now();
@@ -437,12 +448,14 @@ pub fn run(
             dirty = true;
         }
         if let Some(result) = worker.result() {
-            view.loading = false;
+            view.loading = result.partial;
             match result.page {
                 Ok(Some(page)) => {
                     view.graphics.clear(tty.out())?;
                     if let Some(previous) = &view.page {
-                        let at_end = view.top > 0
+                        // A provisional page's last row is not the document's end.
+                        let at_end = !view.partial
+                            && view.top > 0
                             && view.top
                                 >= previous
                                     .rows
@@ -466,6 +479,7 @@ pub fn run(
                                 .min(max_top(&page, view.screen))
                         };
                     }
+                    view.partial = result.partial;
                     source = result.source;
                     text = result.text;
                     if let Some(watcher) = &mut watcher {
@@ -542,11 +556,14 @@ pub fn run(
                 .page
                 .as_ref()
                 .is_none_or(|p| Some(p.geometry) != current_options.terminal);
+            // Reloads keep showing the previous page instead of a preview.
+            let preview = view.page.is_none().then(|| preview_rows(view.screen));
             worker.submit(Request {
                 source: Arc::clone(&source),
                 input: input.clone(),
                 options: current_options.clone(),
                 force,
+                preview,
             });
             view.loading = true;
             view.message.clear();

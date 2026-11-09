@@ -381,6 +381,18 @@ class PagerSmoke(unittest.TestCase):
                 self.assertEqual(p.screen.uploads, 0)
                 p.close()
 
+    def test_first_screen_shows_before_a_long_document_finishes_rendering(self):
+        p = self.pager("\n\n".join(f"Paragraph {i:05} with *emphasis*." for i in range(30000)))
+        p.until(lambda: "Paragraph 00000" in p.screen.text(footer=False))
+        footer = p.screen.text().splitlines()[-1]
+        self.assertRegex(footer, r"^1-\d+/\d{2}\+ rendering")
+        p.ready()
+        footer = p.screen.text().splitlines()[-1]
+        self.assertRegex(footer, r"^1-\d+/\d{5} ")
+        self.assertIn("Paragraph 00000", p.screen.text(footer=False))
+        p.keys("G", "Paragraph 29999")
+        p.close()
+
     def test_latex_watch_reloads_when_an_included_file_changes(self):
         with tempfile.TemporaryDirectory() as root:
             file = Path(root) / "paper.tex"

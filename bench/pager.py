@@ -1,5 +1,8 @@
 """Measure pager readiness, navigation, idle watch CPU, and peak process RSS.
 
+first_page_ms is the first frame showing document rows, which may still be
+rendering the rest; ready_ms is the first complete page.
+
 Uses a drained 100x40 controlling PTY with 10x20-pixel cells. Excludes a real
 terminal's image decoding/GPU costs. Input files and JSON output stay external.
 """
@@ -77,11 +80,11 @@ def run():
     os.close(slave)
     tail, diagnostics = bytearray(), bytearray()
     total = frames = 0
-    first = ready = usage = None
+    first = first_page = ready = usage = None
     last_status = b""
     try:
         def pump():
-            nonlocal tail, first, ready, total, frames, usage, last_status
+            nonlocal tail, first, first_page, ready, total, frames, usage, last_status
             if time.perf_counter() - start > args.timeout:
                 raise TimeoutError("pager timed out")
             for fd in select.select([master, process.stderr.fileno()], [], [], 0.01)[0]:
@@ -102,6 +105,8 @@ def run():
                 for match in footer.finditer(tail):
                     frames += 1
                     last_status = match[1]
+                    if first_page is None and re.match(rb"[1-9]\d*-\d+/\d+", match[1]):
+                        first_page = time.perf_counter() - start
                     if ready is None and re.match(rb"\d+-\d+/\d+", match[1]) and b" rendering" not in match[1]:
                         ready = time.perf_counter() - start
                     last = match.end()
@@ -159,7 +164,7 @@ def run():
         os.write(master, b"q")
         while usage is None:
             pump()
-        return dict(first_output_ms=first * 1000, ready_ms=ready * 1000,
+        return dict(first_output_ms=first * 1000, first_page_ms=first_page * 1000, ready_ms=ready * 1000,
                     navigation_ms=[value * 1000 for value in scroll], quit_ms=(time.perf_counter() - sent) * 1000,
                     peak_rss_mib=usage.ru_maxrss / (1024 * 1024 if sys.platform == "darwin" else 1024),
                     user_cpu_s=usage.ru_utime, system_cpu_s=usage.ru_stime,
@@ -181,6 +186,7 @@ print(json.dumps(dict(input=source.name, input_bytes=source.stat().st_size,
                       input_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                       binary_bytes=binary.stat().st_size, watch_seconds=args.watch_seconds,
                       reloads=args.reloads, resize_cycles=args.resize_cycles,
+                      first_page_median_ms=statistics.median(s["first_page_ms"] for s in samples),
                       ready_median_ms=statistics.median(s["ready_ms"] for s in samples),
                       peak_rss_median_mib=statistics.median(s["peak_rss_mib"] for s in samples),
                       samples=samples), indent=2))

@@ -291,8 +291,9 @@ cat notes.md | gloss --pager -
 ```
 
 `-p` / `--pager` opens an alternate screen on Unix terminals (including macOS).
-Text reflows when the window changes size; equations, images, and diagrams scroll
-with it. The previous terminal screen is restored on exit. Keyboard input uses
+The first screen appears as soon as it is rendered; the footer shows `+` and
+`rendering` until the rest of the document follows. Text reflows when the window
+changes size; equations, images, and diagrams scroll with it. The previous terminal screen is restored on exit. Keyboard input uses
 the controlling terminal, so piped Markdown remains usable.
 
 | Key | Action |
@@ -312,7 +313,8 @@ the controlling terminal, so piped Markdown remains usable.
 stdout. It detects in-place and atomic saves after a short debounce, retains the
 last good page through temporary read/render errors, and preserves the current
 source block when possible. Staying at the end follows newly appended content.
-Only the Markdown file is watched; press `r` after changing an image alone.
+Only the document and LaTeX included files are watched; press `r` after
+changing an image alone.
 
 Mouse tracking is disabled, preserving native text selection in Ghostty. Copying
 uses the same source options described below. Search covers terminal text, not

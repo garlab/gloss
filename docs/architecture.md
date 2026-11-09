@@ -83,7 +83,7 @@ The full source and parser working storage still scale with input.
 | `src/pager/record.rs` | Record the renderer's own styled rows, source anchors, and image payloads in bounded anonymous temporary files. |
 | `src/pager/mod.rs` | Navigation, incremental text search, viewport redraw, and owned Kitty image lifecycle. |
 | `src/pager/tty.rs` | Controlling-terminal input, bounded key decoding, alternate screen, signals, and terminal restoration. |
-| `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation. |
+| `src/pager/worker.rs` | One active render and one replaceable pending request, with cooperative cancellation and a provisional first-screen page for initial renders. |
 | `src/pager/watch.rs` | Debounced metadata polling of the named file and its included files, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.

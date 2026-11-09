@@ -36,7 +36,18 @@ can interrupt it. It does not search raster contents or across wrapped rows.
 
 One background thread renders a complete candidate page. At most one request runs
 and one replacement waits; newer requests cancel stale work and replace the
-pending request. Publication swaps the whole page. The previous good page remains
+pending request. Publication swaps the whole page.
+
+When nothing is shown yet, the first render publishes a provisional page first:
+it records whole blocks until two screens of rows exist, stops between blocks,
+and then renders the complete page from the start. The provisional rows equal
+the complete page's first rows, and the footer marks the row count with `+`
+while `rendering`. Its last row is not treated as the document's end, so a view
+there keeps its position instead of following to the complete page's end. The
+first screen's equations and diagrams are cache hits in the second pass. Reloads
+and resizes keep the previous page instead, so they never show a truncated
+document. A first block taller than the preview, such as a long table, delays
+the preview until it is complete. The previous good page remains
 available if a watch read or render fails. Resize reflow temporarily clears an
 incompatible viewport rather than replaying rows at the wrong width.
 
@@ -220,6 +231,21 @@ python3 bench/pager.py --binary target/release/gloss \
 Use a working set of at most 4,096 math entries / 32 diagram entries within the
 8 MiB budgets to measure warm-cache behavior; also measure larger working sets
 to observe eviction. Changing fitting bounds produces distinct cache entries.
+
+### First-screen preview
+
+`first_page_ms` in `bench/pager.py` is the first frame showing document rows;
+`ready_ms` is the first complete page. Five sessions per binary, compared against
+the previous commit, with medians:
+
+| Input | First page before / after | Complete page before / after |
+| --- | ---: | ---: |
+| LaTeX corpus `body.tex` | 66 / 13 ms | 66 / 66 ms |
+| Markdown, 3,500 formulas (described below) | 622 / 17 ms | 622 / 625 ms |
+
+Rendering the first screen twice costs little because its equations are cached
+by then. Reload, resize, and peak RSS were unchanged within noise. Direct output
+does not use previews.
 
 ### Compressed equation cache
 

@@ -214,6 +214,10 @@ pub(super) struct Recorder {
     escape: Vec<u8>,
     picture: Option<Picture>,
     cancel: Arc<AtomicBool>,
+    /// For a first-screen preview: stop before the next block once the cursor
+    /// reaches this row.
+    preview_rows: Option<usize>,
+    previewed: bool,
 }
 impl Recorder {
     pub fn new(geometry: Geometry, cancel: Arc<AtomicBool>) -> io::Result<Self> {
@@ -237,6 +241,8 @@ impl Recorder {
             escape: Vec::new(),
             picture: None,
             cancel,
+            preview_rows: None,
+            previewed: false,
         })
     }
     fn check(&self) -> io::Result<()> {
@@ -492,6 +498,10 @@ impl Recorder {
     }
     pub fn anchor(&mut self, block: &Block) -> io::Result<()> {
         self.text()?;
+        if self.preview_rows.is_some_and(|rows| self.row >= rows) {
+            self.previewed = true;
+            return Err(io::Error::other("preview complete"));
+        }
         let start = match block {
             Block::Text(runs) => runs.iter().filter_map(|r| r.source.map(|s| s.start)).min(),
             Block::Code { source, .. } | Block::DisplayMath { source, .. } => Some(source.start),
@@ -508,7 +518,17 @@ impl Recorder {
         if !self.escape.is_empty() || self.picture.is_some() {
             return Err(invalid("unfinished renderer command"));
         }
-        self.current()?;
+        if self.previewed {
+            // Nothing is written at or below the cursor between blocks.
+            let written = self.row.saturating_sub(self.rows.len());
+            for row in self.active.drain(written.min(self.active.len())..) {
+                self.active_bytes = self
+                    .active_bytes
+                    .saturating_sub(row.encoded.len() + row.plain.len());
+            }
+        } else {
+            self.current()?;
+        }
         while !self.active.is_empty() {
             self.commit()?;
         }
@@ -577,19 +597,47 @@ pub(super) fn build(
     cancel: Arc<AtomicBool>,
     cache: &mut render::RenderCache,
 ) -> io::Result<Page> {
+    record(document, options, cancel, cache, None).map(|(page, _)| page)
+}
+
+/// Records whole blocks until the page has `rows` rows, so the first screen can
+/// show before the rest renders. Returns whether the page is complete, which
+/// it is when the document is that short.
+pub(super) fn build_preview(
+    document: &Document,
+    options: &render::Options,
+    cancel: Arc<AtomicBool>,
+    cache: &mut render::RenderCache,
+    rows: usize,
+) -> io::Result<(Page, bool)> {
+    record(document, options, cancel, cache, Some(rows))
+}
+
+fn record(
+    document: &Document,
+    options: &render::Options,
+    cancel: Arc<AtomicBool>,
+    cache: &mut render::RenderCache,
+    preview_rows: Option<usize>,
+) -> io::Result<(Page, bool)> {
     if cancel.load(Ordering::Relaxed) {
         return Err(io::ErrorKind::ConnectionAborted.into());
     }
     let mut recorder = Recorder::new(options.terminal.unwrap_or_default(), Arc::clone(&cancel))?;
-    let warnings = render::write_document_with(
+    recorder.preview_rows = preview_rows;
+    match render::write_document_with(
         &mut recorder,
         document,
         options,
         cache,
         &cancel,
         Recorder::anchor,
-    )?;
-    recorder.finish(warnings)
+    ) {
+        Ok(warnings) => Ok((recorder.finish(warnings)?, true)),
+        // Blocks so far are complete: the preview stops between blocks.
+        Err(_) if recorder.previewed => Ok((recorder.finish(Vec::new())?, false)),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(test)]
@@ -649,6 +697,36 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn previews_stop_between_blocks_and_match_the_complete_page() {
+        let source: String = (0..200).map(|i| format!("Paragraph {i:03}.\n\n")).collect();
+        let options = render::Options {
+            terminal: Some(Geometry::default()),
+            ..Default::default()
+        };
+        let document = Document::parse(source);
+        let mut cache = render::RenderCache::default();
+        let (mut preview, complete) =
+            build_preview(&document, &options, Arc::default(), &mut cache, 30).unwrap();
+        assert!(!complete);
+        // Two rows per paragraph: the preview ends at the first block boundary.
+        assert!(
+            (30..=32).contains(&preview.rows.len()),
+            "{}",
+            preview.rows.len()
+        );
+        let mut page = build(&document, &options, Arc::default(), &mut cache).unwrap();
+        for i in 0..preview.rows.len() {
+            assert_eq!(preview.row(i).unwrap(), page.row(i).unwrap());
+            assert_eq!(preview.rows[i].anchor, page.rows[i].anchor);
+        }
+        // A document shorter than the preview is complete at once.
+        let short = Document::parse("One paragraph.\n".into());
+        let (_, complete) =
+            build_preview(&short, &options, Arc::default(), &mut cache, 30).unwrap();
+        assert!(complete);
     }
 
     #[test]
