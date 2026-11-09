@@ -409,7 +409,7 @@ dependencies = [
  "html5gum",
  "image",
  "katex-native",
- "latex-preview",
+ "latex-reader",
  "libc",
  "pulldown-cmark",
  "signal-hook",
@@ -546,7 +546,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "latex-preview"
+name = "latex-reader"
 version = "0.1.0"
 
 [[package]]

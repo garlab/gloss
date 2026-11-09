@@ -36,7 +36,7 @@ enum Kind {
 
 /// A LaTeX document read with its included files.
 struct Latex {
-    index: Arc<latex_preview::Index>,
+    index: Arc<latex_reader::Index>,
     /// The source with included files in place, when there were any. Event
     /// ranges refer to this text.
     expanded: Option<Arc<str>>,
@@ -92,7 +92,7 @@ impl Document {
     /// bibliography.
     pub fn latex_with_files(source: String, base: &Path, jobname: Option<&str>) -> Self {
         Self::latex_with(source, jobname, |name, kind| {
-            crate::input::read_included(&base.join(name), kind == latex_preview::InputKind::Exists)
+            crate::input::read_included(&base.join(name), kind == latex_reader::InputKind::Exists)
         })
         .with_base(base)
     }
@@ -100,21 +100,21 @@ impl Document {
     fn latex_with(
         source: String,
         jobname: Option<&str>,
-        mut read: impl FnMut(&str, latex_preview::InputKind) -> Option<String>,
+        mut read: impl FnMut(&str, latex_reader::InputKind) -> Option<String>,
     ) -> Self {
-        let limits = latex_preview::InputLimits {
+        let limits = latex_reader::InputLimits {
             max_bytes: crate::input::MAX_SOURCE as usize,
             ..Default::default()
         };
-        let expanded = latex_preview::expand(&source, jobname, &limits, &mut read);
+        let expanded = latex_reader::expand(&source, jobname, &limits, &mut read);
         let files: Vec<PathBuf> = expanded.files.iter().map(PathBuf::from).collect();
         let expanded = match expanded.text {
             std::borrow::Cow::Borrowed(_) => None,
             std::borrow::Cow::Owned(text) => Some(Arc::<str>::from(text)),
         };
-        let index = latex_preview::index(
+        let index = latex_reader::index(
             expanded.as_deref().unwrap_or(&source),
-            &latex_preview::Options::default(),
+            &latex_reader::Options::default(),
             &AtomicBool::new(false),
         )
         .expect("indexing without a cancellation request completes");
@@ -142,7 +142,7 @@ impl Document {
     }
 
     /// The index of a LaTeX document, for macro contexts at formula offsets.
-    pub(crate) fn latex_index(&self) -> Option<&Arc<latex_preview::Index>> {
+    pub(crate) fn latex_index(&self) -> Option<&Arc<latex_reader::Index>> {
         if let Kind::Latex(latex) = &self.kind {
             Some(&latex.index)
         } else {

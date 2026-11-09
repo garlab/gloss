@@ -1,10 +1,10 @@
-//! LaTeX documents. `latex-preview` reads the source; this adapter maps its
+//! LaTeX documents. `latex-reader` reads the source; this adapter maps its
 //! events onto the CommonMark events the layout already renders, so equivalent
 //! constructs look the same as in Markdown. No Markdown text is produced.
 
 use std::{borrow::Cow, collections::VecDeque, ops::Range};
 
-use latex_preview::{self as lp, Event as L, FigureKind, ListKind, Style, Tag as LT, TagKind as K};
+use latex_reader::{self as lr, Event as L, FigureKind, ListKind, Style, Tag as LT, TagKind as K};
 use pulldown_cmark::{
     Alignment, CodeBlockKind, CowStr, Event, HeadingLevel, LinkType, Tag, TagEnd,
 };
@@ -65,7 +65,7 @@ struct Prefix<'a> {
 
 pub(super) struct Adapter<'a> {
     source: &'a str,
-    events: lp::Events<'a>,
+    events: lr::Events<'a>,
     queue: VecDeque<SpannedEvent<'a>>,
     stack: Vec<Open>,
     captures: Vec<Capture<'a>>,
@@ -80,7 +80,7 @@ pub(super) struct Adapter<'a> {
 }
 
 impl<'a> Adapter<'a> {
-    pub fn new(index: &'a lp::Index, source: &'a str) -> Self {
+    pub fn new(index: &'a lr::Index, source: &'a str) -> Self {
         Self {
             source,
             events: index.events(source),
@@ -400,9 +400,9 @@ impl<'a> Adapter<'a> {
                 let alignments = columns
                     .iter()
                     .map(|column| match column.align {
-                        lp::Align::Center => Alignment::Center,
-                        lp::Align::Right => Alignment::Right,
-                        lp::Align::Left | lp::Align::Justify => Alignment::Left,
+                        lr::Align::Center => Alignment::Center,
+                        lr::Align::Right => Alignment::Right,
+                        lr::Align::Left | lr::Align::Justify => Alignment::Left,
                     })
                     .collect();
                 self.out(Event::Start(Tag::Table(alignments)), range.clone());

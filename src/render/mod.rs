@@ -106,7 +106,7 @@ pub(crate) struct RenderCache {
 }
 
 impl RenderCache {
-    fn begin_document(&mut self, latex: Option<&Arc<latex_preview::Index>>) {
+    fn begin_document(&mut self, latex: Option<&Arc<latex_reader::Index>>) {
         // LaTeX formulas need their document's macro scopes, so the engine
         // exists before any formula asks for one.
         if let Some(latex) = latex {

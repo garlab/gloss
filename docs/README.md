@@ -15,6 +15,7 @@ These describe implemented behavior, limits, fallbacks, and validation.
 | Native diagram coverage, worker limits, and fitting | [Mermaid](mermaid.md) and [Gantt](gantt.md) |
 | Go records, position selection, and board rendering | [SGF](sgf.md) |
 | Alerts, front matter, details, links, and math delimiters | [Markdown extensions](markdown-extensions.md) |
+| LaTeX presentation, formulas, included files, and limits | [LaTeX documents](latex.md) |
 | Interactive navigation, reloads, and resource limits | [Pager](pager.md) |
 | Geometry, themes, graphics selection, and overrides | [Terminal discovery](terminal-detection.md) |
 
@@ -27,8 +28,6 @@ These describe implemented behavior, limits, fallbacks, and validation.
 - [Release guide](releasing.md): checks, registry publication, and Homebrew setup.
 - [Native ABC design](abc-native-design.md): deferred music-notation research;
   ABC rendering is not implemented.
-- [LaTeX preview design](latex-design.md): research, measurements, and the
-  shared `latex-preview` crate behind gloss's LaTeX documents.
 
 ## Performance evidence
 

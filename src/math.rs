@@ -49,15 +49,15 @@ pub struct MathEngine {
     next_number: u32,
     cache: Cache,
     /// A LaTeX document's index: formulas use the macros visible where they start.
-    document: Option<Arc<latex_preview::Index>>,
+    document: Option<Arc<latex_reader::Index>>,
     /// KaTeX macro maps built per visible-binding hash, most recent last.
     macro_maps: VecDeque<(u128, MacroMap)>,
 }
 
 const MACRO_MAPS: usize = 8;
 
-/// Compressed bytes, source, and a fixed overhead count toward the budget. A
-/// paper of about 900 formulas needs 1–2.5 MiB, depending on the font size.
+/// Compressed bytes, source, and a fixed overhead count toward the budget.
+/// Compressed equations are several times smaller than their RGBA pixels.
 const CACHE_BYTES: usize = 8 * 1024 * 1024;
 const CACHE_ENTRIES: usize = 4096;
 const CACHE_SOURCE_BYTES: usize = 16 * 1024;
@@ -165,13 +165,13 @@ impl MathEngine {
     }
 
     /// Formulas of a LaTeX document see the macros visible at their offset.
-    pub(crate) fn set_document(&mut self, document: Option<Arc<latex_preview::Index>>) {
+    pub(crate) fn set_document(&mut self, document: Option<Arc<latex_reader::Index>>) {
         self.document = document;
     }
 
     /// Builds the visible bindings into a KaTeX macro map. Plain bodies go in
     /// directly; other definitions are replayed with persistence enabled.
-    fn macro_map(&mut self, macros: &latex_preview::MacroContext) -> MacroMap {
+    fn macro_map(&mut self, macros: &latex_reader::MacroContext) -> MacroMap {
         if let Some(index) = self
             .macro_maps
             .iter()

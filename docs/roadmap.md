@@ -74,17 +74,15 @@ and pixel checks with live-terminal validation.
 
 ## LaTeX preview
 
-`.tex` documents render natively through the shared `latex-preview` crate; see
-the [LaTeX preview design](latex-design.md). Remaining work:
+`.tex` documents render natively through
+[`latex-reader`](https://crates.io/crates/latex-reader); see
+[LaTeX documents](latex.md). Remaining work:
 
-- Publish `latex-preview` and replace the local override with the registry
-  version.
-- Spill checkpoint records to disk past a resident cap, and split paragraphs or
-  formulas larger than the replay budget.
 - Score output against reference PDFs from a pinned corpus of public papers.
-- Rasterize formulas directly from the display list in `katex-native`: SVG
-  parsing and drawing dominate LaTeX rendering time.
-- Build the Plastext adapter and fast preview.
+- Consider showing reader diagnostics, for example as pager warnings.
+- Rasterize formulas directly from the display list in `katex-native` if
+  formula-dense documents or resizing need it: SVG parsing and drawing dominate
+  formula rendering time.
 
 ## Deferred: native ABC music notation
 

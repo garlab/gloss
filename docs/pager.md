@@ -258,7 +258,7 @@ with four manual reloads, compared against the previous commit:
 
 | Input | First page before / after | Manual reload before / after | Peak viewer RSS before / after |
 | --- | ---: | ---: | ---: |
-| LaTeX corpus `body.tex` (374 KB, 474 formulas; see [bench/latex](../bench/latex)) | 61 / 59 ms | 57 / 26 ms | 12.4 / 11.6 MiB |
+| LaTeX corpus `body.tex` (374 KB, 474 formulas; see [latex-reader's benchmarks](https://github.com/garlab/latex-reader/blob/main/CONTRIBUTING.md#benchmarks)) | 61 / 59 ms | 57 / 26 ms | 12.4 / 11.6 MiB |
 | Markdown, 500 paragraphs with six distinct inline formulas and one display formula each | 625 / 628 ms | 612 / 20 ms | 13.5 / 16.6 MiB |
 
 The corpus's equations need 179 KiB compressed with 10×20-pixel cells and

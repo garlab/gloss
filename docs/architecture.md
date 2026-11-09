@@ -58,7 +58,7 @@ The full source and parser working storage still scale with input.
 | `src/document.rs` | CommonMark or literal input events, original source, and source ranges; normalize fenced math. |
 | `src/document/extensions.rs` | Bounded front matter/details/math projections with original-source offset maps. |
 | `src/document/html.rs` | Convert bounded HTML image fragments into Markdown image/link events; leave other HTML as source. |
-| `src/document/latex.rs` | Map `latex-preview` events onto the CommonMark events the layout renders: headings, lists, theorem heads, tables, footnotes, and source fallbacks. |
+| `src/document/latex.rs` | Map `latex-reader` events onto the CommonMark events the layout renders: headings, lists, theorem heads, tables, footnotes, and source fallbacks. |
 | `src/links.rs` | Validate bounded web/mail hyperlink targets without opening them. |
 | `src/layout.rs` | Convert events into text runs, code/table/image blocks, indentation context, and display math blocks. |
 | `src/layout/table.rs` | Retain rows, cells, alignments, inline runs, and source spans. |
@@ -87,7 +87,7 @@ The full source and parser working storage still scale with input.
 | `src/pager/watch.rs` | Debounced metadata polling of the named file and its included files, including atomic replacement. |
 
 `katex-native` owns TeX parsing, equation layout, fonts, and rasterization.
-`latex-preview` owns reading LaTeX documents: macro scoping, numbering, labels,
+`latex-reader` owns reading LaTeX documents: macro scoping, numbering, labels,
 checkpoints, formulas prepared for KaTeX, and splicing included files into the
 text it reads. It reads no files itself: `src/input.rs` supplies them under the
 text input limits (regular files, nonblocking opens, 64 MiB in total), relative

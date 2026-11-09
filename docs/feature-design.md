@@ -92,6 +92,16 @@ startup, repeated diagrams, and cache hits separately. Report process-tree RSS
 alongside process-reported RSS. Run the benchmark's optional `--process-tree`
 sampler separately from timing: sampling adds overhead and can miss brief peaks.
 
+## LaTeX documents
+
+LaTeX is read natively, never converted to Markdown or another markup that is
+parsed again, and without a TeX engine: previews must be fast on large
+documents and need no TeX installation. `latex-reader` owns reading, numbering,
+references, and macro scoping; it has no file access or KaTeX dependency.
+gloss owns the file policy for included files and figures, presentation, math
+rendering and caches, and watching. Changes to how LaTeX is read belong in the
+crate, with tests there; gloss tests the presentation and integration.
+
 ## ABC music notation (deferred)
 
 Native engraving of `abc` fences is independent of the initial release.

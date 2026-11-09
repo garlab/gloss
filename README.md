@@ -30,12 +30,10 @@ A Rust 1.90 or newer toolchain is required. Math uses the published
 [`katex-native`](https://crates.io/crates/katex-native) crate. Diagram, SVG and PNG/JPEG
 rendering uses the [`document-graphics`](https://crates.io/crates/document-graphics)
 library and its native `document-graphics-mermaid` backend. LaTeX documents are
-read by the `latex-preview` crate. Cargo downloads these dependencies from
-crates.io. gloss enables the library's `images` and `sgf` features; native image
-codecs and image workers remain disabled.
-
-`latex-preview` is not published yet. Until it is, build with a checkout beside
-gloss and the local override described below.
+read by the [`latex-reader`](https://crates.io/crates/latex-reader) crate. Cargo
+downloads these dependencies from crates.io. gloss enables the library's
+`images` and `sgf` features; native image codecs and image workers remain
+disabled.
 
 Install the `gloss-cli` package to get the `gloss` executable. Cargo's binary
 directory must be on your `PATH`; building also requires a C compiler for the
@@ -66,17 +64,15 @@ gloss tests/fixtures/latex.tex
 To run without installing, use `cargo run --locked -- <arguments>`. Omit the file
 argument or pass `-` to read Markdown from stdin.
 
-To build before `latex-preview` is published, or to develop document-graphics
-alongside gloss, place the checkouts beside gloss and add the overrides to an
-untracked `.cargo/config.toml` (merging with any existing settings):
+To develop a shared library alongside gloss, place its checkout beside gloss
+and add an override to an untracked `.cargo/config.toml` (merging with any
+existing settings):
 
 ```toml
 [patch.crates-io]
-# Required until latex-preview is published:
-latex-preview = { path = "../latex-preview" }
-# Optional while developing document-graphics and its backend:
-# document-graphics = { path = "../document-graphics" }
-# document-graphics-mermaid = { path = "../document-graphics-mermaid" }
+latex-reader = { path = "../latex-reader" }
+document-graphics = { path = "../document-graphics" }
+document-graphics-mermaid = { path = "../document-graphics-mermaid" }
 ```
 
 Run Cargo from the gloss root so it reads the local override. To return to
@@ -419,7 +415,7 @@ an included file changes.
 
 `--output text` exports readable prose with included text and the original
 formulas; `--output source` returns the main `.tex` file exactly. See the
-[LaTeX preview design](docs/latex-design.md) for the model and its limits.
+[LaTeX documents](docs/latex.md) reference for formulas, limits, and validation.
 
 ## Development
 
