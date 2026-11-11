@@ -1167,7 +1167,22 @@ fn many_openers_before_protected_code_keep_source_without_math() {
 }
 
 #[test]
-fn html_images_match_their_markdown_and_other_markup_keeps_its_source() {
+fn html_markup_matches_its_markdown_and_other_markup_keeps_its_source() {
+    use pulldown_cmark::{Tag, TagEnd};
+    // Events without the HTML block wrapper, with adjacent text merged.
+    let events = |document: &Document| -> Vec<Event<'static>> {
+        let mut events: Vec<Event<'static>> = Vec::new();
+        for item in document.events() {
+            match (item.event, events.last_mut()) {
+                (Event::Start(Tag::HtmlBlock) | Event::End(TagEnd::HtmlBlock), _) => {}
+                (Event::Text(text), Some(Event::Text(last))) => {
+                    *last = format!("{last}{text}").into();
+                }
+                (event, _) => events.push(event.into_static()),
+            }
+        }
+        events
+    };
     let images = |document: &Document| -> Vec<(String, String, String)> {
         layout::with_images(document)
             .blocks
@@ -1210,11 +1225,32 @@ fn html_images_match_their_markdown_and_other_markup_keeps_its_source() {
             "Inline <img src=\"a.png\" alt=\"one\"> and <a href=\"https://example.com\"><img src=\"b.png\" alt=\"two\"></a> here.",
             "Inline ![one](a.png) and [![two](b.png)](https://example.com) here.",
         ),
+        (
+            "<h1 align=\"center\">Project</h1>\n\n<p align=\"center\">\n  <b>A short tagline.</b><br>\n  Second line.\n</p>\n",
+            "# Project\n\n**A short tagline.**\\\nSecond line.\n",
+        ),
+        (
+            "<p><b>bold</b> <img src=\"a.png\"></p>",
+            "**bold** ![](a.png)",
+        ),
+        (
+            "<p align=\"center\">\n<h1>Title</h1>\n<img src=\"a.png\">\n</p>",
+            "# Title\n\n![](a.png)",
+        ),
+        (
+            "<p>Run <code> cargo\n  test </code>, <em>then</em> <strong><i>ship</i></strong> it <s>twice</s>.</p>\n<hr>\n<h3><a href=\"https://example.com\">Docs</a> &amp; more</h3>\n<div>Plain &lt;text&gt; **not markdown**</div>",
+            "Run `cargo test`, *then* **_ship_** it ~~twice~~.\n\n---\n\n### [Docs](https://example.com) & more\n\nPlain \\<text> \\*\\*not markdown\\*\\*",
+        ),
+        (
+            "<p>Unclosed <b>bold</p>\n<h2>Heading <em>open",
+            "Unclosed **bold**\n\n## Heading *open*",
+        ),
     ] {
         let document = Document::parse(html.into());
         let expected = Document::parse(markdown.into());
         assert_eq!(export::source(&document), html);
         assert_eq!(export::text(&document), export::text(&expected), "{html}");
+        assert_eq!(events(&document), events(&expected), "{html}");
         let found = images(&document);
         assert_eq!(
             found
@@ -1263,11 +1299,17 @@ fn html_images_match_their_markdown_and_other_markup_keeps_its_source() {
         )]
     );
 
-    // Anything outside the image subset, or without an image, keeps its source.
+    // Other elements, malformed markup, or markup without visible content keeps
+    // its source. Styles do not pair across Markdown text.
     for html in [
-        "<p><b>bold</b> <img src=\"a.png\"></p>",
-        "<p align=\"center\">\n<h1>Title</h1>\n<img src=\"a.png\">\n</p>",
         "<div align=\"center\">\n\nCentered\n\n</div>",
+        "<p>\n</p>",
+        "<p><span>other</span> element</p>",
+        "Some <b>bold</b> text",
+        "<p>Open <b>style\n<h2>Heading</h2>",
+        "<p><code>a <b>b</b></code></p>",
+        "<p><code>unclosed</p>",
+        "<h2>Title<hr></h2>",
         "<a href=\"https://example.com\">plain link</a>",
         "<a href=\"https://example.com\"><img src=\"a.png\"> then</a>",
         "<!-- <img src=\"a.png\"> -->",

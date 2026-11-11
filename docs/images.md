@@ -23,7 +23,7 @@ Paths resolve relative to the Markdown file, or the working directory for stdin.
 Only regular local files with `.png`, `.jpg`, `.jpeg`, or `.svg` extensions are
 opened. URLs, data URIs, query/fragment suffixes, and nested SVG resources are
 unsupported; rendering never fetches a remote image. HTML `<img>` references follow
-the same rules; see [HTML images](markdown-extensions.md#html-images). LaTeX
+the same rules; see [HTML markup](markdown-extensions.md#html-markup). LaTeX
 `\includegraphics` names without an extension try `.png`, `.jpg`, `.jpeg`, and
 `.svg`, also in `\graphicspath` directories. Only existing candidates are
 opened and counted.

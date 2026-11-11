@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Render common README HTML like the equivalent Markdown: `<h1>` to `<h6>`
+  headings, `<b>`/`<strong>`, `<i>`/`<em>`, `<s>`/`<del>`, `<code>`, and `<hr>`,
+  alongside the existing `<p>`, `<div>`, `<a>`, `<br>`, and `<img>`. A centered
+  title and tagline no longer show as source. Other HTML still does.
+
 ## 0.2.0 (2026-11-09)
 
 - Render LaTeX documents (`.tex`, `.latex`, `.ltx`, or `--input-format latex`)

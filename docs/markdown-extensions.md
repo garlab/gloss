@@ -38,42 +38,67 @@ Each section is limited to 256 KiB and 16 nesting levels, with a total budget of
 Code spans, fenced/indented code, comments, and other HTML blocks are excluded.
 This is not an HTML renderer; it never executes scripts or retrieves resources.
 
-## HTML images
+## HTML markup
 
-An `<img>` element renders like the equivalent Markdown image. A local file is
-drawn under the [local image](images.md) rules; any other source, including a
-remote URL, keeps its `[image: alt] (src)` reference. Nothing is fetched. This
-covers HTML blocks, such as a centered logo, and runs of adjacent inline tags,
+Common README HTML renders like the equivalent Markdown. `<h1>` to `<h6>` become
+headings, `<p>` and `<div>` separate paragraphs, `<b>`/`<strong>`, `<i>`/`<em>`,
+and `<s>`/`<del>` become strong, emphasis, and strikethrough, `<code>` a code
+span, `<a href>` a link, `<br>` a line break, and `<hr>` a rule. An `<img>`
+renders like a Markdown image: a local file is drawn under the
+[local image](images.md) rules; any other source, including a remote URL, keeps
+its `[image: alt] (src)` reference. Nothing is fetched. This covers HTML blocks,
+such as a centered logo, title, and tagline, and runs of adjacent inline tags,
 such as a linked badge:
 
 ```html
 <p align="center">
   <a href="https://example.com"><img src="docs/logo.png" alt="Logo" width="200"></a>
 </p>
+
+<h1 align="center">Project</h1>
+
+<p align="center">
+  <b>A one-line description.</b><br>
+  More detail on a second line.
+</p>
 ```
 
-A fragment converts only when it contains an image and otherwise only `<p>`,
-`<div>`, `<a>`, `<picture>`, `<source>`, `<br>`, comments, and text. `<p>` and
-`<div>` separate paragraphs, `<a href>` becomes a link, `<br>` a line break, and
-comments are hidden. Text follows HTML whitespace rules, with entities decoded;
-it is not Markdown. Exports match the equivalent Markdown, and exact source
-export is unchanged. Inline wrappers must close within their run of tags.
+A fragment converts only when it shows an image, text, or a rule, and contains
+only these elements, `<picture>`, `<source>`, comments, and text. Comments are
+hidden. Text follows HTML whitespace rules, with entities decoded, including
+inside `<code>`; it is not Markdown. Elements other than `<code>` that are left
+open close at the end of the fragment. Exports match the equivalent Markdown, and exact source export is
+unchanged.
 
-Any other element, a missing or empty `src`, or malformed markup leaves the whole
-fragment as source. `width`, `height`, and `align` are ignored, so images keep the
-usual fitting. A `<picture>` shows its `<img>`; light and dark `<source>`
-alternatives are not selected. A wrapper on its own, such as a
+Any other element, a heading or rule inside a link or style, a tag inside
+`<code>` or one left open, a missing or empty `src`, or malformed markup leaves
+the whole fragment as source. Inside a Markdown paragraph, only links, styles,
+pictures, and images convert, and they must close within their run of tags, so
+`Some <b>bold</b> text` and `one<br>two` keep their source. `width`,
+`height`, and `align` are ignored: images keep the usual fitting, and headings and
+paragraphs keep the usual alignment. A `<picture>` shows its `<img>`; light and
+dark `<source>` alternatives are not selected. A wrapper on its own, such as a
 `<div align="center">` line around Markdown, still shows as source.
 
 Each fragment is limited to 256 KiB, 32,768 tokens, 16 KiB per attribute value,
-and 128 nested wrappers; larger fragments keep their source. Fragments without
-an `<img` tag skip tokenization. On the benchmark corpora, which contain no HTML,
-output is byte-identical; plain export of the 10 MiB mixed document measured
-98.2 ms against 95.4 ms before (medians of five alternating seven-sample runs,
-Apple M2 Pro, Rust 1.99). A 2.2 MB document with 12,000 image fragments exports
-about 33 ms more slowly, mostly in tokenization. The `html5gum` tokenizer, used
-without optional features, adds no further dependencies and grows the release
-executable by 231,952 bytes (1.3%).
+and 128 nested wrappers; larger fragments keep their source. Fragments without a
+supported start tag skip tokenization, and tokenization stops at the first
+unsupported element.
+
+When image fragments were first converted, output on the benchmark corpora, which
+contain no HTML, stayed byte-identical; plain export of the 10 MiB mixed document
+measured 98.2 ms against 95.4 ms before (medians of five alternating seven-sample
+runs, Apple M2 Pro, Rust 1.99). A 2.2 MB document with 12,000 image fragments
+exports about 33 ms more slowly, mostly in tokenization. The `html5gum`
+tokenizer, used without optional features, adds no further dependencies and grows
+the release executable by 231,952 bytes (1.3%).
+
+Extending conversion beyond images left output unchanged, with no measurable time
+difference, for 12,000 Markdown sections without HTML (1.5 MB) and 12,000 image
+fragments (0.9 MB). Plain export of 12,000 title-and-tagline pairs (1.6 MB), which
+now convert, measured 47.5 ms against 18.6 ms as source; 12,000 unsupported
+`<table>` blocks containing `<b>` (0.8 MB) measured 15.5 ms against 11.4 ms
+(medians of seven alternating runs, Apple M2 Pro, Rust 1.99).
 
 ## Backslash math
 

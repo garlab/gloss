@@ -48,6 +48,8 @@ The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
 - GitHub alerts, inert front matter, expanded details, and terminal hyperlinks.
 - Local PNG, JPEG, and SVG images, from Markdown or HTML `<img>`, with
   selectable captions.
+- Common README HTML, such as a centered `<h1>` title, `<p>` tagline with
+  `<b>` and `<br>`, or linked badge, renders like the equivalent Markdown.
 - Mermaid diagrams and SGF Go boards in fenced blocks.
 - Syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX, JSON,
   Bash/shell, Go, TOML, YAML, and Dockerfile/Containerfile.
@@ -55,7 +57,8 @@ The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
 Math follows the KaTeX subset implemented by
 [`katex-native`](https://crates.io/crates/katex-native). A formula that cannot
 render falls back to its source without interrupting the document. Other HTML is
-shown as source and never executed, and remote images are never fetched.
+shown as source and never executed, and remote images are never fetched; see
+[HTML markup](docs/markdown-extensions.md#html-markup) for the supported elements.
 
 ### LaTeX documents
 
