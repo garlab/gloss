@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-11)
 
 - Render common README HTML like the equivalent Markdown: `<h1>` to `<h6>`
   headings, `<b>`/`<strong>`, `<i>`/`<em>`, `<s>`/`<del>`, `<code>`, and `<hr>`,
