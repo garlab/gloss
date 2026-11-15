@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Highlight Terraform/HCL files and code fences, including interpolated strings,
+  heredocs, template directives, comments, and expressions. Detect `.tf`,
+  `.tfvars`, `.hcl`, and `.tfbackend` files automatically.
+
 ## 0.2.1 (2026-11-11)
 
 - Render common README HTML like the equivalent Markdown: `<h1>` to `<h6>`

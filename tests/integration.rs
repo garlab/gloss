@@ -33,6 +33,13 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
         ("build.containerfile", Format::Code),
         ("Dockerfile.md", Format::Markdown),
         ("other.lock", Format::Markdown),
+        ("main.tf", Format::Code),
+        ("values.TFVARS", Format::Code),
+        ("test.auto.tfvars", Format::Code),
+        ("terragrunt.hcl", Format::Code),
+        (".terraform.lock.hcl", Format::Code),
+        ("config.pkr.hcl", Format::Code),
+        ("dev.tfbackend", Format::Code),
         ("data.json", Format::Code),
         ("main.rs", Format::Code),
         ("script.py", Format::Code),
@@ -111,6 +118,19 @@ fn special_code_filenames_keep_literal_content_and_select_language() {
             "# Build image\nFROM scratch\n",
         ),
         ("Dockerfile.json", "json", "{\"enabled\": true}\n"),
+        (
+            "main.tf",
+            "hcl",
+            "# literal $x$ **text**\nlocals { enabled = true }\n",
+        ),
+        ("vars.TFVARS", "hcl", "name = \"${literal}\"\n"),
+        (
+            ".terraform.lock.hcl",
+            "hcl",
+            "provider \"example/demo\" {}\n",
+        ),
+        ("main.tf.json", "json", "{\"enabled\": true}\n"),
+        ("values.tfvars.json", "json", "{\"enabled\": true}\n"),
     ] {
         let path = dir.path().join(name);
         std::fs::write(&path, source).unwrap();

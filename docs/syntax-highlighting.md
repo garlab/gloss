@@ -62,6 +62,21 @@ bypass it. Plain export uses the flat layout path so it does not pay for
 independently owned fence metadata and per-block vectors. Exact source export
 still bypasses parsing entirely.
 
+## Terraform and HCL
+
+Files ending in `.tf`, `.tfvars`, `.hcl`, or `.tfbackend` use HCL highlighting.
+The same grammar handles `hcl`, `terraform`, `tf`, `tfvars`, and `tfbackend`
+fence labels and `--language` values. JSON variants keep the JSON grammar.
+
+Blocks, attributes, functions, literals, operators, all three comment forms,
+and expressions inside quoted strings and heredocs receive semantic colors.
+The parser is the Apache-2.0-licensed
+[`tree-sitter-hcl` 1.1.0](https://crates.io/crates/tree-sitter-hcl/1.1.0).
+That release does not bundle highlight queries, so the small query in
+`src/highlight/hcl.scm` is shipped with the application. The existing lazy
+initialization, parse/query budgets, and plain-output bypass apply unchanged.
+No Terraform installation, provider loading, or configuration evaluation occurs.
+
 ## Dockerfile and Containerfile
 
 The `dockerfile`, `containerfile`, and `docker` fence/language aliases share

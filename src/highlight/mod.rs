@@ -409,6 +409,68 @@ mod tests {
     }
 
     #[test]
+    fn hcl_aliases_highlight_templates_and_preserve_bounded_fallbacks() {
+        let text = include_str!("../../tests/fixtures/terraform.tf");
+        for alias in ["hcl", "TERRAFORM", "tf", "tfvars", "tfbackend"] {
+            let mut engine = Highlighter::default();
+            let spans = engine.highlight(alias, text).expect(alias);
+            for (token, expected) in [
+                ("# Terraform", Highlight::Comment),
+                ("// Heredocs", Highlight::Comment),
+                ("not_an_expression", Highlight::Comment),
+                ("resource", Highlight::Keyword),
+                ("for name", Highlight::Keyword),
+                ("endfor", Highlight::Keyword),
+                ("required_version", Highlight::Property),
+                ("greeting", Highlight::Property),
+                ("names[0]", Highlight::Property),
+                ("upper(name)", Highlight::Function),
+                ("3\n", Highlight::Number),
+                ("true", Highlight::Constant),
+                ("null", Highlight::Constant),
+                ("café", Highlight::String),
+                ("hello ", Highlight::String),
+                ("Hello ", Highlight::String),
+                ("EOT", Highlight::Label),
+                ("${var", Highlight::Punctuation),
+                ("!=", Highlight::Operator),
+            ] {
+                assert_eq!(
+                    color_at(&spans, text.find(token).unwrap()),
+                    Some(expected),
+                    "{alias}: {token}"
+                );
+            }
+            assert_eq!(color_at(&spans, text.find("var.names[0]").unwrap()), None);
+            assert!(
+                spans
+                    .iter()
+                    .all(|span| text.get(span.range.clone()).is_some())
+            );
+            assert!(
+                spans
+                    .windows(2)
+                    .all(|pair| pair[0].range.end <= pair[1].range.start)
+            );
+            assert!(
+                engine
+                    .highlight(alias, &"#".repeat(MAX_BLOCK_BYTES + 1))
+                    .is_none()
+            );
+            assert!(
+                engine
+                    .highlight(alias, "locals { enabled = true }\n")
+                    .is_some()
+            );
+            assert!(
+                engine
+                    .highlight(alias, "resource \"terraform_data\" \"unfinished\" {\n")
+                    .is_some()
+            );
+        }
+    }
+
+    #[test]
     fn multiline_context_unicode_and_escapes_survive() {
         let text = "/* start\nstill a comment */\nfn café() { let s = \"中文\\n👩‍💻\"; }\n";
         let spans = Highlighter::default().highlight("rust", text).unwrap();

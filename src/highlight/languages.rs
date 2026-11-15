@@ -7,6 +7,7 @@ pub(super) enum Language {
     Bash,
     Dockerfile,
     Go,
+    Hcl,
     JavaScript,
     Json,
     Python,
@@ -33,6 +34,10 @@ impl Language {
                 Language::Dockerfile,
             ),
             (&["go", "golang"], Language::Go),
+            (
+                &["hcl", "terraform", "tf", "tfvars", "tfbackend"],
+                Language::Hcl,
+            ),
             (
                 &["javascript", "js", "jsx", "mjs", "cjs"],
                 Language::JavaScript,
@@ -72,6 +77,7 @@ impl Language {
                 tree_sitter_go::LANGUAGE.into(),
                 &[tree_sitter_go::HIGHLIGHTS_QUERY],
             ),
+            Self::Hcl => (tree_sitter_hcl::LANGUAGE.into(), &[include_str!("hcl.scm")]),
             Self::JavaScript => (
                 tree_sitter_javascript::LANGUAGE.into(),
                 &[

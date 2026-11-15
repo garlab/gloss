@@ -48,6 +48,7 @@ impl Input {
         let detected_language = match extension.as_deref() {
             Some("yaml" | "yml") => Some("yaml"),
             Some("toml") => Some("toml"),
+            Some("hcl" | "tf" | "tfvars" | "tfbackend") => Some("hcl"),
             Some("json") => Some("json"),
             Some("rs") => Some("rust"),
             Some("py" | "pyi" | "pyw") => Some("python"),

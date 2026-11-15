@@ -1032,6 +1032,33 @@ class TerminalSmoke(unittest.TestCase):
                                          (b"printf", 81), (b"if", 176), (b"42", 215)]:
                         self.assertEqual(attributes_at(colored, token)["foreground"], color, token)
 
+    def test_hcl_files_fences_and_stdin_share_colors_and_preserve_plain_output(self):
+        source = (Path(__file__).resolve().parent / "fixtures" / "terraform.tf").read_text()
+        with tempfile.TemporaryDirectory() as root:
+            for theme in ("dark", "light"):
+                args = ("--theme", theme)
+                fenced, fence_error = terminal(f"```terraform\n{source}```\n", args=(*args, "--line-numbers", "on"))
+                stdin, stdin_error = terminal(source, args=(*args, "--language", "HCL"))
+                self.assertFalse(fence_error or stdin_error)
+                self.assertEqual(stdin, fenced)
+                for name in ("main.tf", "values.TFVARS", "values.auto.tfvars", ".terraform.lock.hcl", "dev.tfbackend"):
+                    with self.subTest(theme=theme, name=name):
+                        file = Path(root) / name
+                        file.write_text(source)
+                        colored, error = terminal(file=file, args=args)
+                        disabled, disabled_error = terminal(file=file, args=(*args, "--no-highlight"))
+                        uncolored, plain_error = terminal(file=file, args=args, variables={"NO_COLOR": "1"})
+                        self.assertFalse(error or disabled_error or plain_error)
+                        self.assertEqual(colored, fenced)
+                        self.assertEqual(plain(colored), plain(disabled))
+                        self.assertEqual(plain(colored), plain(uncolored))
+                        self.assertNotEqual(colored, disabled)
+                        self.assertNotIn(b"\x1b", uncolored)
+                        self.assertNotIn(b"\x1b_G", colored)
+                        if theme == "dark":
+                            for token, color in [(b"resource", 176), (b"required_version", 117), (b"list", 81)]:
+                                self.assertEqual(attributes_at(colored, token)["foreground"], color, token)
+
     def test_dockerfile_limits_keep_complete_source_without_affecting_next_block(self):
         source = "RUN echo hello\n" * 129
         args = ("--language", "containerfile")
