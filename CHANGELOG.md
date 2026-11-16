@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-11-16)
 
 - Highlight Terraform/HCL files and code fences, including interpolated strings,
   heredocs, template directives, comments, and expressions. Detect `.tf`,
