@@ -42,6 +42,8 @@ fn standalone_inputs_detect_extensions_and_keep_literal_source() {
         ("dev.tfbackend", Format::Code),
         ("data.json", Format::Code),
         ("main.rs", Format::Code),
+        ("model.PROBL", Format::Code),
+        ("model.test.probl", Format::Code),
         ("script.py", Format::Code),
         ("types.pyi", Format::Code),
         ("script.pyw", Format::Code),
@@ -130,6 +132,11 @@ fn special_code_filenames_keep_literal_content_and_select_language() {
             "provider \"example/demo\" {}\n",
         ),
         ("main.tf.json", "json", "{\"enabled\": true}\n"),
+        (
+            "model.PROBL",
+            "probl",
+            "# literal **text** $x$\nreport \"café {1 + 2}\"\n",
+        ),
         ("values.tfvars.json", "json", "{\"enabled\": true}\n"),
     ] {
         let path = dir.path().join(name);

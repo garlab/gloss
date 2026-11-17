@@ -62,6 +62,16 @@ bypass it. Plain export uses the flat layout path so it does not pay for
 independently owned fence metadata and per-block vectors. Exact source export
 still bypasses parsing entirely.
 
+## Probl
+
+`.probl` files, `probl` fences and `--language probl` use the shared
+`tree-sitter-probl` grammar and its shared highlight query. Labels are
+case-insensitive. Dice, percentages, temporal constants, declarations, model
+tests and nested string interpolation use the existing theme and resource
+limits. Expressions inside strings retain their code colors. Highlighting never
+executes a model or reads an imported file. Oversized or over-budget input keeps
+the complete source with ordinary code styling.
+
 ## Terraform and HCL
 
 Files ending in `.tf`, `.tfvars`, `.hcl`, or `.tfbackend` use HCL highlighting.

@@ -52,7 +52,7 @@ The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
   `<b>` and `<br>`, or linked badge, renders like the equivalent Markdown.
 - Mermaid diagrams and SGF Go boards in fenced blocks.
 - Syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX, JSON,
-  Bash/shell, Go, TOML, YAML, Dockerfile/Containerfile, and Terraform/HCL.
+  Bash/shell, Go, Probl, TOML, YAML, Dockerfile/Containerfile, and Terraform/HCL.
 
 Math follows the KaTeX subset implemented by
 [`katex-native`](https://crates.io/crates/katex-native). A formula that cannot
@@ -104,6 +104,7 @@ Named files are detected by extension; anything else, and stdin, is Markdown.
 | Images | `.png`, `.jpg`, `.jpeg`, `.svg` |
 | Terraform / HCL | `.tf`, `.tfvars`, `.hcl`, `.tfbackend` (including `.terraform.lock.hcl`) |
 | YAML, TOML, JSON | `.yaml`, `.yml`, `.toml`, `.json`, and `Cargo.lock` |
+| Probl | `.probl` (including `.test.probl`) |
 | Rust, Python, Go | `.rs`, `.py`, `.pyi`, `.pyw`, `.go` |
 | JavaScript, TypeScript | `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, `.tsx` |
 | Bash / shell | `.sh`, `.bash` |
@@ -121,6 +122,10 @@ cat config.yaml | gloss --language yaml -
 `--input-format markdown|latex|code|mermaid|sgf|image` overrides detection, and
 `--language` selects code mode with a syntax language, also for stdin and files
 without an extension. Code mode keeps source literal, including Mermaid and SGF.
+Probl files, `probl` fences, and `--language probl` share the Probl grammar.
+Fence labels and language values are case-insensitive. Highlighting does not run
+models or load imports.
+
 Terraform/HCL fences and `--language` accept `hcl`, `terraform`, `tf`, `tfvars`,
 and `tfbackend`. JSON variants such as `.tf.json` retain JSON highlighting.
 Extensions are case insensitive. Text inputs must be UTF-8; images need a named

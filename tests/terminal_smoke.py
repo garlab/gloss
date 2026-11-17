@@ -1059,6 +1059,52 @@ class TerminalSmoke(unittest.TestCase):
                             for token, color in [(b"resource", 176), (b"required_version", 117), (b"list", 81)]:
                                 self.assertEqual(attributes_at(colored, token)["foreground"], color, token)
 
+    def test_probl_files_fences_and_stdin_share_colors_in_both_themes(self):
+        source = '# café 🎲\n@mode enumerate\nlet roll ~ 2d6\nreport "value {roll + 1}"\n'
+        with tempfile.TemporaryDirectory() as root:
+            for theme in ("dark", "light"):
+                args = ("--theme", theme)
+                fenced, fence_error = terminal(f"```PROBL\n{source}```\n", args=(*args, "--line-numbers", "on"))
+                stdin, stdin_error = terminal(source, args=(*args, "--language", "probl"))
+                self.assertFalse(fence_error or stdin_error)
+                self.assertEqual(stdin, fenced)
+                for name in ("model.probl", "model.test.PROBL"):
+                    file = Path(root) / name
+                    file.write_text(source)
+                    colored, error = terminal(file=file, args=args)
+                    disabled, disabled_error = terminal(file=file, args=(*args, "--no-highlight"))
+                    uncolored, plain_error = terminal(file=file, args=args, variables={"NO_COLOR": "1"})
+                    self.assertFalse(error or disabled_error or plain_error)
+                    self.assertEqual(colored, fenced)
+                    self.assertEqual(plain(colored), plain(disabled))
+                    self.assertEqual(plain(colored), plain(uncolored))
+                    self.assertNotEqual(colored, disabled)
+                    self.assertNotIn(b"\x1b", uncolored)
+                    if theme == "dark":
+                        for token, color in [(b"let", 176), (b"2d6", 215), (b"report", 176)]:
+                            self.assertEqual(attributes_at(colored, token)["foreground"], color, token)
+                        self.assertNotEqual(attributes_at(colored, b"value")["foreground"],
+                                            attributes_at(colored, b"+")["foreground"])
+
+    def test_probl_limits_keep_all_source_and_allow_later_blocks(self):
+        # Exceed the byte limit and, separately, the capture limit below it.
+        for source in ["#" + "x" * (128 * 1024) + "\nreport 123\n",
+                       "report 2d6 + 1\n" * 4500]:
+            args = ("--language", "probl")
+            colored, error = terminal(source, args=args)
+            disabled, disabled_error = terminal(source, args=(*args, "--no-highlight"))
+            self.assertFalse(error or disabled_error)
+            self.assertEqual(colored, disabled)
+            self.assertIn(source.splitlines()[-1], plain(colored))
+        malformed, error = terminal('report "unfinished\nreport 2\n', args=("--language", "probl"))
+        self.assertFalse(error)
+        self.assertIn("unfinished", plain(malformed))
+        markdown = f"```probl\n{source}```\n\n```rust\nfn main() {{}}\n```\n"
+        colored, error = terminal(markdown)
+        self.assertFalse(error)
+        self.assertEqual(plain(colored).count("report 2d6 + 1"), 4500)
+        self.assertEqual(attributes_at(colored, b"fn")["foreground"], 176)
+
     def test_dockerfile_limits_keep_complete_source_without_affecting_next_block(self):
         source = "RUN echo hello\n" * 129
         args = ("--language", "containerfile")

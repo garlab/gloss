@@ -10,6 +10,7 @@ pub(super) enum Language {
     Hcl,
     JavaScript,
     Json,
+    Probl,
     Python,
     Rust,
     Toml,
@@ -43,6 +44,7 @@ impl Language {
                 Language::JavaScript,
             ),
             (&["json"], Language::Json),
+            (&["probl"], Language::Probl),
             (&["python", "py"], Language::Python),
             (&["rust", "rs"], Language::Rust),
             (&["toml"], Language::Toml),
@@ -88,6 +90,10 @@ impl Language {
             Self::Json => (
                 tree_sitter_json::LANGUAGE.into(),
                 &[tree_sitter_json::HIGHLIGHTS_QUERY],
+            ),
+            Self::Probl => (
+                tree_sitter_probl::LANGUAGE.into(),
+                &[tree_sitter_probl::HIGHLIGHTS_QUERY],
             ),
             Self::Python => (
                 tree_sitter_python::LANGUAGE.into(),

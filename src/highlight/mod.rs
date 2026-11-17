@@ -409,6 +409,54 @@ mod tests {
     }
 
     #[test]
+    fn probl_aliases_interpolation_and_bounded_fallbacks() {
+        let text = "# café 🎲\n@mode enumerate\nfn roll(x: int): int { x }\nlet r ~ 2d6\nreport \"λ {roll(r) + 1}\"\nreport '1h 30m'\n";
+        for alias in ["probl", "Probl", "PROBL"] {
+            let mut engine = Highlighter::default();
+            let spans = engine.highlight(alias, text).unwrap();
+            for (token, expected) in [
+                ("# café", Highlight::Comment),
+                ("mode", Highlight::Attribute),
+                ("roll", Highlight::Function),
+                ("int", Highlight::Type),
+                ("2d6", Highlight::Number),
+                ("report", Highlight::Keyword),
+                ("λ", Highlight::String),
+                ("+", Highlight::Operator),
+                ("'1h 30m'", Highlight::Constant),
+            ] {
+                assert_eq!(
+                    color_at(&spans, text.find(token).unwrap()),
+                    Some(expected),
+                    "{alias}: {token}"
+                );
+            }
+            assert_eq!(color_at(&spans, text.find("(r)").unwrap() + 1), None);
+            assert!(
+                spans
+                    .iter()
+                    .all(|span| text.get(span.range.clone()).is_some())
+            );
+            assert!(
+                spans
+                    .windows(2)
+                    .all(|pair| pair[0].range.end <= pair[1].range.start)
+            );
+            assert!(
+                engine
+                    .highlight(alias, &"#".repeat(MAX_BLOCK_BYTES + 1))
+                    .is_none()
+            );
+            assert!(
+                engine
+                    .highlight(alias, "report \"unfinished 🎲\nreport 2")
+                    .is_some()
+            );
+            assert!(engine.highlight(alias, "report 2").is_some());
+        }
+    }
+
+    #[test]
     fn hcl_aliases_highlight_templates_and_preserve_bounded_fallbacks() {
         let text = include_str!("../../tests/fixtures/terraform.tf");
         for alias in ["hcl", "TERRAFORM", "tf", "tfvars", "tfbackend"] {

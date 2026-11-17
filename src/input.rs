@@ -51,6 +51,7 @@ impl Input {
             Some("hcl" | "tf" | "tfvars" | "tfbackend") => Some("hcl"),
             Some("json") => Some("json"),
             Some("rs") => Some("rust"),
+            Some("probl") => Some("probl"),
             Some("py" | "pyi" | "pyw") => Some("python"),
             Some("js" | "jsx" | "mjs" | "cjs") => Some("javascript"),
             Some("ts" | "mts" | "cts") => Some("typescript"),
