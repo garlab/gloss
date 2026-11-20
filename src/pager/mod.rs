@@ -46,6 +46,7 @@ fn prepare(mut options: render::Options) -> (Geometry, render::Options) {
         options.kitty = None;
         options.image_base = None;
         options.mermaid = false;
+        options.tikz = false;
         options.sgf = false;
     }
     (screen, options)

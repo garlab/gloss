@@ -46,6 +46,9 @@ struct Args {
     /// Mermaid diagrams: auto uses known Kitty graphics sessions; off keeps code.
     #[arg(long, value_enum, default_value_t = Images::Auto)]
     mermaid: Images,
+    /// Render supported TikZ pictures on macOS in graphics-capable terminals.
+    #[arg(long, value_enum, default_value_t = Images::Auto)]
+    tikz: Images,
     /// Print selectable Mermaid source beneath rendered diagrams.
     #[arg(long)]
     show_mermaid_source: bool,
@@ -158,6 +161,14 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(
+            document_graphics::tikz::WORKER_ARGUMENT,
+        ))
+    {
+        document_graphics::tikz::worker_main()?;
+        return Ok(());
+    }
     let args = Args::parse();
     if args.mermaid_worker {
         gloss_cli::mermaid::worker_main()?;
@@ -272,6 +283,12 @@ impl Args {
                     Images::Kitty => true,
                 },
             show_mermaid_source: self.show_mermaid_source,
+            tikz: terminal.graphics_allowed
+                && match self.tikz {
+                    Images::Auto => terminal.kitty_hint,
+                    Images::Off => false,
+                    Images::Kitty => true,
+                },
             sgf: terminal.graphics_allowed
                 && match self.sgf {
                     Images::Auto => terminal.kitty_hint,

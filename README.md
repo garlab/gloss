@@ -88,7 +88,9 @@ the same renderer.
   without an extension and searching `\graphicspath`.
 
 Unknown commands and environments stay visible as source, around their readable
-arguments; TikZ pictures and PDF figures keep their source or reference.
+arguments. On macOS, supported TikZ pictures render with scoped document macros
+in Kitty and Ghostty. Plain output and unsupported pictures keep the source.
+Section titles use the typeset branch of `\texorpdfstring`, including inline math.
 `--watch` also reloads when an included file changes. See
 [LaTeX documents](docs/latex.md) for details and limits.
 
@@ -161,6 +163,7 @@ otherwise. A nonempty `NO_COLOR` disables text styling but not images.
 | `--show-math-source` | Print selectable TeX beneath rendered equations. |
 | `--images auto\|off\|kitty` | Local images; `off` keeps references and skips reading image files. |
 | `--base-dir <directory>` | Resolve local image and LaTeX file paths from another directory. |
+| `--tikz auto\|off\|kitty` | TikZ pictures on macOS. Use `off` to read the source. |
 | `--mermaid auto\|off\|kitty` | Mermaid diagrams; `off` keeps the code. |
 | `--show-mermaid-source` | Print selectable code beneath rendered diagrams. |
 | `--sgf auto\|off\|kitty` | Go boards, independently of other graphics. |
@@ -249,3 +252,4 @@ to run, and where design decisions are recorded.
 
 MIT; see [LICENSE](LICENSE). `katex-native` is MIT, and its bundled KaTeX fonts use
 the SIL Open Font License 1.1; see the [font license](https://github.com/garlab/katex-native/blob/main/fonts/OFL.txt).
+See the [TikZ font notices](THIRD_PARTY_NOTICES.md) for the figure fonts.

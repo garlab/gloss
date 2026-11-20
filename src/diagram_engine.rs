@@ -1,7 +1,5 @@
 //! Terminal policy for native diagrams: invocation budgets and fitted-image cache.
 use crate::raster::Raster;
-pub(crate) use document_graphics::mermaid::MAX_SOURCE;
-pub use document_graphics::worker::worker_main;
 use document_graphics::{
     RasterOptions,
     mermaid::{Background, admissible},
@@ -34,8 +32,16 @@ impl Cached {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+enum Format {
+    #[default]
+    Mermaid,
+    Tikz,
+}
+
 #[derive(Default)]
 pub(crate) struct Engine {
+    format: Format,
     worker: Option<Worker>,
     failed: bool,
     attempts: usize,
@@ -45,6 +51,13 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
+    pub(crate) fn tikz() -> Self {
+        Self {
+            format: Format::Tikz,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn begin_document(&mut self) {
         self.finish_document();
         self.failed = false;
@@ -68,7 +81,15 @@ impl Engine {
         if cancel.load(Ordering::Relaxed) {
             return Err(io::ErrorKind::ConnectionAborted.into());
         }
-        if !admissible(source)
+        let supported = match self.format {
+            Format::Mermaid => admissible(source),
+            Format::Tikz => {
+                cfg!(target_os = "macos")
+                    && !source.is_empty()
+                    && source.len() <= document_graphics::tikz::MAX_SOURCE
+            }
+        };
+        if !supported
             || bounds.0 == 0
             || bounds.1 == 0
             || !scale.is_finite()
@@ -95,7 +116,16 @@ impl Engine {
         self.attempts += 1;
         let started = Instant::now();
         let timeout = REQUEST_TIMEOUT.min(TOTAL_TIME.saturating_sub(self.elapsed));
+        let fitting = RasterOptions { bounds, scale };
         let result = (|| {
+            if let Format::Tikz = self.format {
+                let dark = (!light).then_some(document_graphics::tikz::DarkPalette {
+                    ink: [208; 3],
+                    surface: [24; 3],
+                });
+                return document_graphics::tikz::render(source, dark, fitting, timeout, cancel)
+                    .map(Some);
+            }
             if self.worker.is_none() {
                 self.worker = Some(Worker::spawn(
                     &std::env::current_exe()?,
@@ -106,7 +136,7 @@ impl Engine {
                 source,
                 light,
                 Background::Transparent,
-                RasterOptions { bounds, scale },
+                fitting,
                 timeout,
                 cancel,
             )
@@ -117,6 +147,13 @@ impl Engine {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {
                 self.worker = None;
                 return Err(io::ErrorKind::ConnectionAborted.into());
+            }
+            // TikZ workers are disposable. Cache a rejected figure and allow later pictures.
+            Err(error) if matches!(self.format, Format::Tikz) => {
+                if error.kind() != io::ErrorKind::InvalidData {
+                    return Ok(None);
+                }
+                None
             }
             Err(_) => {
                 // A broken protocol, timeout, or crash disables new work for this

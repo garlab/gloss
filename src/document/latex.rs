@@ -225,6 +225,7 @@ impl<'a> Adapter<'a> {
                 };
                 self.raw(command, range);
             }
+            L::TikzPicture(source) => self.source_block(source.into_owned(), "tikz", range),
             L::Raw(text) => self.raw(text.into_owned(), range),
             L::LineBreak => self.out(Event::HardBreak, range),
             L::Hint(_) | L::TableRule => {}
@@ -236,19 +237,23 @@ impl<'a> Adapter<'a> {
         if self.inline > 0 {
             self.out(Event::Code(text.into()), range);
         } else {
-            self.flush_prefix(&range);
-            self.out(
-                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into()))),
-                range.clone(),
-            );
-            let text = if text.ends_with('\n') {
-                text
-            } else {
-                text + "\n"
-            };
-            self.text(text, &range);
-            self.out(Event::End(TagEnd::CodeBlock), range);
+            self.source_block(text, "", range);
         }
+    }
+
+    fn source_block(&mut self, text: String, language: &'static str, range: Range<usize>) {
+        self.flush_prefix(&range);
+        self.out(
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language.into()))),
+            range.clone(),
+        );
+        let text = if text.ends_with('\n') {
+            text
+        } else {
+            text + "\n"
+        };
+        self.text(text, &range);
+        self.out(Event::End(TagEnd::CodeBlock), range);
     }
 
     fn capture(&mut self, kind: CaptureKind) {
@@ -332,7 +337,10 @@ impl<'a> Adapter<'a> {
             }
             LT::Code { language } => {
                 self.begin_inline_block(&range);
-                let language = language.map_or(CowStr::Borrowed(""), cow);
+                // A listing remains literal even when its language names a diagram.
+                let language = language
+                    .filter(|name| !name.eq_ignore_ascii_case("tikz"))
+                    .map_or(CowStr::Borrowed(""), cow);
                 self.out(
                     Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language))),
                     range.clone(),

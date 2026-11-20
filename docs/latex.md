@@ -59,6 +59,12 @@ that render are not polled.
 tries `.png`, `.jpg`, `.jpeg`, and `.svg`, also in `\graphicspath` directories;
 only existing candidates are opened. PDF and EPS figures keep their reference.
 
+Complete `tikzpicture` environments render on macOS in terminals with Kitty graphics.
+The isolated renderer uses definitions in scope at the picture, follows the selected
+theme, and fits the figure to the terminal. Unsupported pictures, text exports and
+`--tikz off` keep the source. Section headings read the typeset argument of
+`\texorpdfstring` and display its formulas like other inline math.
+
 ## Limits
 
 The crate's limits apply: definitions, nesting, expansion, formula size, labels,
@@ -66,7 +72,7 @@ and diagnostics are bounded, and exceeded regions stay visible as source. gloss
 adds its text input limit and image, math, and output budgets. Diagnostics are
 not shown; unknown input is visible in the output instead.
 
-Not supported: PDF and EPS figures, TikZ (shown as source), BibTeX databases
+Not supported: PDF and EPS figures, BibTeX databases
 without a `.bbl` file, and anything that needs running TeX, such as package
 code or exact line and page breaking.
 

@@ -51,6 +51,7 @@ pub struct Options {
     pub mermaid: bool,
     /// Keep a selectable code panel below rendered diagrams.
     pub show_mermaid_source: bool,
+    pub tikz: bool,
     pub sgf: bool,
     pub sgf_selection: crate::sgf::Selection,
     pub show_sgf_source: bool,
@@ -73,6 +74,7 @@ impl Default for Options {
             image_base: None,
             mermaid: false,
             show_mermaid_source: false,
+            tikz: false,
             sgf: false,
             sgf_selection: Default::default(),
             show_sgf_source: false,
@@ -101,7 +103,8 @@ impl Options {
 #[derive(Default)]
 pub(crate) struct RenderCache {
     math: Option<MathEngine>,
-    mermaid: Option<crate::mermaid::Engine>,
+    mermaid: Option<crate::diagram_engine::Engine>,
+    tikz: Option<crate::diagram_engine::Engine>,
     sgf: Option<crate::sgf::Engine>,
 }
 
@@ -121,6 +124,9 @@ impl RenderCache {
         }
         if let Some(mermaid) = &mut self.mermaid {
             mermaid.begin_document();
+        }
+        if let Some(tikz) = &mut self.tikz {
+            tikz.begin_document();
         }
         if let Some(sgf) = &mut self.sgf {
             sgf.begin_document();
@@ -306,9 +312,29 @@ impl<'a, W: Write> Renderer<'a, W> {
                 language,
                 attributes,
                 runs,
-                ..
+                source,
             } => {
                 if formatted {
+                    if options.tikz
+                        && language
+                            .as_deref()
+                            .is_some_and(|label| label.eq_ignore_ascii_case("tikz"))
+                        && diagram::write(
+                            out,
+                            runs,
+                            diagram::Kind::Tikz(
+                                &mut self.cache.tikz,
+                                document
+                                    .latex_index()
+                                    .map(|idx| idx.macro_context(source.start)),
+                            ),
+                            images,
+                            options,
+                            self.cancel,
+                        )?
+                    {
+                        return Ok(());
+                    }
                     if options.mermaid
                         && language
                             .as_deref()

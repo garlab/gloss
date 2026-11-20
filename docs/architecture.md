@@ -68,7 +68,7 @@ The full source and parser working storage still scale with input.
 | `src/math.rs` | Adapt `katex-native`, fit bounded rasters, combine equation tags, track numbering, and cache compressed fitted rasters within a byte budget. |
 | `src/raster.rs` | Terminal-independent dimensions and straight RGBA pixels. |
 | `src/images.rs` | Resolve local references, enforce invocation budgets, and cache fitted shared-library rasters by content. |
-| `src/mermaid.rs` | Own the terminal invocation budget and fitted diagram cache; delegate rendering to `document-graphics`. |
+| `src/diagram_engine.rs` | Own the terminal invocation budgets and fitted caches for Mermaid and TikZ; delegate rendering to `document-graphics`. |
 | `src/sgf.rs` | Select a collection game/main-line position and cache bounded native Go previews. |
 | `src/terminal.rs` | Observe stdout, environment hints, multiplexers, and cell geometry. |
 | `src/export.rs` | Generate readable plain text or return the original source. |

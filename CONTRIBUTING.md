@@ -28,7 +28,7 @@ To run without installing, use `cargo run --locked -- <arguments>`.
 gloss builds on three libraries published on crates.io:
 [`katex-native`](https://crates.io/crates/katex-native) for equation layout,
 [`document-graphics`](https://crates.io/crates/document-graphics) (with its
-`images` and `sgf` features) for diagrams, boards, and images, and
+`images`, `sgf` and `tikz` features) for diagrams, boards, and images, and
 [`latex-reader`](https://crates.io/crates/latex-reader) for LaTeX documents.
 To change one of them alongside gloss, place its checkout beside gloss and add
 an override to an untracked `.cargo/config.toml`:

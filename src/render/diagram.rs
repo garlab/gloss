@@ -5,14 +5,15 @@ use std::{
 
 use super::{Options, inline};
 use crate::{
+    diagram_engine::Engine,
     images::Loader,
     layout::{Role, Run, Style},
-    mermaid::Engine,
     sgf,
 };
 
 pub(super) enum Kind<'a> {
     Mermaid(&'a mut Option<Engine>),
+    Tikz(&'a mut Option<Engine>, Option<latex_reader::MacroContext>),
     Sgf(&'a mut Option<sgf::Engine>, sgf::Selection),
 }
 
@@ -29,7 +30,8 @@ pub(super) fn write(
         return Ok(false);
     };
     let limit = match &kind {
-        Kind::Mermaid(_) => crate::mermaid::MAX_SOURCE,
+        Kind::Mermaid(_) => document_graphics::mermaid::MAX_SOURCE,
+        Kind::Tikz(..) => document_graphics::tikz::MAX_SOURCE,
         Kind::Sgf(..) => sgf::MAX_SOURCE,
     };
     if length == 0 || length > limit {
@@ -54,7 +56,7 @@ pub(super) fn write(
     let geometry = options.geometry();
     let height = match &kind {
         Kind::Mermaid(_) => document_graphics::MAX_EDGE,
-        Kind::Sgf(..) => {
+        Kind::Tikz(..) | Kind::Sgf(..) => {
             u32::from(geometry.rows.saturating_sub(2).max(1))
                 * u32::from(geometry.cell_height.max(1))
         }
@@ -74,6 +76,22 @@ pub(super) fn write(
                 .map(|pixels| (pixels, None)),
             options.show_mermaid_source,
         ),
+        Kind::Tikz(engine, context) => {
+            if let Some(context) = context {
+                let Some(prepared) = context.source_with_definitions(&source, limit) else {
+                    return Ok(false);
+                };
+                source = prepared;
+            }
+            let pixels = engine.get_or_insert_with(Engine::tikz).render(
+                &source,
+                bounds,
+                scale,
+                options.light_background,
+                cancel,
+            )?;
+            (pixels.map(|pixels| (pixels, None)), false)
+        }
         Kind::Sgf(engine, selection) => (
             engine
                 .get_or_insert_with(sgf::Engine::default)

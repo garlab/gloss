@@ -472,6 +472,44 @@ class TerminalSmoke(unittest.TestCase):
             self.assertNotIn(b"\x1b[2J", output)
             self.assertNotIn("\x9b".encode(), output)
 
+    def test_latex_hyperref_heading_keeps_both_formulas(self):
+        source = r"\section{The size of \texorpdfstring{$r_n$}{r(n)}, and the defect \texorpdfstring{$\varepsilon$}{epsilon}}"
+        expected = r"\section{The size of $r_n$, and the defect $\varepsilon$}"
+        args = ("--input-format", "latex")
+        actual, _ = terminal(source, args)
+        reference, _ = terminal(expected, args)
+        self.assertEqual(actual, reference)
+        self.assertTrue(list(decoded_graphics(actual)))
+
+    @unittest.skipUnless(sys.platform == "darwin", "TikZ uses the macOS sandbox")
+    def test_latex_tikz_respects_macros_theme_and_source_fallback(self):
+        picture = r"\begin{tikzpicture}\node {$\vertex{8}$} child {node {$16$}} child[missing];\end{tikzpicture}"
+        source = (r"\begin{document}\begin{figure}\newcommand{\vertex}[1]{\mathbf{#1}}" +
+                  picture + r"\caption{A tree}\end{figure}\end{document}")
+        args = ("--input-format", "latex", "--math", "tex")
+        for theme in ("dark", "light"):
+            output, _ = terminal(source, (*args, "--theme", theme), columns=32)
+            images = list(decoded_graphics(output))
+            self.assertEqual(len(images), 1)
+            self.assertLessEqual(images[0][0], 320)
+            self.assertIn("A tree", plain(output))
+            self.assertNotIn("tikzpicture", plain(output))
+            # Rendering the same figure with its macro expanded must match exactly.
+            expanded = source.replace(r"\vertex{8}", r"\mathbf{8}")
+            reference, _ = terminal(expanded, (*args, "--theme", theme), columns=32)
+            self.assertEqual(images, list(decoded_graphics(reference)))
+        fallback, _ = terminal(source, (*args, "--tikz", "off"))
+        self.assertFalse(list(decoded_graphics(fallback)))
+        self.assertIn(r"\begin{tikzpicture}", plain(fallback))
+        listing = "\\begin{lstlisting}[language=tikz]\n" + picture + "\n\\end{lstlisting}"
+        literal, _ = terminal(listing, args)
+        self.assertFalse(list(decoded_graphics(literal)))
+        self.assertIn(r"\begin{tikzpicture}", plain(literal))
+        malformed = r"\begin{tikzpicture}\node {unfinished};"
+        fallback, _ = terminal(malformed, args)
+        self.assertFalse(list(decoded_graphics(fallback)))
+        self.assertIn("unfinished", plain(fallback))
+
     def test_mermaid_native_subset_and_selectable_source(self):
         fixture = Path(__file__).resolve().parent / "fixtures/mermaid.md"
         output, error = terminal(file=fixture)

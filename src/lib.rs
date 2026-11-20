@@ -2,6 +2,7 @@
 //!
 //! The Rust library API is not yet stable.
 
+mod diagram_engine;
 pub mod document;
 pub mod export;
 pub mod highlight;
@@ -10,7 +11,9 @@ pub mod input;
 pub mod layout;
 pub mod links;
 pub mod math;
-pub mod mermaid;
+pub mod mermaid {
+    pub use document_graphics::worker::worker_main;
+}
 #[cfg(unix)]
 pub mod pager;
 pub mod raster;
