@@ -63,8 +63,10 @@ such as a linked badge:
 </p>
 ```
 
-A fragment converts only when it shows an image, text, or a rule, and contains
-only these elements, `<picture>`, `<source>`, comments, and text. Comments are
+A fragment converts when it shows an image, text, or a rule, or contains a
+closed, empty anchor with an `id` or `name` and no `href`. Empty anchor targets
+occupy no line in the reader or text export. Supported fragments contain
+only the elements above, `<picture>`, `<source>`, comments, and text. Comments are
 hidden. Text follows HTML whitespace rules, with entities decoded, including
 inside `<code>`; it is not Markdown. Elements other than `<code>` that are left
 open close at the end of the fragment. Exports match the equivalent Markdown, and exact source export is

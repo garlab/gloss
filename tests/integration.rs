@@ -1194,6 +1194,38 @@ fn many_openers_before_protected_code_keep_source_without_math() {
 }
 
 #[test]
+fn empty_html_anchor_targets_do_not_take_up_a_line() {
+    for (markdown, expected) in [
+        (
+            "Before.\n\n<a id=\"first\"></a>\n<a name='second'></a>\n<A ID=third></A>\n\n## Heading",
+            "Before.\n\n## Heading",
+        ),
+        ("left<a id=middle></a>right", "leftright"),
+        ("left<a id=one></a> <a id=two></a>right", "left right"),
+        ("<a id=top></a>\n\n[Go](#top)", "[Go](#top)"),
+        ("<div>\n<a name=top> </a>\n</div>\n\nText.", "Text."),
+        ("<a id=top></a>", ""),
+        ("<a id=top></a>\n\n`<a id=code></a>`", "`<a id=code></a>`"),
+    ] {
+        let document = Document::parse(markdown.into());
+        assert_eq!(export::source(&document), markdown);
+        assert_eq!(
+            export::text(&document),
+            export::text(&Document::parse(expected.into())),
+            "{markdown}"
+        );
+    }
+    for raw in [
+        "<a id=top>",
+        "<a href='#top'></a>",
+        "<a></a>",
+        "<a id=top>label</a>",
+    ] {
+        assert!(export::text(&Document::parse(raw.into())).contains(raw));
+    }
+}
+
+#[test]
 fn html_markup_matches_its_markdown_and_other_markup_keeps_its_source() {
     use pulldown_cmark::{Tag, TagEnd};
     // Events without the HTML block wrapper, with adjacent text merged.

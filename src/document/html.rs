@@ -69,6 +69,23 @@ pub(super) fn read<'a>(
         }
     }
     match convert(&pieces, Mode::Inline) {
+        // Between words, the tags disappear but their separating whitespace
+        // still belongs to the paragraph. An anchor-only line emits nothing.
+        Some(events)
+            if events.is_empty()
+                && next.as_ref().is_some_and(|item| {
+                    matches!(
+                        item.event,
+                        Event::Text(_) | Event::Code(_) | Event::InlineMath(_) | Event::Start(_)
+                    )
+                }) =>
+        {
+            output.extend(
+                pieces
+                    .into_iter()
+                    .filter(|item| matches!(item.event, Event::SoftBreak | Event::Text(_))),
+            );
+        }
         Some(events) => output.extend(events),
         None => output.extend(pieces),
     }
@@ -217,7 +234,8 @@ struct Converter {
     code: Option<(String, usize)>,
     line_start: bool,
     space: bool,
-    visible: bool,
+    /// Visible content or a complete named anchor target.
+    recognized: bool,
 }
 
 impl Converter {
@@ -257,7 +275,7 @@ impl Converter {
     fn content(&mut self, source: &Range<usize>) {
         self.open(source);
         self.line_start = false;
-        self.visible = true;
+        self.recognized = true;
     }
 
     fn boundary(&mut self, offset: usize) {
@@ -332,8 +350,9 @@ fn convert(pieces: &[SpannedEvent<'_>], mode: Mode) -> Option<Vec<SpannedEvent<'
         code: None,
         line_start: mode == Mode::Block,
         space: false,
-        visible: false,
+        recognized: false,
     };
+    let mut anchor_body_start = None;
     // Headings and rules are blocks of their own, never inside a style or link.
     let block = |out: &Converter| mode == Mode::Block && !out.heading && !out.inline();
     for (count, token) in Tokenizer::new_with_emitter(&fragment.text, emitter).enumerate() {
@@ -392,7 +411,7 @@ fn convert(pieces: &[SpannedEvent<'_>], mode: Mode) -> Option<Vec<SpannedEvent<'
                     Element::Rule if block(&out) => {
                         out.boundary(source.start);
                         out.push(Event::Rule, source);
-                        out.visible = true;
+                        out.recognized = true;
                     }
                     Element::Heading(level) if block(&out) => {
                         out.boundary(source.start);
@@ -427,6 +446,12 @@ fn convert(pieces: &[SpannedEvent<'_>], mode: Mode) -> Option<Vec<SpannedEvent<'
                                 source,
                             );
                             end = Some(TagEnd::Link);
+                        } else if ["id", "name"].iter().any(|key| {
+                            tag.attributes
+                                .get(key.as_bytes())
+                                .is_some_and(|attr| !attr.value.trim_ascii().is_empty())
+                        }) {
+                            anchor_body_start = Some(tag.span.end);
                         }
                         out.enter(name, end)?;
                     }
@@ -447,6 +472,12 @@ fn convert(pieces: &[SpannedEvent<'_>], mode: Mode) -> Option<Vec<SpannedEvent<'
             Token::EndTag(tag) => {
                 let source = fragment.source(tag.span.start..tag.span.end);
                 let name = tag.name.as_slice();
+                if name == b"a"
+                    && let Some(start) = anchor_body_start.take()
+                    && fragment.text[start..tag.span.start].trim_ascii().is_empty()
+                {
+                    out.recognized = true;
+                }
                 if let Some((code, start)) = out.code.take() {
                     if name != b"code" {
                         return None;
@@ -486,7 +517,7 @@ fn convert(pieces: &[SpannedEvent<'_>], mode: Mode) -> Option<Vec<SpannedEvent<'
         }
     }
     // Inline wrappers must close within their run, before the surrounding Markdown.
-    if !out.visible || out.code.is_some() || (mode == Mode::Inline && !out.frames.is_empty()) {
+    if !out.recognized || out.code.is_some() || (mode == Mode::Inline && !out.frames.is_empty()) {
         return None;
     }
     let end = pieces.last().map_or(0, |piece| piece.source.end);

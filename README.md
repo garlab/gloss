@@ -50,6 +50,7 @@ The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
   selectable captions.
 - Common README HTML, such as a centered `<h1>` title, `<p>` tagline with
   `<b>` and `<br>`, or linked badge, renders like the equivalent Markdown.
+  Empty `<a id="…"></a>` and `<a name="…"></a>` targets are hidden.
 - Mermaid diagrams and SGF Go boards in fenced blocks.
 - Syntax colors for Rust, Python, JavaScript/JSX, TypeScript/TSX, JSON,
   Bash/shell, Go, Probl, TOML, YAML, Dockerfile/Containerfile, and Terraform/HCL.
