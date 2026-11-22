@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.3 (2026-11-22)
+
+- Hide empty HTML anchor targets such as `<a id="section"></a>` and
+  `<a name="section"></a>` in rendered Markdown and text exports.
+- Highlight Probl files and fenced code blocks. Use `--language probl` to
+  select the language explicitly.
+- Render supported LaTeX TikZ pictures in Kitty and Ghostty on macOS.
+  Use `--tikz off` to show their source.
+- Show the typeset title from `\texorpdfstring` in LaTeX headings, including
+  inline math.
+
 ## 0.2.2 (2026-11-16)
 
 - Highlight Terraform/HCL files and code fences, including interpolated strings,

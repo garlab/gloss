@@ -273,6 +273,8 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 [[package]]
 name = "document-graphics"
 version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8af3ba581ad62c7d2add45c5d47ea03f22b953f385bd82c4a97aa7b6665d3d32"
 dependencies = [
  "document-graphics-mermaid",
  "image",
@@ -415,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "gloss-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "base64",
  "clap",
@@ -575,6 +577,8 @@ dependencies = [
 [[package]]
 name = "latex-reader"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "270fea285f48937dd5b9680011b8d315e87c6ade9eb03c37547335dfd832c4b3"
 
 [[package]]
 name = "libc"
@@ -1267,6 +1271,8 @@ checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
 [[package]]
 name = "tree-sitter-probl"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ede75af98c0718f0aeb3b5955331a244e309a70a3aa0225962c534baab486966"
 dependencies = [
  "cc",
  "tree-sitter-language",
