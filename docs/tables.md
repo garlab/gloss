@@ -11,6 +11,10 @@ row share the inline math baseline and reserve enough terminal rows. Quote rails
 and list indentation continue through the table. `--show-math-source` prints
 selectable TeX after the physical row containing each rendered equation.
 
+Single-line math in a header or body cell can contain ordinary TeX bars.
+For example, `| $|x|$ | $P(A|B)$ |` has two cells. Copying or exporting
+the formulas preserves the delimiters and bars as written.
+
 Vertical separators and quote rails span every reserved row above and below the
 text baseline. This fixes gaps beside tall fractions and roots. List bullets are
 printed once. Pseudo-terminal checks cover border continuity with color disabled,

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Keep vertical bars inside Markdown table formulas, including absolute values
+  and conditional probabilities. Following text and cells stay visible.
+- Render unbraced square roots such as `\sqrt x` with the same spacing as
+  `\sqrt{x}`.
+
 ## 0.2.3 (2026-11-22)
 
 - Hide empty HTML anchor targets such as `<a id="section"></a>` and

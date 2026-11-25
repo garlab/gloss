@@ -14,6 +14,15 @@ use std::{
 
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 
+fn markdown_options() -> Options {
+    Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_MATH
+        | Options::ENABLE_GFM
+}
+
 #[derive(Debug)]
 pub struct SpannedEvent<'a> {
     pub event: Event<'a>,
@@ -213,15 +222,9 @@ impl Document {
     /// Parse on iteration, borrowing unchanged text directly from the source.
     /// Repeated calls start fresh; events are not retained beside the layout.
     pub fn events(&self) -> impl Iterator<Item = SpannedEvent<'_>> {
-        let options = Options::ENABLE_TABLES
-            | Options::ENABLE_STRIKETHROUGH
-            | Options::ENABLE_TASKLISTS
-            | Options::ENABLE_FOOTNOTES
-            | Options::ENABLE_MATH
-            | Options::ENABLE_GFM;
         let input = self.prepared.text.as_deref().unwrap_or(&self.source);
         let mut parsed = matches!(self.kind, Kind::Markdown)
-            .then(|| Parser::new_ext(input, options).into_offset_iter());
+            .then(|| Parser::new_ext(input, markdown_options()).into_offset_iter());
         let mut stage = 0;
         let mut latex = match &self.kind {
             Kind::Latex(latex) => Some(latex::Adapter::new(&latex.index, self.text())),

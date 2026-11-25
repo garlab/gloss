@@ -6,6 +6,8 @@ use std::ops::Range;
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
+mod table_math;
+
 const MAX_FRONT_MATTER: usize = 16 * 1024;
 const MAX_DETAILS: usize = 256 * 1024;
 const MAX_DETAILS_DEPTH: usize = 16;
@@ -122,7 +124,8 @@ pub(super) fn prepare(source: &str) -> Prepared {
     let metadata = front_matter(source);
     let details = source.contains("<details>") || source.contains("<details open>");
     let math = source.contains("\\(") || source.contains("\\[");
-    if metadata.is_none() && !details && !math {
+    let table_math = (math || source.contains('$')) && source.contains('|');
+    if metadata.is_none() && !details && !math && !table_math {
         return Prepared::default();
     }
     let mut prepared = Prepared::default();
@@ -148,13 +151,18 @@ pub(super) fn prepare(source: &str) -> Prepared {
         details_edits(source, &protected, &mut edits);
     }
     prepared.apply(source, edits);
+    let input = prepared.text.as_deref().unwrap_or(source);
+    let masked = table_math.then(|| table_math::mask(input)).flatten();
+    let mut edits = Vec::new();
     if math {
-        let input = prepared.text.as_deref().unwrap_or(source);
-        let (protected, containers, visible) = protected_ranges(input, true);
-        let mut edits = Vec::new();
+        let (protected, containers, visible) =
+            protected_ranges(masked.as_deref().unwrap_or(input), true);
         math_edits(input, &containers, &protected, &visible, &mut edits);
-        prepared.apply(source, edits);
     }
+    if let Some(masked) = &masked {
+        table_math::escape_math_pipes(input, masked, &mut edits);
+    }
+    prepared.apply(source, edits);
     prepared
 }
 

@@ -1,6 +1,8 @@
 //! Native math uses katex-native for layout and rasterization, independently
 //! of any terminal protocol.
 
+mod katex_compat;
+
 use std::{
     collections::{HashMap, VecDeque},
     hash::{DefaultHasher, Hash, Hasher},
@@ -149,7 +151,7 @@ impl Cache {
 impl Default for MathEngine {
     fn default() -> Self {
         Self {
-            context: KatexContext::default(),
+            context: katex_compat::context(),
             next_number: 1,
             cache: Cache::default(),
             document: None,

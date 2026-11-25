@@ -573,6 +573,130 @@ fn table_cells_retain_alignment_inline_styles_and_source_spans() {
     assert_eq!(export::source(&document), source);
 }
 
+#[test]
+fn table_math_keeps_absolute_values_and_the_rest_of_the_row() {
+    let source = concat!(
+        "> | Measure $|x|$ | Result | Note |\r\n",
+        "> | :--- | ---: | --- |\r\n",
+        r"> | Size | $\sqrt m$ and $h\Pr(\max_t|D_t|\ge h)\to q$. See [proof](proof.md) and $\sqrt n$. | End |",
+        "\r\n",
+        r"> | Unicode | \(‖α‖ + |β|\) and $a\|b + |c|$ | Last |",
+        "\r\n",
+    );
+    let doc = Document::parse(source.into());
+    let flow = layout::layout(&doc);
+    let table = flow
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            layout::Block::Table(table) => Some(table),
+            _ => None,
+        })
+        .expect("three-column table");
+    assert_eq!(table.alignments.len(), 3);
+    assert_eq!(table.rows.len(), 3);
+    for row in &table.rows {
+        assert_eq!(row.cells.len(), 3);
+    }
+    let cell = &table.rows[1].cells[1];
+    let formulas: Vec<_> = cell
+        .runs
+        .iter()
+        .filter_map(|run| run.math.as_deref())
+        .collect();
+    assert_eq!(
+        formulas,
+        [r"\sqrt m", r"h\Pr(\max_t|D_t|\ge h)\to q", r"\sqrt n"]
+    );
+    assert!(
+        doc.source_slice(cell.source.clone())
+            .unwrap()
+            .contains("[proof](proof.md)")
+    );
+    assert_eq!(table.rows[1].cells[2].runs[0].text, "End");
+    let spans: Vec<_> = doc
+        .events()
+        .filter_map(|item| match item.event {
+            Event::InlineMath(tex) => {
+                Some((tex.into_string(), doc.source_slice(item.source).unwrap()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(spans[0], ("|x|".into(), "$|x|$"));
+    assert_eq!(spans[4], ("‖α‖ + |β|".into(), r"\(‖α‖ + |β|\)"));
+    assert_eq!(spans[5], ("a|b + |c|".into(), r"$a\|b + |c|$"));
+    assert!(export::text(&doc).contains("and $\\sqrt n$. | End"));
+    assert_eq!(export::source(&doc), source);
+}
+
+#[test]
+fn table_pipes_preserve_code_escaped_dollars_and_unmatched_delimiters() {
+    for newline in ["\n", "\r\n"] {
+        let source = [
+            r"Prose $a\|b + |c|$.",
+            "",
+            "Value | Description",
+            "--- | ---",
+            r"$$P(A|B)$$ | `$x\|y$`",
+            r"\[|z|\] | literal \$",
+            r"$unclosed | ordinary",
+            r"\$literal | \$price",
+            "",
+            "```md",
+            "| $|code|$ | example |",
+            "| --- | --- |",
+            "| $|x|$ | end |",
+            "```",
+        ]
+        .join(newline);
+        let doc = Document::parse(source.clone());
+        let formulas: Vec<_> = doc
+            .events()
+            .filter_map(|item| match item.event {
+                Event::InlineMath(tex) | Event::DisplayMath(tex) => Some(tex.into_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(formulas, [r"a\|b + |c|", "P(A|B)", "|z|"]);
+        let plain = export::text(&doc);
+        assert!(plain.contains("$x|y$") && plain.contains("$unclosed | ordinary"));
+        assert!(plain.contains("$literal | $price") && plain.contains("| $|code|$ | example |"));
+        assert_eq!(export::source(&doc), source);
+    }
+    let doc = Document::parse("A | B\r--- | ---\r$|x|$ | right\r".into());
+    assert!(export::text(&doc).contains("$|x|$ | right"));
+}
+
+#[test]
+fn unbraced_square_roots_render_like_braced_arguments() {
+    let mut engine = MathEngine::default();
+    let white = Color {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 255,
+    };
+    for (bare, grouped) in [
+        (r"\sqrt m\Pr(M>m)", r"\sqrt{m}\Pr(M>m)"),
+        (r"\sqrt[3]\pi", r"\sqrt[3]{\pi}"),
+        (r"\def\root#1{\sqrt#1}\root3", r"\sqrt{3}"),
+    ] {
+        let actual = engine
+            .render_inline(bare, None, 30., white, 900, 160)
+            .unwrap();
+        let expected = engine
+            .render_inline(grouped, None, 30., white, 900, 160)
+            .unwrap();
+        assert_eq!(
+            (actual.width, actual.height, actual.baseline),
+            (expected.width, expected.height, expected.baseline),
+            "{bare}"
+        );
+        assert_eq!(actual.data, expected.data, "{bare}");
+    }
+}
+
 fn terminal_table(source: &str, width: u16) -> String {
     let document = Document::parse(source.into());
     let options = render::Options {

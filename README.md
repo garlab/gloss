@@ -44,7 +44,8 @@ The Cargo package is `gloss-cli`; the executable is `gloss`. The pager and
 - Headings, emphasis, lists, quotes, code, links, task lists, strikethrough,
   footnotes, and aligned, wrapped tables.
 - `$...$` / `\(...\)` inline math, `$$...$$` / `\[...\]` display math, and fenced
-  `math` blocks, with equation tags and automatic numbering.
+  `math` blocks, with equation tags and automatic numbering. Table cells accept
+  absolute values such as `$|x|$` and conditional probabilities such as `$P(A|B)$`.
 - GitHub alerts, inert front matter, expanded details, and terminal hyperlinks.
 - Local PNG, JPEG, and SVG images, from Markdown or HTML `<img>`, with
   selectable captions.
