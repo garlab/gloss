@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.4 (2026-11-25)
 
 - Keep vertical bars inside Markdown table formulas, including absolute values
   and conditional probabilities. Following text and cells stay visible.
